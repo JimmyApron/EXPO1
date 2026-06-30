@@ -1,98 +1,219 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { router, type Href } from 'expo-router';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
+import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAuth } from '@/hooks/use-auth';
+import { useProjects } from '@/hooks/use-projects';
+import { useTheme } from '@/hooks/use-theme';
+import type { Project, ProjectInput } from '@/types/project';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+function ProjectCard({ project }: { project: Project }) {
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
+    <Pressable
+      onPress={() => router.push(`/projects/${project.id}` as Href)}
+      style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}>
+      <ThemedView type="backgroundElement" style={styles.projectCard}>
+        <ThemedText type="smallBold" style={styles.projectTitle}>
+          {project.title}
+        </ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.projectDescription}>
+          {project.description || '설명이 아직 없습니다.'}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          마감일: {project.deadline || '미정'}
+        </ThemedText>
+      </ThemedView>
+    </Pressable>
   );
 }
 
 export default function HomeScreen() {
+  const { user, signout } = useAuth();
+  const { projects, isloadingprojects, projecterror, createProject } = useProjects();
+  const [iscreating, setIscreating] = useState(false);
+  const [formerror, setFormerror] = useState('');
+  const theme = useTheme();
+
+  const handleCreateProject = async (input: ProjectInput) => {
+    setIscreating(true);
+    setFormerror('');
+
+    const result = await createProject(input);
+
+    if (result.error) {
+      setFormerror(result.error);
+    }
+
+    setIscreating(false);
+  };
+
   return (
-    <ThemedView style={styles.container}>
+    <ScrollView
+      style={[styles.scrollView, { backgroundColor: theme.background }]}
+      contentContainerStyle={styles.scrollContent}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
+        <ThemedView style={styles.container}>
+          <ThemedView style={styles.header}>
+            <ThemedView style={styles.headerTop}>
+              <ThemedView style={styles.headerTitle}>
+                <ThemedText type="subtitle">과제 보관함</ThemedText>
+                <ThemedText themeColor="textSecondary" style={styles.headerCopy}>
+                  과제별 아이디어를 프로젝트 단위로 정리하세요.
+                </ThemedText>
+              </ThemedView>
+              <Pressable
+                onPress={signout}
+                style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+                <ThemedText type="smallBold">로그아웃</ThemedText>
+              </Pressable>
+            </ThemedView>
+            <ThemedText type="small" themeColor="textSecondary">
+              로그인 계정: {user?.email ?? user?.id}
+            </ThemedText>
+          </ThemedView>
+
+          <ThemedView style={styles.section}>
+            <ThemedText type="smallBold">새 과제 만들기</ThemedText>
+            <ProjectForm
+              submitLabel="저장"
+              isbusy={iscreating}
+              error={formerror}
+              onSubmit={handleCreateProject}
+            />
+          </ThemedView>
+
+          <ThemedView style={styles.section}>
+            <ThemedView style={styles.sectionHeader}>
+              <ThemedText type="smallBold">과제 목록</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {projects.length}개
+              </ThemedText>
+            </ThemedView>
+
+            {projecterror ? (
+              <ThemedText type="small" style={styles.errorText}>
+                {projecterror}
+              </ThemedText>
+            ) : null}
+
+            {isloadingprojects ? (
+              <ThemedView type="backgroundElement" style={styles.emptyState}>
+                <ActivityIndicator />
+              </ThemedView>
+            ) : projects.length === 0 ? (
+              <ThemedView type="backgroundElement" style={styles.emptyState}>
+                <ThemedText type="smallBold">아직 생성된 과제가 없습니다</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
+                  발표, 리포트, 실습 과제를 만들고 아이디어를 정리하세요.
+                </ThemedText>
+              </ThemedView>
+            ) : (
+              <ThemedView style={styles.projectList}>
+                {projects.map((project) => (
+                  <ProjectCard key={project.id} project={project} />
+                ))}
+              </ThemedView>
+            )}
+          </ThemedView>
         </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
       </SafeAreaView>
-    </ThemedView>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scrollView: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
+  },
+  scrollContent: {
+    alignItems: 'center',
+    paddingBottom: BottomTabInset + Spacing.four,
   },
   safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
+    width: '100%',
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
+  },
+  container: {
+    width: '100%',
     maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
     gap: Spacing.four,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.six,
   },
-  title: {
+  header: {
+    gap: Spacing.two,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+  },
+  headerTitle: {
+    flex: 1,
+    minWidth: 240,
+    gap: Spacing.two,
+  },
+  headerCopy: {
+    maxWidth: 620,
+  },
+  section: {
+    gap: Spacing.three,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+  },
+  projectList: {
+    gap: Spacing.three,
+  },
+  cardPressable: {
+    borderRadius: Spacing.three,
+  },
+  projectCard: {
+    gap: Spacing.two,
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+  },
+  projectTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+  },
+  projectDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  emptyState: {
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderRadius: Spacing.three,
+    padding: Spacing.four,
+  },
+  emptyText: {
     textAlign: 'center',
   },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
+  secondaryButton: {
+    minHeight: 44,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#9aa2b1',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+    paddingVertical: Spacing.two,
+  },
+  errorText: {
+    color: '#d92d20',
+  },
+  pressed: {
+    opacity: 0.72,
   },
 });
