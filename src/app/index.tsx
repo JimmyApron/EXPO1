@@ -1,5 +1,5 @@
 import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedIcon } from '@/components/animated-icon';
@@ -8,6 +8,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+
+// 보관함(Context) 불러오기
+import { useApp } from '../context/AppContext';
 
 function getDevMenuHint() {
   if (Platform.OS === 'web') {
@@ -29,6 +32,12 @@ function getDevMenuHint() {
 }
 
 export default function HomeScreen() {
+  // 보관함 데이터 꺼내기
+  const { categoryfilter, setCategoryfilter, favoriteids, togglefavorite } = useApp();
+
+  // 테스트용 임시 아이디어 ID 배열
+  const sampleideas = [101, 102, 103];
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -39,16 +48,52 @@ export default function HomeScreen() {
           </ThemedText>
         </ThemedView>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+        {/* 1. 카테고리 필터 영역 */}
+        <ThemedText type="small" style={{ fontWeight: 'bold' }}>[ CATEGORY FILTER ]</ThemedText>
+        <ThemedView style={styles.tabContainer}>
+          {['all', 'design', 'develop'].map((cat) => (
+            <Pressable
+              key={cat}
+              onPress={() => setCategoryfilter(cat)}
+              style={[
+                styles.tabButton,
+                categoryfilter === cat && styles.activeTabButton
+              ]}
+            >
+              <ThemedText style={categoryfilter === cat ? styles.activeTabText : styles.tabText}>
+                {cat.toUpperCase()}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </ThemedView>
 
+        {/* 2. 즐겨찾기 테스트 영역 */}
+        <ThemedText type="small" style={{ fontWeight: 'bold', marginTop: Spacing.two }}>[ IDEA CARD FAVORITES ]</ThemedText>
+        <ThemedView type="backgroundElement" style={styles.stepContainer}>
+          {sampleideas.map((ideaid) => {
+            const isfavorite = favoriteids?.includes(ideaid);
+            return (
+              <HintRow
+                key={ideaid}
+                title={`Idea ID: ${ideaid}`}
+                hint={
+                  <Pressable onPress={() => togglefavorite(ideaid)} style={styles.favoriteButton}>
+                    <ThemedText style={{ color: isfavorite ? '#ff4757' : '#ced6e0', fontWeight: 'bold' }}>
+                      {isfavorite ? '❤️' : '🖤'}
+                    </ThemedText>
+                  </Pressable>
+                }
+              />
+            );
+          })}
+        </ThemedView>
+
+        {/* 3. 기본 안내 영역 */}
         <ThemedView type="backgroundElement" style={styles.stepContainer}>
           <HintRow
             title="Try editing"
             hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
           />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
           <HintRow
             title="Fresh start"
             hint={<ThemedText type="code">npm run reset-project</ThemedText>}
@@ -85,9 +130,7 @@ const styles = StyleSheet.create({
   title: {
     textAlign: 'center',
   },
-  code: {
-    textTransform: 'uppercase',
-  },
+
   stepContainer: {
     gap: Spacing.three,
     alignSelf: 'stretch',
@@ -95,4 +138,33 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.four,
     borderRadius: Spacing.four,
   },
+  tabContainer: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginVertical: Spacing.two,
+  },
+  tabButton: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 20,
+    backgroundColor: '#f1f2f6',
+  },
+  activeTabButton: {
+    backgroundColor: '#2f3542',
+  },
+  tabText: {
+    color: '#2f3542',
+    fontSize: 12,
+  },
+  activeTabText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  favoriteButton: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#f1f2f6',
+  }
 });
