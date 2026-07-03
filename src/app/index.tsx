@@ -7,10 +7,14 @@ import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/hooks/use-auth';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
 import type { Project, ProjectInput } from '@/types/project';
+
+const categories = ['all', 'design', 'develop'] as const;
+const sampleideas = [101, 102, 103];
 
 function ProjectCard({ project }: { project: Project }) {
   return (
@@ -35,6 +39,7 @@ function ProjectCard({ project }: { project: Project }) {
 export default function HomeScreen() {
   const { user, signout } = useAuth();
   const { projects, isloadingprojects, projecterror, createProject } = useProjects();
+  const { categoryfilter, setCategoryfilter, favoriteids, togglefavorite } = useApp();
   const [iscreating, setIscreating] = useState(false);
   const [formerror, setFormerror] = useState('');
   const theme = useTheme();
@@ -119,6 +124,65 @@ export default function HomeScreen() {
                 ))}
               </ThemedView>
             )}
+          </ThemedView>
+
+          <ThemedView style={styles.section}>
+            <ThemedView style={styles.sectionHeader}>
+              <ThemedText type="smallBold">카테고리 필터</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {categoryfilter.toUpperCase()}
+              </ThemedText>
+            </ThemedView>
+            <ThemedView style={styles.tabContainer}>
+              {categories.map((category) => (
+                <Pressable
+                  key={category}
+                  onPress={() => setCategoryfilter(category)}
+                  style={({ pressed }) => [
+                    styles.tabButton,
+                    categoryfilter === category && styles.activeTabButton,
+                    pressed && styles.pressed,
+                  ]}>
+                  <ThemedText
+                    style={categoryfilter === category ? styles.activeTabText : styles.tabText}>
+                    {category.toUpperCase()}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </ThemedView>
+          </ThemedView>
+
+          <ThemedView style={styles.section}>
+            <ThemedView style={styles.sectionHeader}>
+              <ThemedText type="smallBold">아이디어 즐겨찾기</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {favoriteids.length}개 저장됨
+              </ThemedText>
+            </ThemedView>
+            <ThemedView type="backgroundElement" style={styles.favoriteList}>
+              {sampleideas.map((ideaid) => {
+                const isfavorite = favoriteids.includes(ideaid);
+
+                return (
+                  <ThemedView key={ideaid} style={styles.favoriteRow}>
+                    <ThemedText type="small">Idea ID: {ideaid}</ThemedText>
+                    <Pressable
+                      onPress={() => togglefavorite(ideaid)}
+                      style={({ pressed }) => [
+                        styles.favoriteButton,
+                        isfavorite && styles.activeFavoriteButton,
+                        pressed && styles.pressed,
+                      ]}>
+                      <ThemedText
+                        type="smallBold"
+                        style={isfavorite ? styles.activeFavoriteText : styles.favoriteText}>
+                        {isfavorite ? 'FAVORITE' : 'ADD'}
+                      </ThemedText>
+                    </Pressable>
+                  </ThemedView>
+                );
+              })}
+            </ThemedView>
           </ThemedView>
         </ThemedView>
       </SafeAreaView>
@@ -215,5 +279,61 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.72,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  tabButton: {
+    minHeight: 36,
+    borderRadius: Spacing.two,
+    backgroundColor: '#f1f2f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  activeTabButton: {
+    backgroundColor: '#2f3542',
+  },
+  tabText: {
+    color: '#2f3542',
+    fontSize: 12,
+  },
+  activeTabText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  favoriteList: {
+    gap: Spacing.two,
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+  },
+  favoriteRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+  },
+  favoriteButton: {
+    minWidth: 92,
+    borderRadius: Spacing.two,
+    backgroundColor: '#e6e8ee',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
+  activeFavoriteButton: {
+    backgroundColor: '#ff4757',
+  },
+  favoriteText: {
+    color: '#2f3542',
+  },
+  activeFavoriteText: {
+    color: '#ffffff',
   },
 });

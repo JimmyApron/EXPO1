@@ -6,6 +6,7 @@ import AppTabs from '@/components/app-tabs';
 import { AuthScreen } from '@/components/auth-screen';
 import { ThemedView } from '@/components/themed-view';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
+import { AppProvider } from '@/context/AppContext';
 
 function AuthGate() {
   const { user, isauthloading } = useAuth();
@@ -27,13 +28,16 @@ function AuthGate() {
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AuthProvider>
-        <AnimatedSplashOverlay />
-        <AuthGate />
-      </AuthProvider>
-    </ThemeProvider>
+    <AppProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <AuthProvider>
+          <AnimatedSplashOverlay />
+          <AuthGate />
+        </AuthProvider>
+      </ThemeProvider>
+    </AppProvider>
   );
 }
 
