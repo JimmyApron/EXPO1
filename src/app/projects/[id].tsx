@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { IdeaBoard } from '@/components/idea-board';
 import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -189,13 +190,7 @@ export default function ProjectDetailScreen() {
             </ThemedView>
           )}
 
-          <ThemedView type="backgroundElement" style={styles.ideaPlaceholder}>
-            <ThemedText type="smallBold">아이디어 카드</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              이 영역은 나중에 아이디어 카드 기능이 연결될 자리입니다. 연결 키는 projectid
-              {` ${project.id}`} 입니다.
-            </ThemedText>
-          </ThemedView>
+          <IdeaBoard projectId={project.id} />
         </ThemedView>
       </SafeAreaView>
     </ScrollView>
@@ -249,11 +244,6 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   infoBox: {
-    gap: Spacing.two,
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
-  },
-  ideaPlaceholder: {
     gap: Spacing.two,
     borderRadius: Spacing.three,
     padding: Spacing.three,
