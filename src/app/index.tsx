@@ -1,5 +1,5 @@
 import { router, type Href } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -7,14 +7,18 @@ import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/hooks/use-auth';
+import { useFavoriteIdeas } from '@/hooks/use-favorite-ideas';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
+import { IdeaCategoryLabels, type IdeaCategory } from '@/types/idea';
 import type { Project, ProjectInput } from '@/types/project';
 
-const categories = ['all', 'design', 'develop'] as const;
-const sampleideas = [101, 102, 103];
+type FavoriteProjectSummary = {
+  projectid: string;
+  projectTitle: string;
+  categories: IdeaCategory[];
+};
 
 function ProjectCard({ project }: { project: Project }) {
   return (
@@ -36,13 +40,60 @@ function ProjectCard({ project }: { project: Project }) {
   );
 }
 
+function FavoriteProjectCard({ item }: { item: FavoriteProjectSummary }) {
+  return (
+    <Pressable
+      onPress={() => router.push(`/projects/${item.projectid}` as Href)}
+      style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}>
+      <ThemedView type="backgroundElement" style={styles.favoriteCard}>
+        <ThemedText type="smallBold" style={styles.favoriteProjectTitle}>
+          {item.projectTitle}
+        </ThemedText>
+        <ThemedView style={styles.categoryRow}>
+          {item.categories.map((category) => (
+            <ThemedView key={category} style={styles.categoryPill}>
+              <ThemedText type="smallBold" style={styles.categoryText}>
+                {IdeaCategoryLabels[category]}
+              </ThemedText>
+            </ThemedView>
+          ))}
+        </ThemedView>
+      </ThemedView>
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
   const { user, signout } = useAuth();
   const { projects, isloadingprojects, projecterror, createProject } = useProjects();
-  const { categoryfilter, setCategoryfilter, favoriteids, togglefavorite } = useApp();
+  const { favoriteIdeas, isLoadingFavoriteIdeas, favoriteIdeaError } = useFavoriteIdeas();
   const [iscreating, setIscreating] = useState(false);
   const [formerror, setFormerror] = useState('');
   const theme = useTheme();
+
+  const favoriteProjects = useMemo(() => {
+    const projectTitles = new Map(projects.map((project) => [project.id, project.title]));
+    const grouped = new Map<string, FavoriteProjectSummary>();
+
+    favoriteIdeas.forEach((idea) => {
+      const current = grouped.get(idea.projectid);
+
+      if (current) {
+        if (!current.categories.includes(idea.category)) {
+          current.categories.push(idea.category);
+        }
+        return;
+      }
+
+      grouped.set(idea.projectid, {
+        projectid: idea.projectid,
+        projectTitle: projectTitles.get(idea.projectid) ?? '알 수 없는 과제',
+        categories: [idea.category],
+      });
+    });
+
+    return Array.from(grouped.values());
+  }, [favoriteIdeas, projects]);
 
   const handleCreateProject = async (input: ProjectInput) => {
     setIscreating(true);
@@ -66,7 +117,7 @@ export default function HomeScreen() {
           <ThemedView style={styles.header}>
             <ThemedView style={styles.headerTop}>
               <ThemedView style={styles.headerTitle}>
-                <ThemedText type="subtitle">과제 보관함</ThemedText>
+                <ThemedText type="subtitle">과제 보드</ThemedText>
                 <ThemedText themeColor="textSecondary" style={styles.headerCopy}>
                   과제별 아이디어를 프로젝트 단위로 정리하세요.
                 </ThemedText>
@@ -80,6 +131,40 @@ export default function HomeScreen() {
             <ThemedText type="small" themeColor="textSecondary">
               로그인 계정: {user?.email ?? user?.id}
             </ThemedText>
+          </ThemedView>
+
+          <ThemedView style={styles.section}>
+            <ThemedView style={styles.sectionHeader}>
+              <ThemedText type="smallBold">즐겨찾기 아이디어</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {favoriteProjects.length}개 과제
+              </ThemedText>
+            </ThemedView>
+
+            {favoriteIdeaError ? (
+              <ThemedText type="small" style={styles.errorText}>
+                {favoriteIdeaError}
+              </ThemedText>
+            ) : null}
+
+            {isLoadingFavoriteIdeas || isloadingprojects ? (
+              <ThemedView type="backgroundElement" style={styles.emptyState}>
+                <ActivityIndicator />
+              </ThemedView>
+            ) : favoriteProjects.length === 0 ? (
+              <ThemedView type="backgroundElement" style={styles.emptyState}>
+                <ThemedText type="smallBold">즐겨찾기한 아이디어가 없습니다</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
+                  과제 상세에서 아이디어 카드의 별표를 눌러 모아보세요.
+                </ThemedText>
+              </ThemedView>
+            ) : (
+              <ThemedView style={styles.favoriteList}>
+                {favoriteProjects.map((item) => (
+                  <FavoriteProjectCard key={item.projectid} item={item} />
+                ))}
+              </ThemedView>
+            )}
           </ThemedView>
 
           <ThemedView style={styles.section}>
@@ -125,65 +210,6 @@ export default function HomeScreen() {
               </ThemedView>
             )}
           </ThemedView>
-
-          <ThemedView style={styles.section}>
-            <ThemedView style={styles.sectionHeader}>
-              <ThemedText type="smallBold">카테고리 필터</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {categoryfilter.toUpperCase()}
-              </ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.tabContainer}>
-              {categories.map((category) => (
-                <Pressable
-                  key={category}
-                  onPress={() => setCategoryfilter(category)}
-                  style={({ pressed }) => [
-                    styles.tabButton,
-                    categoryfilter === category && styles.activeTabButton,
-                    pressed && styles.pressed,
-                  ]}>
-                  <ThemedText
-                    style={categoryfilter === category ? styles.activeTabText : styles.tabText}>
-                    {category.toUpperCase()}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </ThemedView>
-          </ThemedView>
-
-          <ThemedView style={styles.section}>
-            <ThemedView style={styles.sectionHeader}>
-              <ThemedText type="smallBold">아이디어 즐겨찾기</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {favoriteids.length}개 저장됨
-              </ThemedText>
-            </ThemedView>
-            <ThemedView type="backgroundElement" style={styles.favoriteList}>
-              {sampleideas.map((ideaid) => {
-                const isfavorite = favoriteids.includes(ideaid);
-
-                return (
-                  <ThemedView key={ideaid} style={styles.favoriteRow}>
-                    <ThemedText type="small">Idea ID: {ideaid}</ThemedText>
-                    <Pressable
-                      onPress={() => togglefavorite(ideaid)}
-                      style={({ pressed }) => [
-                        styles.favoriteButton,
-                        isfavorite && styles.activeFavoriteButton,
-                        pressed && styles.pressed,
-                      ]}>
-                      <ThemedText
-                        type="smallBold"
-                        style={isfavorite ? styles.activeFavoriteText : styles.favoriteText}>
-                        {isfavorite ? 'FAVORITE' : 'ADD'}
-                      </ThemedText>
-                    </Pressable>
-                  </ThemedView>
-                );
-              })}
-            </ThemedView>
-          </ThemedView>
         </ThemedView>
       </SafeAreaView>
     </ScrollView>
@@ -225,7 +251,8 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   headerCopy: {
-    maxWidth: 620,
+    fontSize: 16,
+    lineHeight: 24,
   },
   section: {
     gap: Spacing.three,
@@ -235,6 +262,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.three,
+  },
+  favoriteList: {
+    gap: Spacing.two,
+  },
+  favoriteCard: {
+    gap: Spacing.two,
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+  },
+  favoriteProjectTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  categoryPill: {
+    minHeight: 30,
+    borderWidth: 1,
+    borderColor: '#9aa2b1',
+    borderRadius: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  categoryText: {
+    color: '#3f4652',
   },
   projectList: {
     gap: Spacing.three,
@@ -255,15 +312,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
-  emptyState: {
-    alignItems: 'center',
-    gap: Spacing.two,
-    borderRadius: Spacing.three,
-    padding: Spacing.four,
-  },
-  emptyText: {
-    textAlign: 'center',
-  },
   secondaryButton: {
     minHeight: 44,
     borderRadius: Spacing.two,
@@ -274,66 +322,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
+  emptyState: {
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderRadius: Spacing.three,
+    padding: Spacing.four,
+  },
+  emptyText: {
+    textAlign: 'center',
+  },
   errorText: {
     color: '#d92d20',
   },
   pressed: {
     opacity: 0.72,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
-  tabButton: {
-    minHeight: 36,
-    borderRadius: Spacing.two,
-    backgroundColor: '#f1f2f6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  activeTabButton: {
-    backgroundColor: '#2f3542',
-  },
-  tabText: {
-    color: '#2f3542',
-    fontSize: 12,
-  },
-  activeTabText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 700,
-  },
-  favoriteList: {
-    gap: Spacing.two,
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
-  },
-  favoriteRow: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-  },
-  favoriteButton: {
-    minWidth: 92,
-    borderRadius: Spacing.two,
-    backgroundColor: '#e6e8ee',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
-  },
-  activeFavoriteButton: {
-    backgroundColor: '#ff4757',
-  },
-  favoriteText: {
-    color: '#2f3542',
-  },
-  activeFavoriteText: {
-    color: '#ffffff',
   },
 });

@@ -138,18 +138,6 @@ export const AppProvider = ({ children }) => {
   ]);
 
   const [activeMentorship, setActiveMentorship] = useState(null);
-  // Feature 5: Category & Favorite State (By Seoeun)
-  const [categoryfilter, setCategoryfilter] = useState('all');
-  const [favoriteids, setFavoriteids] = useState([]);
-
-  const togglefavorite = (ideaid) => {
-    setFavoriteids(prev => 
-      prev.includes(ideaid) 
-        ? prev.filter(id => id !== ideaid) 
-        : [...prev, ideaid]
-    );
-  };
-
   // Real-time Activity Simulation Tick logic
   useEffect(() => {
     const interval = setInterval(() => {
@@ -388,11 +376,7 @@ export const AppProvider = ({ children }) => {
       toggleRoadmapNode,
       initMentorship,
       releaseEscrowPoints,
-      chargePoints,
-      categoryfilter,
-      setCategoryfilter,
-      favoriteids,
-      togglefavorite
+      chargePoints
     }}>
       {children}
     </AppContext.Provider>

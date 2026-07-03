@@ -2,18 +2,63 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
-import { IdeaStatuses, type Idea, type IdeaInput } from '@/types/idea';
+import {
+  IdeaCategories,
+  IdeaStatuses,
+  normalizeIdeaCategory,
+  normalizeIdeaStatus,
+  normalizeMindMapSide,
+  type Idea,
+  type IdeaInput,
+  type IdeaMindMapInput,
+} from '@/types/idea';
 
 type IdeaMutationResult = {
   idea?: Idea;
   error?: string;
 };
 
+const ideaSelect =
+  'id, projectid, userid, title, content, status, category, isfavorite, parentnodeid, x, y, side, createdat, updatedat';
+
+function normalizeIdea(row: Partial<Idea>): Idea {
+  return {
+    id: row.id ?? '',
+    projectid: row.projectid ?? '',
+    userid: row.userid ?? '',
+    title: row.title ?? '',
+    content: row.content ?? '',
+    status: normalizeIdeaStatus(row.status),
+    category: normalizeIdeaCategory(row.category),
+    isfavorite: row.isfavorite === true,
+    parentnodeid: row.parentnodeid ?? null,
+    x: typeof row.x === 'number' ? row.x : null,
+    y: typeof row.y === 'number' ? row.y : null,
+    side: normalizeMindMapSide(row.side),
+    createdat: row.createdat ?? '',
+    updatedat: row.updatedat ?? '',
+  };
+}
+
 function cleanIdeaInput(input: IdeaInput) {
   return {
     title: input.title.trim(),
     content: input.content.trim(),
     status: input.status,
+    category: input.category,
+  };
+}
+
+function cleanMindMapInput(input?: IdeaMindMapInput) {
+  if (!input) {
+    return {};
+  }
+
+  return {
+    parentnodeid: input.parentnodeid ?? null,
+    x: input.x ?? null,
+    y: input.y ?? null,
+    side: input.side ?? null,
   };
 }
 
@@ -28,6 +73,10 @@ function validateIdeaInput(input: IdeaInput) {
 
   if (!IdeaStatuses.includes(input.status)) {
     return '올바른 상태를 선택해주세요.';
+  }
+
+  if (!IdeaCategories.includes(input.category)) {
+    return '올바른 카테고리를 선택해주세요.';
   }
 
   return '';
@@ -51,7 +100,7 @@ export function useIdeas(projectId?: string) {
 
     const { data, error } = await supabase
       .from('ideas')
-      .select('id, projectid, userid, title, content, status, createdat, updatedat')
+      .select(ideaSelect)
       .eq('userid', user.id)
       .eq('projectid', projectId)
       .order('createdat', { ascending: false });
@@ -60,7 +109,7 @@ export function useIdeas(projectId?: string) {
       setIdeaError(error.message);
       setIdeas([]);
     } else {
-      setIdeas((data ?? []) as Idea[]);
+      setIdeas((data ?? []).map((row) => normalizeIdea(row as Partial<Idea>)));
     }
 
     setIsLoadingIdeas(false);
@@ -77,7 +126,7 @@ export function useIdeas(projectId?: string) {
   }, [loadIdeas]);
 
   const createIdea = useCallback(
-    async (input: IdeaInput): Promise<IdeaMutationResult> => {
+    async (input: IdeaInput, mindMapInput?: IdeaMindMapInput): Promise<IdeaMutationResult> => {
       if (!user || !projectId) {
         return { error: '로그인이 필요합니다.' };
       }
@@ -94,10 +143,12 @@ export function useIdeas(projectId?: string) {
           projectid: projectId,
           userid: user.id,
           ...cleanIdeaInput(input),
+          ...cleanMindMapInput(mindMapInput),
+          isfavorite: false,
           createdat: now,
           updatedat: now,
         })
-        .select('id, projectid, userid, title, content, status, createdat, updatedat')
+        .select(ideaSelect)
         .single();
 
       if (error) {
@@ -105,7 +156,7 @@ export function useIdeas(projectId?: string) {
         return { error: error.message };
       }
 
-      const idea = data as Idea;
+      const idea = normalizeIdea(data as Partial<Idea>);
       setIdeas((current) => [idea, ...current]);
       return { idea };
     },
@@ -132,7 +183,7 @@ export function useIdeas(projectId?: string) {
         .eq('id', id)
         .eq('userid', user.id)
         .eq('projectid', projectId)
-        .select('id, projectid, userid, title, content, status, createdat, updatedat')
+        .select(ideaSelect)
         .single();
 
       if (error) {
@@ -140,7 +191,67 @@ export function useIdeas(projectId?: string) {
         return { error: error.message };
       }
 
-      const idea = data as Idea;
+      const idea = normalizeIdea(data as Partial<Idea>);
+      setIdeas((current) => current.map((item) => (item.id === id ? idea : item)));
+      return { idea };
+    },
+    [projectId, user],
+  );
+
+  const toggleIdeaFavorite = useCallback(
+    async (id: string, isFavorite: boolean): Promise<IdeaMutationResult> => {
+      if (!user || !projectId) {
+        return { error: '로그인이 필요합니다.' };
+      }
+
+      const { data, error } = await supabase
+        .from('ideas')
+        .update({
+          isfavorite: isFavorite,
+          updatedat: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('userid', user.id)
+        .eq('projectid', projectId)
+        .select(ideaSelect)
+        .single();
+
+      if (error) {
+        setIdeaError(error.message);
+        return { error: error.message };
+      }
+
+      const idea = normalizeIdea(data as Partial<Idea>);
+      setIdeas((current) => current.map((item) => (item.id === id ? idea : item)));
+      return { idea };
+    },
+    [projectId, user],
+  );
+
+  const updateIdeaMindMap = useCallback(
+    async (id: string, input: IdeaMindMapInput): Promise<IdeaMutationResult> => {
+      if (!user || !projectId) {
+        return { error: '로그인이 필요합니다.' };
+      }
+
+      const { data, error } = await supabase
+        .from('ideas')
+        .update({
+          ...cleanMindMapInput(input),
+          updatedat: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('userid', user.id)
+        .eq('projectid', projectId)
+        .select(ideaSelect)
+        .single();
+
+      if (error) {
+        setIdeaError(error.message);
+        return { error: error.message };
+      }
+
+      const idea = normalizeIdea(data as Partial<Idea>);
       setIdeas((current) => current.map((item) => (item.id === id ? idea : item)));
       return { idea };
     },
@@ -178,6 +289,8 @@ export function useIdeas(projectId?: string) {
     loadIdeas,
     createIdea,
     updateIdea,
+    toggleIdeaFavorite,
+    updateIdeaMindMap,
     deleteIdea,
   };
 }
