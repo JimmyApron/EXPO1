@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { DeadlineFeedbackScreen } from '../../DeadlineFeedbackScreen';
 
 import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
@@ -168,6 +169,7 @@ export default function ProjectDetailScreen() {
                   </Pressable>
                 </ThemedView>
               </ThemedView>
+              <DeadlineFeedbackScreen />
 
               {mutationerror ? (
                 <ThemedText type="small" style={styles.errorText}>
