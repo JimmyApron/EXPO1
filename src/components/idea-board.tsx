@@ -4,7 +4,6 @@ import {
   Alert,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -61,15 +60,17 @@ type IdeaCardProps = {
 };
 
 const allCategoryFilter = 'all';
+const allStatusFilter = 'all';
 const listMode = 'list';
-const kanbanMode = 'kanban';
 const mindMapMode = 'mindmap';
 const finalMode = 'final';
 
 type CategoryFilter = typeof allCategoryFilter | IdeaCategory;
-type BoardMode = typeof listMode | typeof kanbanMode | typeof mindMapMode | typeof finalMode;
+type StatusFilter = typeof allStatusFilter | IdeaStatus;
+type BoardMode = typeof listMode | typeof mindMapMode | typeof finalMode;
 
 const categoryFilters: CategoryFilter[] = [allCategoryFilter, ...IdeaCategories];
+const statusFilters: StatusFilter[] = [allStatusFilter, ...IdeaStatuses];
 
 const statusColors: Record<IdeaStatus, { background: string; border: string; text: string }> = {
   thought: { background: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' },
@@ -87,13 +88,16 @@ const categoryColors: Record<IdeaCategory, { background: string; border: string;
 
 const boardTabs: { id: BoardMode; label: string }[] = [
   { id: listMode, label: '목록' },
-  { id: kanbanMode, label: '칸반' },
   { id: mindMapMode, label: '마인드맵' },
   { id: finalMode, label: '최종안' },
 ];
 
 function getCategoryLabel(filter: CategoryFilter) {
   return filter === allCategoryFilter ? '전체' : IdeaCategoryLabels[filter];
+}
+
+function getStatusLabel(filter: StatusFilter) {
+  return filter === allStatusFilter ? '전체' : IdeaStatusLabels[filter];
 }
 
 function formatFeedbackDate(value: string) {
@@ -573,13 +577,17 @@ function IdeaCard({
 
 function FilterBlock({
   categoryFilter,
+  statusFilter,
   favoriteOnly,
   onChangeCategory,
+  onChangeStatus,
   onToggleFavorite,
 }: {
   categoryFilter: CategoryFilter;
+  statusFilter: StatusFilter;
   favoriteOnly: boolean;
   onChangeCategory: (category: CategoryFilter) => void;
+  onChangeStatus: (status: StatusFilter) => void;
   onToggleFavorite: () => void;
 }) {
   const theme = useTheme();
@@ -602,98 +610,67 @@ function FilterBlock({
           </ThemedText>
         </Pressable>
       </View>
-      <View style={styles.filterRow}>
-        {categoryFilters.map((category) => {
-          const isSelected = categoryFilter === category;
-          const palette = category === allCategoryFilter ? null : categoryColors[category];
-          const textColor = isSelected ? palette?.text ?? theme.text : palette?.border ?? theme.text;
+      <View style={styles.filterGroup}>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.filterGroupLabel}>
+          분류
+        </ThemedText>
+        <View style={styles.filterRow}>
+          {categoryFilters.map((category) => {
+            const isSelected = categoryFilter === category;
+            const palette = category === allCategoryFilter ? null : categoryColors[category];
+            const textColor = isSelected ? palette?.text ?? theme.text : palette?.border ?? theme.text;
 
-          return (
-            <Pressable
-              key={category}
-              onPress={() => onChangeCategory(category)}
-              style={({ pressed }) => [
-                styles.filterChip,
-                {
-                  borderColor: palette?.border ?? '#cbd5e1',
-                  backgroundColor: isSelected ? palette?.background ?? '#f1f5f9' : 'transparent',
-                },
-                pressed && styles.pressed,
-              ]}>
-              <ThemedText type="smallBold" style={{ color: textColor }}>
-                {getCategoryLabel(category)}
-              </ThemedText>
-            </Pressable>
-          );
-        })}
+            return (
+              <Pressable
+                key={category}
+                onPress={() => onChangeCategory(category)}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  {
+                    borderColor: palette?.border ?? '#cbd5e1',
+                    backgroundColor: isSelected ? palette?.background ?? '#f1f5f9' : 'transparent',
+                  },
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold" style={{ color: textColor }}>
+                  {getCategoryLabel(category)}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+      <View style={styles.filterGroup}>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.filterGroupLabel}>
+          상태
+        </ThemedText>
+        <View style={styles.filterRow}>
+          {statusFilters.map((status) => {
+            const isSelected = statusFilter === status;
+            const palette = status === allStatusFilter ? null : statusColors[status];
+            const textColor = isSelected ? palette?.text ?? theme.text : palette?.border ?? theme.text;
+
+            return (
+              <Pressable
+                key={status}
+                onPress={() => onChangeStatus(status)}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  {
+                    borderColor: palette?.border ?? '#cbd5e1',
+                    backgroundColor: isSelected ? palette?.background ?? '#f1f5f9' : 'transparent',
+                  },
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold" style={{ color: textColor }}>
+                  {getStatusLabel(status)}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
     </View>
-  );
-}
-
-function KanbanBoard({
-  ideas,
-  feedbacksByIdeaId,
-  isBusy,
-  onEdit,
-  onDelete,
-  onToggleFavorite,
-  onStatusChange,
-  onAddFeedback,
-}: {
-  ideas: Idea[];
-  feedbacksByIdeaId: Map<string, IdeaFeedback[]>;
-  isBusy: boolean;
-  onEdit: (ideaId: string) => void;
-  onDelete: (ideaId: string) => void;
-  onToggleFavorite: (idea: Idea) => void;
-  onStatusChange: (idea: Idea, status: IdeaStatus) => void;
-  onAddFeedback: (ideaId: string, content: string) => Promise<{ error?: string }>;
-}) {
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.kanbanScroll}>
-      {IdeaStatuses.map((status) => {
-        const statusIdeas = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === status);
-        const palette = statusColors[status];
-
-        return (
-          <View key={status} style={styles.kanbanColumn}>
-            <View style={[styles.kanbanHeader, { borderColor: palette.border, backgroundColor: palette.background }]}>
-              <ThemedText type="smallBold" style={{ color: palette.text }}>
-                {IdeaStatusLabels[status]}
-              </ThemedText>
-              <ThemedText type="small" style={{ color: palette.text }}>
-                {statusIdeas.length}개
-              </ThemedText>
-            </View>
-            <View style={styles.kanbanCards}>
-              {statusIdeas.length === 0 ? (
-                <ThemedView type="backgroundElement" style={styles.kanbanEmpty}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    아직 카드가 없습니다.
-                  </ThemedText>
-                </ThemedView>
-              ) : (
-                statusIdeas.map((idea) => (
-                  <IdeaCard
-                    key={idea.id}
-                    idea={idea}
-                    compact
-                    feedbacks={feedbacksByIdeaId.get(idea.id) ?? []}
-                    isBusy={isBusy}
-                    onEdit={() => onEdit(idea.id)}
-                    onDelete={() => onDelete(idea.id)}
-                    onToggleFavorite={() => onToggleFavorite(idea)}
-                    onStatusChange={(nextStatus) => onStatusChange(idea, nextStatus)}
-                    onAddFeedback={onAddFeedback}
-                  />
-                ))
-              )}
-            </View>
-          </View>
-        );
-      })}
-    </ScrollView>
   );
 }
 
@@ -707,7 +684,7 @@ function FinalDraftView({ ideas }: { ideas: Idea[] }) {
       <ThemedView type="backgroundElement" style={styles.emptyState}>
         <ThemedText type="smallBold">최종안에 넣을 아이디어가 없습니다.</ThemedText>
         <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-          칸반에서 좋은 아이디어를 쓸 만함 또는 최종 사용 상태로 올려 보세요.
+          목록에서 좋은 아이디어를 쓸 만함 또는 최종 사용 상태로 올려 보세요.
         </ThemedText>
       </ThemedView>
     );
@@ -772,8 +749,9 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     feedbackError,
     createFeedback,
   } = useIdeaFeedbacks(projectId);
-  const [boardMode, setBoardMode] = useState<BoardMode>(kanbanMode);
+  const [boardMode, setBoardMode] = useState<BoardMode>(listMode);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(allCategoryFilter);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(allStatusFilter);
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [editingIdeaId, setEditingIdeaId] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
@@ -785,11 +763,12 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
       ideas.filter((idea) => {
         const matchesCategory =
           categoryFilter === allCategoryFilter || normalizeIdeaCategory(idea.category) === categoryFilter;
+        const matchesStatus = statusFilter === allStatusFilter || normalizeIdeaStatus(idea.status) === statusFilter;
         const matchesFavorite = !favoriteOnly || idea.isfavorite;
 
-        return matchesCategory && matchesFavorite;
+        return matchesCategory && matchesStatus && matchesFavorite;
       }),
-    [categoryFilter, favoriteOnly, ideas],
+    [categoryFilter, favoriteOnly, ideas, statusFilter],
   );
   const editingIdea = editingIdeaId ? ideas.find((idea) => idea.id === editingIdeaId) : undefined;
   const currentError = ideaError || mutationError || feedbackError;
@@ -982,8 +961,10 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
 
           <FilterBlock
             categoryFilter={categoryFilter}
+            statusFilter={statusFilter}
             favoriteOnly={favoriteOnly}
             onChangeCategory={setCategoryFilter}
+            onChangeStatus={setStatusFilter}
             onToggleFavorite={() => setFavoriteOnly((current) => !current)}
           />
 
@@ -1024,57 +1005,6 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
                 />
               ))}
             </View>
-          )}
-        </>
-      ) : null}
-
-      {boardMode === kanbanMode ? (
-        <>
-          <IdeaForm
-            submitLabel="아이디어 추가"
-            isBusy={isMutating && !editingIdeaId}
-            error={!editingIdeaId ? mutationError : ''}
-            onSubmit={handleCreate}
-          />
-          {editingIdea ? (
-            <View style={styles.editingBlock}>
-              <ThemedText type="smallBold">아이디어 수정</ThemedText>
-              <IdeaForm
-                idea={editingIdea}
-                submitLabel="저장"
-                isBusy={isMutating}
-                error={editingIdeaId ? mutationError : ''}
-                onSubmit={handleUpdate}
-                onCancel={() => {
-                  setEditingIdeaId(null);
-                  setMutationError('');
-                }}
-              />
-            </View>
-          ) : null}
-          {currentError ? (
-            <ThemedText type="small" style={styles.errorText}>
-              {currentError}
-            </ThemedText>
-          ) : null}
-          {isLoadingIdeas ? (
-            <ThemedView type="backgroundElement" style={styles.emptyState}>
-              <ActivityIndicator />
-            </ThemedView>
-          ) : (
-            <KanbanBoard
-              ideas={ideas}
-              feedbacksByIdeaId={feedbacksByIdeaId}
-              isBusy={isMutating}
-              onEdit={(ideaId) => {
-                setEditingIdeaId(ideaId);
-                setMutationError('');
-              }}
-              onDelete={handleDelete}
-              onToggleFavorite={handleToggleFavorite}
-              onStatusChange={handleStatusChange}
-              onAddFeedback={handleAddFeedback}
-            />
           )}
         </>
       ) : null}
@@ -1219,6 +1149,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.two,
+  },
+  filterGroup: {
+    gap: Spacing.one,
+  },
+  filterGroupLabel: {
+    paddingHorizontal: Spacing.one,
   },
   filterBlock: {
     gap: Spacing.two,
@@ -1427,32 +1363,6 @@ const styles = StyleSheet.create({
   },
   dangerButtonText: {
     color: '#ffffff',
-  },
-  kanbanScroll: {
-    gap: Spacing.two,
-    paddingBottom: Spacing.one,
-  },
-  kanbanColumn: {
-    width: 280,
-    gap: Spacing.two,
-  },
-  kanbanHeader: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-  },
-  kanbanCards: {
-    gap: Spacing.two,
-  },
-  kanbanEmpty: {
-    borderRadius: Spacing.two,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: Spacing.three,
   },
   finalBlock: {
     gap: Spacing.three,
