@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
@@ -33,85 +31,26 @@ type IdeaMindMapProps = {
 type LayoutedIdea = Idea & {
   mapx: number;
   mapy: number;
-  mapside: MindMapSide;
   visualparentid: string | null;
   shouldPersistLayout: boolean;
 };
 
-type BranchSide = Exclude<MindMapSide, 'center'>;
-
-type WheelEventLike = {
-  deltaY?: number;
-  nativeEvent?: {
-    deltaY?: number;
-  };
-  preventDefault?: () => void;
-};
-
-const nodeWidth = 220;
-const nodeHeight = 132;
-const nodeButtonSize = 34;
-const nodeControlPadding = 82;
-const nodeFrameWidth = nodeWidth + nodeControlPadding * 2;
-const nodeFrameHeight = nodeHeight + nodeControlPadding * 2;
-const stepX = 460;
-const stepY = 320;
-const mapPadding = 260;
-const minZoom = 0.45;
-const maxZoom = 2.1;
-const zoomStep = 0.12;
-
-const branchSides: BranchSide[] = [
-  'right',
-  'left',
-  'top',
-  'bottom',
-  'topright',
-  'topleft',
-  'bottomright',
-  'bottomleft',
+const nodeWidth = 230;
+const nodeHeight = 150;
+const mapWidth = 1320;
+const mapHeight = 820;
+const originX = mapWidth / 2;
+const originY = mapHeight / 2;
+const branchOffsets = [
+  { side: 'right' as const, x: 340, y: 0 },
+  { side: 'left' as const, x: -340, y: 0 },
+  { side: 'bottom' as const, x: 0, y: 230 },
+  { side: 'top' as const, x: 0, y: -230 },
+  { side: 'bottomright' as const, x: 340, y: 230 },
+  { side: 'bottomleft' as const, x: -340, y: 230 },
+  { side: 'topright' as const, x: 340, y: -230 },
+  { side: 'topleft' as const, x: -340, y: -230 },
 ];
-
-const directionLabels: Record<BranchSide, string> = {
-  left: 'left',
-  right: 'right',
-  top: 'top',
-  bottom: 'bottom',
-  topleft: 'top left',
-  topright: 'top right',
-  bottomleft: 'bottom left',
-  bottomright: 'bottom right',
-};
-
-const directionOffsets: Record<BranchSide, { x: number; y: number }> = {
-  left: { x: -stepX, y: 0 },
-  right: { x: stepX, y: 0 },
-  top: { x: 0, y: -stepY },
-  bottom: { x: 0, y: stepY },
-  topleft: { x: -stepX, y: -stepY },
-  topright: { x: stepX, y: -stepY },
-  bottomleft: { x: -stepX, y: stepY },
-  bottomright: { x: stepX, y: stepY },
-};
-
-const buttonPositions: Record<BranchSide, { left?: number; right?: number; top?: number; bottom?: number }> = {
-  left: { left: 14, top: nodeFrameHeight / 2 - nodeButtonSize / 2 },
-  right: { right: 14, top: nodeFrameHeight / 2 - nodeButtonSize / 2 },
-  top: { left: nodeFrameWidth / 2 - nodeButtonSize / 2, top: 14 },
-  bottom: { left: nodeFrameWidth / 2 - nodeButtonSize / 2, bottom: 14 },
-  topleft: { left: 42, top: 38 },
-  topright: { right: 42, top: 38 },
-  bottomleft: { left: 42, bottom: 38 },
-  bottomright: { right: 42, bottom: 38 },
-};
-
-function clampZoom(value: number) {
-  return Math.min(maxZoom, Math.max(minZoom, value));
-}
-
-function hasSavedPosition(idea: Idea) {
-  return typeof idea.x === 'number' && typeof idea.y === 'number';
-}
 
 function sortIdeas(ideas: Idea[]) {
   return [...ideas].sort((left, right) => {
@@ -122,72 +61,8 @@ function sortIdeas(ideas: Idea[]) {
   });
 }
 
-function isBranchSide(side: MindMapSide | null): side is BranchSide {
-  return side !== null && side !== 'center';
-}
-
-function getNearestSide(x: number, y: number): BranchSide {
-  if (Math.abs(x) < 80 && y < 0) {
-    return 'top';
-  }
-
-  if (Math.abs(x) < 80 && y > 0) {
-    return 'bottom';
-  }
-
-  if (x < 0 && y < -80) {
-    return 'topleft';
-  }
-
-  if (x > 0 && y < -80) {
-    return 'topright';
-  }
-
-  if (x < 0 && y > 80) {
-    return 'bottomleft';
-  }
-
-  if (x > 0 && y > 80) {
-    return 'bottomright';
-  }
-
-  return x < 0 ? 'left' : 'right';
-}
-
-function getLayoutSide(idea: Idea, fallback: BranchSide): BranchSide {
-  if (isBranchSide(idea.side)) {
-    return idea.side;
-  }
-
-  if (typeof idea.x === 'number' || typeof idea.y === 'number') {
-    return getNearestSide(idea.x ?? 0, idea.y ?? 0);
-  }
-
-  return fallback;
-}
-
-function getNextRootPosition(index: number) {
-  const side = branchSides[index % branchSides.length];
-  const ring = Math.floor(index / branchSides.length) + 1;
-  const offset = directionOffsets[side];
-
-  return {
-    side,
-    x: offset.x * ring,
-    y: offset.y * ring,
-  };
-}
-
-function getNextChildPosition(parent: LayoutedIdea, side: BranchSide, index: number) {
-  const offset = directionOffsets[side];
-  const spread = index * 112;
-  const isVertical = side === 'top' || side === 'bottom';
-  const isHorizontal = side === 'left' || side === 'right';
-
-  return {
-    x: parent.mapx + offset.x + (isVertical ? spread : 0),
-    y: parent.mapy + offset.y + (isHorizontal ? spread : 0),
-  };
+function hasSavedPosition(idea: Idea) {
+  return typeof idea.x === 'number' && typeof idea.y === 'number';
 }
 
 function buildMindMapLayout(ideas: Idea[]): LayoutedIdea[] {
@@ -203,14 +78,10 @@ function buildMindMapLayout(ideas: Idea[]): LayoutedIdea[] {
 
   const layouted: LayoutedIdea[] = [];
   const layoutById = new Map<string, LayoutedIdea>();
-  const childCounters = new Map<string, Partial<Record<BranchSide, number>>>();
-  let rootIndex = 0;
-
   const centerNode: LayoutedIdea = {
     ...centerIdea,
     mapx: hasSavedPosition(centerIdea) ? centerIdea.x ?? 0 : 0,
     mapy: hasSavedPosition(centerIdea) ? centerIdea.y ?? 0 : 0,
-    mapside: 'center',
     visualparentid: null,
     shouldPersistLayout:
       !hasSavedPosition(centerIdea) || centerIdea.side !== 'center' || centerIdea.parentnodeid !== null,
@@ -221,39 +92,18 @@ function buildMindMapLayout(ideas: Idea[]): LayoutedIdea[] {
 
   sortedIdeas
     .filter((idea) => idea.id !== centerNode.id)
-    .forEach((idea) => {
-      const fallbackRoot = getNextRootPosition(rootIndex);
-      const mapside = getLayoutSide(idea, fallbackRoot.side);
-      const parentNode = idea.parentnodeid ? layoutById.get(idea.parentnodeid) : undefined;
-      let mapx = idea.x ?? 0;
-      let mapy = idea.y ?? 0;
-
-      if (!hasSavedPosition(idea)) {
-        if (parentNode) {
-          const counters = childCounters.get(parentNode.id) ?? {};
-          const childIndex = counters[mapside] ?? 0;
-          const position = getNextChildPosition(parentNode, mapside, childIndex);
-
-          counters[mapside] = childIndex + 1;
-          childCounters.set(parentNode.id, counters);
-          mapx = position.x;
-          mapy = position.y;
-        } else {
-          mapx = fallbackRoot.x;
-          mapy = fallbackRoot.y;
-          rootIndex += 1;
-        }
-      } else if (!parentNode) {
-        rootIndex += 1;
-      }
-
+    .forEach((idea, index) => {
+      const parent = (idea.parentnodeid ? layoutById.get(idea.parentnodeid) : centerNode) ?? centerNode;
+      const fallback = branchOffsets[index % branchOffsets.length];
+      const ring = Math.floor(index / branchOffsets.length) + 1;
+      const mapx = hasSavedPosition(idea) ? idea.x ?? 0 : parent.mapx + fallback.x * ring;
+      const mapy = hasSavedPosition(idea) ? idea.y ?? 0 : parent.mapy + fallback.y * ring;
       const node: LayoutedIdea = {
         ...idea,
         mapx,
         mapy,
-        mapside,
-        visualparentid: idea.parentnodeid ?? centerNode.id,
-        shouldPersistLayout: !hasSavedPosition(idea) || idea.side === null,
+        visualparentid: parent.id,
+        shouldPersistLayout: !hasSavedPosition(idea) || idea.parentnodeid === null,
       };
 
       layouted.push(node);
@@ -261,39 +111,6 @@ function buildMindMapLayout(ideas: Idea[]): LayoutedIdea[] {
     });
 
   return layouted;
-}
-
-function getMapSize(layoutedIdeas: LayoutedIdea[]) {
-  const minX = Math.min(0, ...layoutedIdeas.map((idea) => idea.mapx));
-  const maxX = Math.max(0, ...layoutedIdeas.map((idea) => idea.mapx));
-  const minY = Math.min(0, ...layoutedIdeas.map((idea) => idea.mapy));
-  const maxY = Math.max(0, ...layoutedIdeas.map((idea) => idea.mapy));
-  const width = Math.max(1280, maxX - minX + nodeFrameWidth + mapPadding * 2);
-  const height = Math.max(900, maxY - minY + nodeFrameHeight + mapPadding * 2);
-
-  return {
-    width,
-    height,
-    originX: mapPadding + nodeFrameWidth / 2 - minX,
-    originY: mapPadding + nodeFrameHeight / 2 - minY,
-  };
-}
-
-function getOccupiedBranches(layoutedIdeas: LayoutedIdea[]) {
-  const occupiedBranches = new Map<string, Set<BranchSide>>();
-
-  layoutedIdeas.forEach((idea) => {
-    if (!idea.visualparentid || !isBranchSide(idea.mapside)) {
-      return;
-    }
-
-    const parentBranches = occupiedBranches.get(idea.visualparentid) ?? new Set<BranchSide>();
-
-    parentBranches.add(idea.mapside);
-    occupiedBranches.set(idea.visualparentid, parentBranches);
-  });
-
-  return occupiedBranches;
 }
 
 function MindMapNodeCard({
@@ -313,26 +130,11 @@ function MindMapNodeCard({
   const [isSaving, setIsSaving] = useState(false);
   const [nodeError, setNodeError] = useState('');
 
-  const trimmedTitle = title.trim();
-  const trimmedContent = content.trim();
   const isDirty = title !== idea.title || content !== idea.content;
-  const canSave = isDirty && trimmedTitle.length > 0 && trimmedContent.length > 0 && !isBusy && !isSaving;
-  const inputStyle = [
-    styles.nodeInput,
-    {
-      color: theme.text,
-      borderColor: theme.backgroundSelected,
-      backgroundColor: theme.background,
-    },
-  ];
+  const canSave = isDirty && title.trim().length > 0 && content.trim().length > 0 && !isBusy && !isSaving;
 
   const saveNode = async () => {
-    if (!isDirty || isBusy || isSaving) {
-      return;
-    }
-
-    if (!trimmedTitle || !trimmedContent) {
-      setNodeError('제목과 내용을 입력해주세요.');
+    if (!canSave) {
       return;
     }
 
@@ -367,7 +169,15 @@ function MindMapNodeCard({
           }}
           placeholder="아이디어 제목"
           placeholderTextColor={theme.textSecondary}
-          style={[inputStyle, styles.nodeTitleInput]}
+          style={[
+            styles.nodeInput,
+            styles.nodeTitleInput,
+            {
+              color: theme.text,
+              borderColor: theme.backgroundSelected,
+              backgroundColor: theme.background,
+            },
+          ]}
         />
         <ThemedText type="small" style={styles.statusText}>
           {IdeaStatusLabels[status]}
@@ -383,9 +193,17 @@ function MindMapNodeCard({
             setNodeError('');
           }
         }}
-        placeholder="내용을 입력하세요"
+        placeholder="내용을 입력하세요."
         placeholderTextColor={theme.textSecondary}
-        style={[inputStyle, styles.nodeContentInput]}
+        style={[
+          styles.nodeInput,
+          styles.nodeContentInput,
+          {
+            color: theme.text,
+            borderColor: theme.backgroundSelected,
+            backgroundColor: theme.background,
+          },
+        ]}
       />
       {nodeError ? (
         <ThemedText type="small" style={styles.errorText}>
@@ -430,93 +248,36 @@ export function IdeaMindMap({
   onPersistNodeLayout,
 }: IdeaMindMapProps) {
   const [localError, setLocalError] = useState('');
-  const [zoom, setZoom] = useState(1);
-  const zoomRef = useRef(1);
-  const pinchStartZoomRef = useRef(1);
   const persistedLayoutIds = useRef(new Set<string>());
   const layoutedIdeas = useMemo(() => buildMindMapLayout(ideas), [ideas]);
-  const mapSize = useMemo(() => getMapSize(layoutedIdeas), [layoutedIdeas]);
   const layoutById = useMemo(
     () => new Map(layoutedIdeas.map((idea) => [idea.id, idea])),
     [layoutedIdeas],
   );
-  const occupiedBranches = useMemo(() => getOccupiedBranches(layoutedIdeas), [layoutedIdeas]);
-  const scaledMapSize = useMemo(
-    () => ({
-      width: mapSize.width * zoom,
-      height: mapSize.height * zoom,
-    }),
-    [mapSize.height, mapSize.width, zoom],
-  );
-
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
 
   useEffect(() => {
     const layoutsToPersist = layoutedIdeas.filter(
       (idea) => idea.shouldPersistLayout && !persistedLayoutIds.current.has(idea.id),
     );
 
-    if (layoutsToPersist.length === 0) {
-      return;
-    }
-
     layoutsToPersist.forEach((idea) => {
       persistedLayoutIds.current.add(idea.id);
       void onPersistNodeLayout(idea.id, {
-        parentnodeid: idea.parentnodeid,
+        parentnodeid: idea.visualparentid,
         x: idea.mapx,
         y: idea.mapy,
-        side: idea.mapside,
+        side: idea.visualparentid ? (idea.side ?? 'right') : 'center',
       });
     });
   }, [layoutedIdeas, onPersistNodeLayout]);
-
-  const handlePinchStart = useCallback(() => {
-    pinchStartZoomRef.current = zoomRef.current;
-  }, []);
-
-  const handlePinchUpdate = useCallback((gestureScale: number) => {
-    setZoom(clampZoom(pinchStartZoomRef.current * gestureScale));
-  }, []);
-
-  /* eslint-disable react-hooks/refs */
-  const pinchGesture = useMemo(
-    () =>
-      Gesture.Pinch()
-        .onStart(() => {
-          runOnJS(handlePinchStart)();
-        })
-        .onUpdate((event) => {
-          runOnJS(handlePinchUpdate)(event.scale);
-        }),
-    [handlePinchStart, handlePinchUpdate],
-  );
-  /* eslint-enable react-hooks/refs */
-
-  const handleWheel = (event: WheelEventLike) => {
-    if (Platform.OS !== 'web') {
-      return;
-    }
-
-    event.preventDefault?.();
-    const deltaY = event.deltaY ?? event.nativeEvent?.deltaY ?? 0;
-    const direction = deltaY > 0 ? -1 : 1;
-    setZoom((current) => clampZoom(current + direction * zoomStep));
-  };
-
-  const adjustZoom = (direction: -1 | 1) => {
-    setZoom((current) => clampZoom(current + direction * zoomStep));
-  };
 
   const createCenterNode = async () => {
     setLocalError('');
 
     const result = await onCreateNode(
       {
-        title: '중앙 아이디어',
-        content: '마인드맵의 시작점',
+        title: '중심 아이디어',
+        content: '마인드맵의 시작점이 되는 핵심 생각입니다.',
         status: 'thought',
         category: 'planning',
       },
@@ -533,29 +294,23 @@ export function IdeaMindMap({
     }
   };
 
-  const createChildNode = async (parent: LayoutedIdea, side: BranchSide) => {
+  const createChildNode = async (parent: LayoutedIdea, offsetIndex: number) => {
     setLocalError('');
 
-    if (occupiedBranches.get(parent.id)?.has(side)) {
-      return;
-    }
-
-    const childCount = layoutedIdeas.filter(
-      (idea) => idea.parentnodeid === parent.id && idea.mapside === side,
-    ).length;
-    const position = getNextChildPosition(parent, side, childCount);
+    const offset = branchOffsets[offsetIndex % branchOffsets.length];
+    const sameParentCount = layoutedIdeas.filter((idea) => idea.visualparentid === parent.id).length;
     const result = await onCreateNode(
       {
         title: '새 아이디어',
-        content: '마인드맵에서 추가한 생각',
+        content: '마인드맵에서 추가한 생각입니다.',
         status: 'thought',
         category: 'planning',
       },
       {
         parentnodeid: parent.id,
-        x: position.x,
-        y: position.y,
-        side,
+        x: parent.mapx + offset.x,
+        y: parent.mapy + offset.y + sameParentCount * 28,
+        side: offset.side as MindMapSide,
       },
     );
 
@@ -573,7 +328,7 @@ export function IdeaMindMap({
           onPress={createCenterNode}
           style={({ pressed }) => [styles.primaryButton, (pressed || isBusy) && styles.pressed]}>
           <ThemedText type="smallBold" style={styles.primaryButtonText}>
-            중앙 아이디어 추가하기
+            중심 아이디어 추가
           </ThemedText>
         </Pressable>
         {localError ? (
@@ -587,112 +342,60 @@ export function IdeaMindMap({
 
   return (
     <ThemedView style={styles.container}>
-      <View style={styles.zoomBar}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="마인드맵 축소"
-          onPress={() => adjustZoom(-1)}
-          style={({ pressed }) => [styles.zoomButton, pressed && styles.pressed]}>
-          <ThemedText type="smallBold">-</ThemedText>
-        </Pressable>
-        <ThemedText type="smallBold" style={styles.zoomValue}>
-          {Math.round(zoom * 100)}%
-        </ThemedText>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="마인드맵 확대"
-          onPress={() => adjustZoom(1)}
-          style={({ pressed }) => [styles.zoomButton, pressed && styles.pressed]}>
-          <ThemedText type="smallBold">+</ThemedText>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="마인드맵 배율 초기화"
-          onPress={() => setZoom(1)}
-          style={({ pressed }) => [styles.resetZoomButton, pressed && styles.pressed]}>
-          <ThemedText type="smallBold">100%</ThemedText>
-        </Pressable>
-      </View>
+      <ThemedText type="small" themeColor="textSecondary">
+        카드를 직접 수정하거나 + 버튼으로 연결 아이디어를 추가하세요.
+      </ThemedText>
+      <ScrollView horizontal showsHorizontalScrollIndicator>
+        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator>
+          <View style={styles.mapSurface}>
+            <Svg width={mapWidth} height={mapHeight} style={styles.connectorLayer}>
+              {layoutedIdeas.map((idea) => {
+                const parent = idea.visualparentid ? layoutById.get(idea.visualparentid) : undefined;
 
-      <GestureDetector gesture={pinchGesture}>
-        <View style={styles.gestureArea}>
-          <ScrollView horizontal showsHorizontalScrollIndicator>
-            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator>
+                if (!parent) {
+                  return null;
+                }
+
+                return (
+                  <Line
+                    key={`${parent.id}-${idea.id}`}
+                    x1={originX + parent.mapx}
+                    y1={originY + parent.mapy}
+                    x2={originX + idea.mapx}
+                    y2={originY + idea.mapy}
+                    stroke="#94a3b8"
+                    strokeWidth={2}
+                  />
+                );
+              })}
+            </Svg>
+
+            {layoutedIdeas.map((idea, index) => (
               <View
-                style={[styles.mapSurface, { width: scaledMapSize.width, height: scaledMapSize.height }]}
-                {...(Platform.OS === 'web' ? { onWheel: handleWheel } : {})}>
-                <Svg width={scaledMapSize.width} height={scaledMapSize.height} style={styles.connectorLayer}>
-                  {layoutedIdeas.map((idea) => {
-                    const parent = idea.visualparentid ? layoutById.get(idea.visualparentid) : undefined;
-
-                    if (!parent) {
-                      return null;
-                    }
-
-                    return (
-                      <Line
-                        key={`${parent.id}-${idea.id}`}
-                        x1={(mapSize.originX + parent.mapx) * zoom}
-                        y1={(mapSize.originY + parent.mapy) * zoom}
-                        x2={(mapSize.originX + idea.mapx) * zoom}
-                        y2={(mapSize.originY + idea.mapy) * zoom}
-                        stroke="#8c96a8"
-                        strokeWidth={Math.max(1, 2 * zoom)}
-                      />
-                    );
-                  })}
-                </Svg>
-
-                {layoutedIdeas.map((idea) => {
-                  return (
-                    <View
-                      key={idea.id}
-                      style={[
-                        styles.nodeWrap,
-                        {
-                          left: (mapSize.originX + idea.mapx) * zoom - nodeFrameWidth / 2,
-                          top: (mapSize.originY + idea.mapy) * zoom - nodeFrameHeight / 2,
-                          transform: [{ scale: zoom }],
-                        },
-                      ]}>
-                      {branchSides.map((side) => {
-                        if (occupiedBranches.get(idea.id)?.has(side)) {
-                          return null;
-                        }
-
-                        return (
-                          <Pressable
-                            key={side}
-                            disabled={isBusy}
-                            accessibilityRole="button"
-                            accessibilityLabel={`${idea.title} ${directionLabels[side]} 아이디어 추가`}
-                            onPress={() => createChildNode(idea, side)}
-                            style={({ pressed }) => [
-                              styles.addNodeButton,
-                              buttonPositions[side],
-                              (pressed || isBusy) && styles.pressed,
-                            ]}>
-                            <ThemedText type="smallBold" style={styles.addNodeButtonText}>
-                              +
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
-
-                      <MindMapNodeCard
-                        key={idea.updatedat}
-                        idea={idea}
-                        isBusy={isBusy}
-                        onUpdateNode={onUpdateNode}
-                      />
-                    </View>
-                  );
-                })}
+                key={idea.id}
+                style={[
+                  styles.nodeWrap,
+                  {
+                    left: originX + idea.mapx - nodeWidth / 2,
+                    top: originY + idea.mapy - nodeHeight / 2,
+                  },
+                ]}>
+                <Pressable
+                  disabled={isBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${idea.title}에 연결 아이디어 추가`}
+                  onPress={() => createChildNode(idea, index)}
+                  style={({ pressed }) => [styles.addNodeButton, (pressed || isBusy) && styles.pressed]}>
+                  <ThemedText type="smallBold" style={styles.addNodeButtonText}>
+                    +
+                  </ThemedText>
+                </Pressable>
+                <MindMapNodeCard idea={idea} isBusy={isBusy} onUpdateNode={onUpdateNode} />
               </View>
-            </ScrollView>
-          </ScrollView>
-        </View>
-      </GestureDetector>
+            ))}
+          </View>
+        </ScrollView>
+      </ScrollView>
 
       {localError ? (
         <ThemedText type="small" style={styles.errorText}>
@@ -707,39 +410,11 @@ const styles = StyleSheet.create({
   container: {
     gap: Spacing.two,
   },
-  zoomBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  zoomButton: {
-    width: 38,
-    minHeight: 38,
-    borderWidth: 1,
-    borderColor: '#9aa2b1',
-    borderRadius: Spacing.two,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  resetZoomButton: {
-    minHeight: 38,
-    borderWidth: 1,
-    borderColor: '#9aa2b1',
-    borderRadius: Spacing.two,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.two,
-  },
-  zoomValue: {
-    minWidth: 54,
-    textAlign: 'center',
-  },
-  gestureArea: {
-    minHeight: 420,
-  },
   mapSurface: {
     position: 'relative',
-    backgroundColor: '#f7f8fb',
+    width: mapWidth,
+    height: mapHeight,
+    backgroundColor: '#f8fafc',
   },
   connectorLayer: {
     position: 'absolute',
@@ -750,18 +425,18 @@ const styles = StyleSheet.create({
   },
   nodeWrap: {
     position: 'absolute',
-    width: nodeFrameWidth,
-    height: nodeFrameHeight,
+    width: nodeWidth,
+    height: nodeHeight + 42,
   },
   nodeCard: {
     position: 'absolute',
-    left: nodeControlPadding,
-    top: nodeControlPadding,
+    left: 0,
+    top: 42,
     width: nodeWidth,
     height: nodeHeight,
     gap: Spacing.one,
     borderWidth: 1,
-    borderColor: '#d8dde8',
+    borderColor: '#e2e8f0',
     borderRadius: Spacing.two,
     padding: Spacing.two,
   },
@@ -788,7 +463,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   statusText: {
-    color: '#2868d8',
+    color: '#2563eb',
   },
   nodeActions: {
     flexDirection: 'row',
@@ -798,7 +473,7 @@ const styles = StyleSheet.create({
   nodePrimaryButton: {
     minHeight: 28,
     borderRadius: Spacing.one,
-    backgroundColor: '#2868d8',
+    backgroundColor: '#2563eb',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
@@ -807,7 +482,7 @@ const styles = StyleSheet.create({
   nodeSecondaryButton: {
     minHeight: 28,
     borderWidth: 1,
-    borderColor: '#9aa2b1',
+    borderColor: '#cbd5e1',
     borderRadius: Spacing.one,
     alignItems: 'center',
     justifyContent: 'center',
@@ -816,12 +491,14 @@ const styles = StyleSheet.create({
   },
   addNodeButton: {
     position: 'absolute',
-    width: nodeButtonSize,
-    height: nodeButtonSize,
-    borderRadius: nodeButtonSize / 2,
+    top: 0,
+    right: 0,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2868d8',
+    backgroundColor: '#2563eb',
   },
   addNodeButtonText: {
     color: '#ffffff',
@@ -832,12 +509,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.three,
     borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     padding: Spacing.four,
   },
   primaryButton: {
     minHeight: 44,
     borderRadius: Spacing.two,
-    backgroundColor: '#2868d8',
+    backgroundColor: '#2563eb',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -847,7 +526,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   errorText: {
-    color: '#d92d20',
+    color: '#dc2626',
   },
   pressed: {
     opacity: 0.72,

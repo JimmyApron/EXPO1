@@ -64,19 +64,19 @@ function cleanMindMapInput(input?: IdeaMindMapInput) {
 
 function validateIdeaInput(input: IdeaInput) {
   if (!input.title.trim()) {
-    return '아이디어 제목을 입력해주세요.';
+    return '아이디어 제목을 입력해 주세요.';
   }
 
   if (!input.content.trim()) {
-    return '아이디어 내용을 입력해주세요.';
+    return '아이디어 내용을 입력해 주세요.';
   }
 
   if (!IdeaStatuses.includes(input.status)) {
-    return '올바른 상태를 선택해주세요.';
+    return '올바른 상태를 선택해 주세요.';
   }
 
   if (!IdeaCategories.includes(input.category)) {
-    return '올바른 카테고리를 선택해주세요.';
+    return '올바른 카테고리를 선택해 주세요.';
   }
 
   return '';

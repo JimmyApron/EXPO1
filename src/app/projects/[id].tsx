@@ -1,8 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { DeadlineFeedbackScreen } from '../../DeadlineFeedbackScreen';
 
 import { IdeaBoard } from '@/components/idea-board';
 import { ProjectForm } from '@/components/project-form';
@@ -11,10 +10,11 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
+import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import type { ProjectInput } from '@/types/project';
 
 function confirmDelete(onConfirm: () => void) {
-  const message = '이 과제를 삭제할까요? 삭제한 과제는 되돌릴 수 없습니다.';
+  const message = '과제를 삭제할까요? 삭제한 과제와 아이디어는 되돌릴 수 없습니다.';
 
   if (Platform.OS === 'web') {
     if (globalThis.confirm?.(message)) {
@@ -122,7 +122,7 @@ export default function ProjectDetailScreen() {
             onPress={goToList}
             style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
             <ThemedText type="small" themeColor="textSecondary">
-              목록으로 돌아가기
+              ← 과제 목록
             </ThemedText>
           </Pressable>
 
@@ -140,59 +140,67 @@ export default function ProjectDetailScreen() {
             </ThemedView>
           ) : (
             <ThemedView style={styles.section}>
-              <ThemedView style={styles.detailHeader}>
-                <ThemedView style={styles.titleBlock}>
-                  <ThemedText type="subtitle">{project.title}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    projectid: {project.id}
-                  </ThemedText>
-                </ThemedView>
-                <ThemedView style={styles.actions}>
-                  <Pressable
-                    disabled={isbusy}
-                    onPress={() => setIsEditing(true)}
-                    style={({ pressed }) => [
-                      styles.secondaryButton,
-                      (pressed || isbusy) && styles.pressed,
-                    ]}>
-                    <ThemedText type="smallBold">수정</ThemedText>
-                  </Pressable>
-                  <Pressable
-                    disabled={isbusy}
-                    onPress={handleDelete}
-                    style={({ pressed }) => [
-                      styles.dangerButton,
-                      (pressed || isbusy) && styles.pressed,
-                    ]}>
-                    <ThemedText type="smallBold" style={styles.dangerButtonText}>
-                      삭제
+              <ThemedView type="backgroundElement" style={styles.heroPanel}>
+                <View style={styles.detailHeader}>
+                  <View style={styles.titleBlock}>
+                    <ThemedText type="subtitle">{project.title}</ThemedText>
+                    <ThemedText themeColor="textSecondary" style={styles.description}>
+                      {project.description || '과제 조건이나 방향을 아직 적지 않았습니다.'}
                     </ThemedText>
-                  </Pressable>
-                </ThemedView>
-              </ThemedView>
-              <DeadlineFeedbackScreen />
+                  </View>
+                  <View style={styles.actions}>
+                    <Pressable
+                      disabled={isbusy}
+                      onPress={() => setIsEditing(true)}
+                      style={({ pressed }) => [
+                        styles.secondaryButton,
+                        (pressed || isbusy) && styles.pressed,
+                      ]}>
+                      <ThemedText type="smallBold">수정</ThemedText>
+                    </Pressable>
+                    <Pressable
+                      disabled={isbusy}
+                      onPress={handleDelete}
+                      style={({ pressed }) => [
+                        styles.dangerButton,
+                        (pressed || isbusy) && styles.pressed,
+                      ]}>
+                      <ThemedText type="smallBold" style={styles.dangerButtonText}>
+                        삭제
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                </View>
 
-              {mutationerror ? (
-                <ThemedText type="small" style={styles.errorText}>
-                  {mutationerror}
-                </ThemedText>
-              ) : null}
+                {mutationerror ? (
+                  <ThemedText type="small" style={styles.errorText}>
+                    {mutationerror}
+                  </ThemedText>
+                ) : null}
 
-              <ThemedView type="backgroundElement" style={styles.infoBox}>
-                <ThemedText type="smallBold">설명</ThemedText>
-                <ThemedText themeColor="textSecondary">
-                  {project.description || '설명이 아직 없습니다.'}
-                </ThemedText>
-              </ThemedView>
+                <View style={styles.summaryGrid}>
+                  <View style={styles.summaryBox}>
+                    <ThemedText type="smallBold">D-day</ThemedText>
+                    <ThemedText type="subtitle" style={styles.dDayText}>
+                      {getDDayLabel(project.deadline)}
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {formatDeadlineLabel(project.deadline)}
+                    </ThemedText>
+                  </View>
 
-              <ThemedView type="backgroundElement" style={styles.infoBox}>
-                <ThemedText type="smallBold">마감일</ThemedText>
-                <ThemedText themeColor="textSecondary">{project.deadline || '미정'}</ThemedText>
+                  <View style={styles.summaryBox}>
+                    <ThemedText type="smallBold">사용 흐름</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      아이디어 등록 → 칸반 정리 → 최종안 구성
+                    </ThemedText>
+                  </View>
+                </View>
               </ThemedView>
             </ThemedView>
           )}
 
-          <IdeaBoard projectId={project.id} />
+          <IdeaBoard projectId={project.id} projectDeadline={project.deadline} />
         </ThemedView>
       </SafeAreaView>
     </ScrollView>
@@ -216,7 +224,7 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     gap: Spacing.four,
     paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.six,
+    paddingTop: Spacing.five,
   },
   centerContainer: {
     flex: 1,
@@ -227,6 +235,13 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.three,
+  },
+  heroPanel: {
+    gap: Spacing.three,
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: Spacing.three,
   },
   detailHeader: {
     flexDirection: 'row',
@@ -239,16 +254,31 @@ const styles = StyleSheet.create({
     minWidth: 240,
     gap: Spacing.two,
   },
+  description: {
+    fontSize: 16,
+    lineHeight: 24,
+  },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignSelf: 'flex-start',
     gap: Spacing.two,
   },
-  infoBox: {
+  summaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.two,
-    borderRadius: Spacing.three,
+  },
+  summaryBox: {
+    flex: 1,
+    minWidth: 220,
+    gap: Spacing.one,
+    borderRadius: Spacing.two,
+    backgroundColor: '#f8fafc',
     padding: Spacing.three,
+  },
+  dDayText: {
+    color: '#2563eb',
   },
   backButton: {
     alignSelf: 'flex-start',
@@ -257,7 +287,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     minHeight: 44,
     borderRadius: Spacing.two,
-    backgroundColor: '#2868d8',
+    backgroundColor: '#2563eb',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -270,7 +300,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: Spacing.two,
     borderWidth: 1,
-    borderColor: '#9aa2b1',
+    borderColor: '#cbd5e1',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -279,7 +309,7 @@ const styles = StyleSheet.create({
   dangerButton: {
     minHeight: 44,
     borderRadius: Spacing.two,
-    backgroundColor: '#d92d20',
+    backgroundColor: '#dc2626',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -289,7 +319,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   errorText: {
-    color: '#d92d20',
+    color: '#dc2626',
   },
   pressed: {
     opacity: 0.72,

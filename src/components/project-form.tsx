@@ -80,17 +80,14 @@ function CalendarPicker({ visible, selectedDate, onSelect, onClear, onClose }: C
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
   };
 
-  const openToday = () => {
-    const today = new Date();
-    onSelect(formatDate(today));
-  };
-
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <ThemedView style={[styles.calendarPanel, { backgroundColor: theme.background }]}>
           <View style={styles.calendarHeader}>
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="이전 달"
               onPress={() => moveMonth(-1)}
               style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
               <ThemedText type="smallBold">{'<'}</ThemedText>
@@ -99,6 +96,8 @@ function CalendarPicker({ visible, selectedDate, onSelect, onClear, onClose }: C
               {visibleMonth.getFullYear()}년 {visibleMonth.getMonth() + 1}월
             </ThemedText>
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="다음 달"
               onPress={() => moveMonth(1)}
               style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
               <ThemedText type="smallBold">{'>'}</ThemedText>
@@ -128,9 +127,7 @@ function CalendarPicker({ visible, selectedDate, onSelect, onClear, onClose }: C
                         isSelected && styles.selectedDayButton,
                         pressed && styles.pressed,
                       ]}>
-                      <ThemedText
-                        type="smallBold"
-                        style={isSelected && styles.selectedDayButtonText}>
+                      <ThemedText type="smallBold" style={isSelected && styles.selectedDayButtonText}>
                         {date.getDate()}
                       </ThemedText>
                     </Pressable>
@@ -144,10 +141,10 @@ function CalendarPicker({ visible, selectedDate, onSelect, onClear, onClose }: C
             <Pressable
               onPress={onClear}
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-              <ThemedText type="smallBold">마감일 없이 선택</ThemedText>
+              <ThemedText type="smallBold">마감 없음</ThemedText>
             </Pressable>
             <Pressable
-              onPress={openToday}
+              onPress={() => onSelect(formatDate(new Date()))}
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
               <ThemedText type="smallBold">오늘</ThemedText>
             </Pressable>
@@ -191,7 +188,7 @@ export function ProjectForm({
 
   const handleSubmit = async () => {
     if (!title.trim()) {
-      setTitleError('제목은 필수입니다.');
+      setTitleError('과제 제목을 입력해 주세요.');
       return;
     }
 
@@ -208,7 +205,7 @@ export function ProjectForm({
   return (
     <ThemedView type="backgroundElement" style={styles.form}>
       <View style={styles.field}>
-        <ThemedText type="smallBold">제목</ThemedText>
+        <ThemedText type="smallBold">과제명</ThemedText>
         <TextInput
           value={title}
           onChangeText={(value) => {
@@ -234,7 +231,7 @@ export function ProjectForm({
           value={description}
           onChangeText={setDescription}
           multiline
-          placeholder="과제 조건, 참고할 주제, 메모를 적으세요."
+          placeholder="과제 조건, 발표 주제, 참고할 방향을 적어 주세요."
           placeholderTextColor={theme.textSecondary}
           style={[inputStyle, styles.multilineInput]}
         />
@@ -253,7 +250,7 @@ export function ProjectForm({
             pressed && styles.pressed,
           ]}>
           <ThemedText themeColor={deadline ? 'text' : 'textSecondary'}>
-            {deadline || '마감일 없음'}
+            {deadline || '마감일 선택'}
           </ThemedText>
         </Pressable>
       </View>
@@ -343,7 +340,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.42)',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
     padding: Spacing.three,
   },
   calendarPanel: {
@@ -393,7 +390,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   selectedDayButton: {
-    backgroundColor: '#2868d8',
+    backgroundColor: '#2563eb',
   },
   selectedDayButtonText: {
     color: '#ffffff',
@@ -413,7 +410,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     minHeight: 44,
     borderRadius: Spacing.two,
-    backgroundColor: '#2868d8',
+    backgroundColor: '#2563eb',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -426,14 +423,14 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: Spacing.two,
     borderWidth: 1,
-    borderColor: '#9aa2b1',
+    borderColor: '#cbd5e1',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
   errorText: {
-    color: '#d92d20',
+    color: '#dc2626',
   },
   pressed: {
     opacity: 0.72,

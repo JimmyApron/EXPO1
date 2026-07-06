@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProjectForm } from '@/components/project-form';
@@ -9,8 +9,10 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { useFavoriteIdeas } from '@/hooks/use-favorite-ideas';
+import { useProjectIdeaStats, type ProjectIdeaStats } from '@/hooks/use-project-idea-stats';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
+import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import { IdeaCategoryLabels, type IdeaCategory } from '@/types/idea';
 import type { Project, ProjectInput } from '@/types/project';
 
@@ -20,21 +22,79 @@ type FavoriteProjectSummary = {
   categories: IdeaCategory[];
 };
 
-function ProjectCard({ project }: { project: Project }) {
+function getDeadlineTime(deadline: string | null) {
+  if (!deadline) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const time = new Date(`${deadline}T00:00:00`).getTime();
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+}
+
+function getProgressPercent(stats: ProjectIdeaStats) {
+  if (stats.total === 0) {
+    return 0;
+  }
+
+  return Math.round((stats.selected / stats.total) * 100);
+}
+
+function DashboardStat({ label, value, tone }: { label: string; value: string; tone?: 'blue' | 'green' | 'orange' }) {
+  return (
+    <ThemedView type="backgroundElement" style={[styles.statCard, tone === 'green' && styles.greenStat, tone === 'orange' && styles.orangeStat]}>
+      <ThemedText type="small" themeColor="textSecondary">
+        {label}
+      </ThemedText>
+      <ThemedText type="subtitle" style={styles.statValue}>
+        {value}
+      </ThemedText>
+    </ThemedView>
+  );
+}
+
+function ProjectCard({ project, stats }: { project: Project; stats: ProjectIdeaStats }) {
+  const progress = getProgressPercent(stats);
+
   return (
     <Pressable
       onPress={() => router.push(`/projects/${project.id}` as Href)}
       style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}>
       <ThemedView type="backgroundElement" style={styles.projectCard}>
-        <ThemedText type="smallBold" style={styles.projectTitle}>
-          {project.title}
-        </ThemedText>
+        <View style={styles.projectCardHeader}>
+          <View style={styles.projectTitleBlock}>
+            <ThemedText type="smallBold" style={styles.projectTitle}>
+              {project.title}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {formatDeadlineLabel(project.deadline)}
+            </ThemedText>
+          </View>
+          <View style={styles.dDayPill}>
+            <ThemedText type="smallBold" style={styles.dDayText}>
+              {getDDayLabel(project.deadline)}
+            </ThemedText>
+          </View>
+        </View>
+
         <ThemedText themeColor="textSecondary" style={styles.projectDescription}>
-          {project.description || '설명이 아직 없습니다.'}
+          {project.description || '과제 조건이나 방향을 아직 적지 않았습니다.'}
         </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          마감일: {project.deadline || '미정'}
-        </ThemedText>
+
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+        </View>
+
+        <View style={styles.metricRow}>
+          <ThemedText type="small" themeColor="textSecondary">
+            아이디어 {stats.total}개
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            쓸 만함 {stats.approved}개
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            최종 {stats.selected}개
+          </ThemedText>
+        </View>
       </ThemedView>
     </Pressable>
   );
@@ -49,15 +109,15 @@ function FavoriteProjectCard({ item }: { item: FavoriteProjectSummary }) {
         <ThemedText type="smallBold" style={styles.favoriteProjectTitle}>
           {item.projectTitle}
         </ThemedText>
-        <ThemedView style={styles.categoryRow}>
+        <View style={styles.categoryRow}>
           {item.categories.map((category) => (
-            <ThemedView key={category} style={styles.categoryPill}>
+            <View key={category} style={styles.categoryPill}>
               <ThemedText type="smallBold" style={styles.categoryText}>
                 {IdeaCategoryLabels[category]}
               </ThemedText>
-            </ThemedView>
+            </View>
           ))}
-        </ThemedView>
+        </View>
       </ThemedView>
     </Pressable>
   );
@@ -67,9 +127,21 @@ export default function HomeScreen() {
   const { user, signout } = useAuth();
   const { projects, isloadingprojects, projecterror, createProject } = useProjects();
   const { favoriteIdeas, isLoadingFavoriteIdeas, favoriteIdeaError } = useFavoriteIdeas();
+  const { totals, isLoadingStats, statsError, getStatsForProject } = useProjectIdeaStats();
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [iscreating, setIscreating] = useState(false);
   const [formerror, setFormerror] = useState('');
   const theme = useTheme();
+
+  const isLoading = isloadingprojects || isLoadingStats;
+  const urgentProjects = useMemo(
+    () =>
+      [...projects]
+        .filter((project) => project.deadline)
+        .sort((left, right) => getDeadlineTime(left.deadline) - getDeadlineTime(right.deadline))
+        .slice(0, 3),
+    [projects],
+  );
 
   const favoriteProjects = useMemo(() => {
     const projectTitles = new Map(projects.map((project) => [project.id, project.title]));
@@ -103,6 +175,8 @@ export default function HomeScreen() {
 
     if (result.error) {
       setFormerror(result.error);
+    } else {
+      setIsCreateOpen(false);
     }
 
     setIscreating(false);
@@ -114,32 +188,92 @@ export default function HomeScreen() {
       contentContainerStyle={styles.scrollContent}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.container}>
-          <ThemedView style={styles.header}>
-            <ThemedView style={styles.headerTop}>
-              <ThemedView style={styles.headerTitle}>
-                <ThemedText type="subtitle">과제 보드</ThemedText>
+          <View style={styles.header}>
+            <View style={styles.headerTop}>
+              <View style={styles.headerTitle}>
+                <ThemedText type="subtitle">IdeaNote Lab</ThemedText>
                 <ThemedText themeColor="textSecondary" style={styles.headerCopy}>
-                  과제별 아이디어를 프로젝트 단위로 정리하세요.
+                  흩어진 과제 아이디어를 모으고, 상태별로 정리하고, 최종안까지 발전시키는 프로젝트 노트입니다.
+                </ThemedText>
+              </View>
+              <View style={styles.headerActions}>
+                <Pressable
+                  onPress={() => {
+                    setFormerror('');
+                    setIsCreateOpen(true);
+                  }}
+                  style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+                  <ThemedText type="smallBold" style={styles.primaryButtonText}>
+                    + 새 과제
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={signout}
+                  style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+                  <ThemedText type="smallBold">로그아웃</ThemedText>
+                </Pressable>
+              </View>
+            </View>
+            <ThemedText type="small" themeColor="textSecondary">
+              {user?.email ?? user?.id}
+            </ThemedText>
+          </View>
+
+          <View style={styles.statGrid}>
+            <DashboardStat label="진행 중 과제" value={`${projects.length}개`} tone="blue" />
+            <DashboardStat label="모은 아이디어" value={`${totals.totalIdeas}개`} />
+            <DashboardStat label="최종 사용" value={`${totals.selectedIdeas}개`} tone="green" />
+            <DashboardStat label="즐겨찾기" value={`${totals.favoriteIdeas}개`} tone="orange" />
+          </View>
+
+          {(projecterror || statsError) ? (
+            <ThemedText type="small" style={styles.errorText}>
+              {projecterror || statsError}
+            </ThemedText>
+          ) : null}
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <ThemedText type="smallBold">마감 임박</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  먼저 챙겨야 할 과제입니다.
+                </ThemedText>
+              </View>
+            </View>
+
+            {isLoading ? (
+              <ThemedView type="backgroundElement" style={styles.emptyState}>
+                <ActivityIndicator />
+              </ThemedView>
+            ) : urgentProjects.length === 0 ? (
+              <ThemedView type="backgroundElement" style={styles.emptyState}>
+                <ThemedText type="smallBold">마감일이 등록된 과제가 없습니다.</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
+                  새 과제를 만들고 마감일을 지정해 보세요.
                 </ThemedText>
               </ThemedView>
-              <Pressable
-                onPress={signout}
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-                <ThemedText type="smallBold">로그아웃</ThemedText>
-              </Pressable>
-            </ThemedView>
-            <ThemedText type="small" themeColor="textSecondary">
-              로그인 계정: {user?.email ?? user?.id}
-            </ThemedText>
-          </ThemedView>
+            ) : (
+              <View style={styles.projectList}>
+                {urgentProjects.map((project) => (
+                  <ProjectCard key={project.id} project={project} stats={getStatsForProject(project.id)} />
+                ))}
+              </View>
+            )}
+          </View>
 
-          <ThemedView style={styles.section}>
-            <ThemedView style={styles.sectionHeader}>
-              <ThemedText type="smallBold">즐겨찾기 아이디어</ThemedText>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <ThemedText type="smallBold">즐겨찾기 아이디어</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  다시 볼 만한 아이디어가 있는 과제입니다.
+                </ThemedText>
+              </View>
               <ThemedText type="small" themeColor="textSecondary">
                 {favoriteProjects.length}개 과제
               </ThemedText>
-            </ThemedView>
+            </View>
 
             {favoriteIdeaError ? (
               <ThemedText type="small" style={styles.errorText}>
@@ -153,65 +287,78 @@ export default function HomeScreen() {
               </ThemedView>
             ) : favoriteProjects.length === 0 ? (
               <ThemedView type="backgroundElement" style={styles.emptyState}>
-                <ThemedText type="smallBold">즐겨찾기한 아이디어가 없습니다</ThemedText>
+                <ThemedText type="smallBold">즐겨찾기한 아이디어가 없습니다.</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-                  과제 상세에서 아이디어 카드의 별표를 눌러 모아보세요.
+                  과제 상세에서 중요한 아이디어에 별표를 눌러 모아 보세요.
                 </ThemedText>
               </ThemedView>
             ) : (
-              <ThemedView style={styles.favoriteList}>
+              <View style={styles.favoriteList}>
                 {favoriteProjects.map((item) => (
                   <FavoriteProjectCard key={item.projectid} item={item} />
                 ))}
-              </ThemedView>
+              </View>
             )}
-          </ThemedView>
+          </View>
 
-          <ThemedView style={styles.section}>
-            <ThemedText type="smallBold">새 과제 만들기</ThemedText>
-            <ProjectForm
-              submitLabel="저장"
-              isbusy={iscreating}
-              error={formerror}
-              onSubmit={handleCreateProject}
-            />
-          </ThemedView>
-
-          <ThemedView style={styles.section}>
-            <ThemedView style={styles.sectionHeader}>
-              <ThemedText type="smallBold">과제 목록</ThemedText>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <ThemedText type="smallBold">전체 과제</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  아이디어 수와 최종 사용 현황을 한눈에 확인하세요.
+                </ThemedText>
+              </View>
               <ThemedText type="small" themeColor="textSecondary">
                 {projects.length}개
               </ThemedText>
-            </ThemedView>
+            </View>
 
-            {projecterror ? (
-              <ThemedText type="small" style={styles.errorText}>
-                {projecterror}
-              </ThemedText>
-            ) : null}
-
-            {isloadingprojects ? (
+            {isLoading ? (
               <ThemedView type="backgroundElement" style={styles.emptyState}>
                 <ActivityIndicator />
               </ThemedView>
             ) : projects.length === 0 ? (
               <ThemedView type="backgroundElement" style={styles.emptyState}>
-                <ThemedText type="smallBold">아직 생성된 과제가 없습니다</ThemedText>
+                <ThemedText type="smallBold">아직 생성한 과제가 없습니다.</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-                  발표, 리포트, 실습 과제를 만들고 아이디어를 정리하세요.
+                  발표, 리포트, 팀 프로젝트별 보관함을 만들어 보세요.
                 </ThemedText>
               </ThemedView>
             ) : (
-              <ThemedView style={styles.projectList}>
+              <View style={styles.projectList}>
                 {projects.map((project) => (
-                  <ProjectCard key={project.id} project={project} />
+                  <ProjectCard key={project.id} project={project} stats={getStatsForProject(project.id)} />
                 ))}
-              </ThemedView>
+              </View>
             )}
-          </ThemedView>
+          </View>
         </ThemedView>
       </SafeAreaView>
+
+      <Modal visible={isCreateOpen} transparent animationType="fade" onRequestClose={() => setIsCreateOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <ThemedView style={[styles.modalPanel, { backgroundColor: theme.background }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="smallBold" style={styles.modalTitle}>
+                새 과제 만들기
+              </ThemedText>
+              <Pressable
+                onPress={() => setIsCreateOpen(false)}
+                style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+                <ThemedText type="smallBold">닫기</ThemedText>
+              </Pressable>
+            </View>
+            <ProjectForm
+              submitLabel="등록"
+              isbusy={iscreating}
+              error={formerror}
+              onSubmit={handleCreateProject}
+              onCancel={() => setIsCreateOpen(false)}
+            />
+          </ThemedView>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -233,7 +380,7 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     gap: Spacing.four,
     paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.six,
+    paddingTop: Spacing.five,
   },
   header: {
     gap: Spacing.two,
@@ -254,12 +401,40 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
   },
+  headerActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  statCard: {
+    flexGrow: 1,
+    minWidth: 150,
+    gap: Spacing.one,
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: Spacing.three,
+  },
+  greenStat: {
+    borderColor: '#bbf7d0',
+  },
+  orangeStat: {
+    borderColor: '#fed7aa',
+  },
+  statValue: {
+    color: '#2563eb',
+  },
   section: {
     gap: Spacing.three,
   },
   sectionHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: Spacing.three,
   },
@@ -269,6 +444,8 @@ const styles = StyleSheet.create({
   favoriteCard: {
     gap: Spacing.two,
     borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     padding: Spacing.three,
   },
   favoriteProjectTitle: {
@@ -283,7 +460,7 @@ const styles = StyleSheet.create({
   categoryPill: {
     minHeight: 30,
     borderWidth: 1,
-    borderColor: '#9aa2b1',
+    borderColor: '#cbd5e1',
     borderRadius: Spacing.two,
     alignItems: 'center',
     justifyContent: 'center',
@@ -291,7 +468,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
   },
   categoryText: {
-    color: '#3f4652',
+    color: '#475569',
   },
   projectList: {
     gap: Spacing.three,
@@ -300,9 +477,23 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
   },
   projectCard: {
-    gap: Spacing.two,
+    gap: Spacing.three,
     borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     padding: Spacing.three,
+  },
+  projectCardHeader: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  projectTitleBlock: {
+    flex: 1,
+    minWidth: 180,
+    gap: Spacing.one,
   },
   projectTitle: {
     fontSize: 18,
@@ -312,27 +503,103 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
-  secondaryButton: {
+  progressTrack: {
+    height: 8,
+    overflow: 'hidden',
+    borderRadius: 999,
+    backgroundColor: '#e2e8f0',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#10b981',
+  },
+  metricRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  dDayPill: {
+    minHeight: 32,
+    borderRadius: 999,
+    backgroundColor: '#dbeafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+  },
+  dDayText: {
+    color: '#1d4ed8',
+  },
+  primaryButton: {
     minHeight: 44,
     borderRadius: Spacing.two,
-    borderWidth: 1,
-    borderColor: '#9aa2b1',
+    backgroundColor: '#2563eb',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
+  primaryButtonText: {
+    color: '#ffffff',
+  },
+  secondaryButton: {
+    minHeight: 44,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  closeButton: {
+    minHeight: 36,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+  },
+  modalOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    padding: Spacing.three,
+  },
+  modalPanel: {
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '92%',
+    gap: Spacing.three,
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  modalTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+  },
   emptyState: {
     alignItems: 'center',
     gap: Spacing.two,
     borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     padding: Spacing.four,
   },
   emptyText: {
     textAlign: 'center',
   },
   errorText: {
-    color: '#d92d20',
+    color: '#dc2626',
   },
   pressed: {
     opacity: 0.72,

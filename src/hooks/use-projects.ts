@@ -21,7 +21,7 @@ function cleanProjectInput(input: ProjectInput) {
 
 function validateProjectInput(input: ProjectInput) {
   if (!input.title.trim()) {
-    return '제목은 필수입니다.';
+    return '과제 제목은 필수입니다.';
   }
 
   return '';
