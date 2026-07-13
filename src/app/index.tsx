@@ -4,6 +4,7 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } fro
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProjectForm } from '@/components/project-form';
+import { RoomPanel } from '@/components/room-panel';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
@@ -231,6 +232,8 @@ export default function HomeScreen() {
               {projecterror || statsError}
             </ThemedText>
           ) : null}
+
+          <RoomPanel />
 
           <View style={styles.section}>
             <View style={styles.sectionHeader}>

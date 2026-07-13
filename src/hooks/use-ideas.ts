@@ -101,7 +101,6 @@ export function useIdeas(projectId?: string) {
     const { data, error } = await supabase
       .from('ideas')
       .select(ideaSelect)
-      .eq('userid', user.id)
       .eq('projectid', projectId)
       .order('createdat', { ascending: false });
 

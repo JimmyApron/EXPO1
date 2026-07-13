@@ -54,7 +54,6 @@ export function useIdeaFeedbacks(projectId?: string) {
     const { data: ideaRows, error: ideaError } = await supabase
       .from('ideas')
       .select('id')
-      .eq('userid', user.id)
       .eq('projectid', projectId);
 
     if (ideaError) {
@@ -77,7 +76,6 @@ export function useIdeaFeedbacks(projectId?: string) {
     const { data, error } = await supabase
       .from('feedbacks')
       .select(feedbackSelect)
-      .eq('userid', user.id)
       .in('ideaid', ideaIds)
       .order('createdat', { ascending: false });
 
