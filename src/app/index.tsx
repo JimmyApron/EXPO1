@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProjectForm } from '@/components/project-form';
@@ -16,6 +16,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import { IdeaCategoryLabels, type IdeaCategory } from '@/types/idea';
 import type { Project, ProjectInput } from '@/types/project';
+import { useApp } from '../context/AppContext';
+
 
 type FavoriteProjectSummary = {
   projectid: string;
@@ -130,9 +132,12 @@ export default function HomeScreen() {
   const { favoriteIdeas, isLoadingFavoriteIdeas, favoriteIdeaError } = useFavoriteIdeas();
   const { totals, isLoadingStats, statsError, getStatsForProject } = useProjectIdeaStats();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const { categories, addCategory } = useApp();
+  const [newCatInput, setNewCatInput] = useState('');
   const [iscreating, setIscreating] = useState(false);
   const [formerror, setFormerror] = useState('');
   const theme = useTheme();
+  const colorScheme = useColorScheme(); // 시스템이 다크모드인지 확인하는 부품
 
   const isLoading = isloadingprojects || isLoadingStats;
   const urgentProjects = useMemo(
@@ -225,6 +230,55 @@ export default function HomeScreen() {
             <DashboardStat label="모은 아이디어" value={`${totals.totalIdeas}개`} />
             <DashboardStat label="최종 사용" value={`${totals.selectedIdeas}개`} tone="green" />
             <DashboardStat label="즐겨찾기" value={`${totals.favoriteIdeas}개`} tone="orange" />
+            {/* 🌟 서은님이 만든 카테고리 가로 탭 목록 */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+              {categories.map((cat: string) => (
+                <TouchableOpacity
+                 key={cat}
+                  style={{
+                 paddingHorizontal: 16,
+                 paddingVertical: 8,
+                  borderRadius: 20,
+                 backgroundColor: '#007AFF',
+                  marginRight: 8,
+                 }}
+                >
+                  <ThemedText style={{ color: '#fff', fontWeight: 'bold' }}>{cat}</ThemedText>
+                </TouchableOpacity>
+             ))}
+            </ScrollView>
+
+            {/* 🌟 서은님이 만든 카테고리 직접 추가 입력창 */}
+            <ThemedView style={{ paddingHorizontal: 16, paddingBottom: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+             <TextInput
+              style={{ 
+                flex: 1, 
+                backgroundColor: colorScheme === 'dark' ? '#333' : '#f0f0f0', 
+                padding: 12, 
+                borderRadius: 8,
+               color: colorScheme === 'dark' ? '#fff' : '#000'
+              }}
+              placeholder="새 카테고리 직접 입력..."
+              placeholderTextColor="#999"
+              value={newCatInput}
+              onChangeText={setNewCatInput}
+            />
+            <TouchableOpacity
+             style={{ 
+               backgroundColor: '#007AFF', 
+                paddingVertical: 12,
+               paddingHorizontal: 16, 
+                justifyContent: 'center', 
+               borderRadius: 8 
+             }}
+              onPress={() => {
+               addCategory(newCatInput); // 보관함에 카테고리 추가
+               setNewCatInput('');       // 입력창 비우기
+             }}
+           >
+            <ThemedText style={{ color: '#fff', fontWeight: 'bold' }}>추가</ThemedText>
+         </TouchableOpacity>
+        </ThemedView>
           </View>
 
           {(projecterror || statsError) ? (
