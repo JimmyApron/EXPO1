@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
 import {
-  IdeaCategories,
   IdeaStatuses,
+  cleanIdeaCategory,
   normalizeIdeaCategory,
   normalizeIdeaStatus,
   normalizeMindMapSide,
@@ -45,7 +45,7 @@ function cleanIdeaInput(input: IdeaInput) {
     title: input.title.trim(),
     content: input.content.trim(),
     status: input.status,
-    category: input.category,
+    category: normalizeIdeaCategory(input.category),
   };
 }
 
@@ -75,7 +75,7 @@ function validateIdeaInput(input: IdeaInput) {
     return '올바른 상태를 선택해 주세요.';
   }
 
-  if (!IdeaCategories.includes(input.category)) {
+  if (!cleanIdeaCategory(input.category)) {
     return '올바른 카테고리를 선택해 주세요.';
   }
 

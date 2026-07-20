@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,18 +15,19 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useIdeaFeedbacks } from '@/hooks/use-idea-feedbacks';
+import { useIdeaCategories } from '@/hooks/use-idea-categories';
 import { useIdeaLikes } from '@/hooks/use-idea-likes';
 import { useIdeas } from '@/hooks/use-ideas';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import type { IdeaFeedback } from '@/types/feedback';
 import {
-  IdeaCategories,
-  IdeaCategoryLabels,
   IdeaStatusLabels,
   IdeaStatuses,
+  getIdeaCategoryLabel,
   normalizeIdeaCategory,
   normalizeIdeaStatus,
+  type DefaultIdeaCategoryKey,
   type Idea,
   type IdeaCategory,
   type IdeaInput,
@@ -40,10 +42,13 @@ type IdeaBoardProps = {
 
 type IdeaFormProps = {
   idea?: Idea;
+  categories: IdeaCategory[];
+  draftKey?: string;
   submitLabel: string;
   isBusy?: boolean;
   error?: string;
   onSubmit: (input: IdeaInput) => void | Promise<void>;
+  onCreateCategory: (name: string) => Promise<{ category?: IdeaCategory; error?: string }>;
   onCancel?: () => void;
 };
 
@@ -62,6 +67,7 @@ type IdeaCardProps = {
   onToggleLike: () => void;
   onStatusChange: (status: IdeaStatus) => void;
   onAddFeedback: (ideaId: string, content: string) => Promise<{ error?: string }>;
+  onToggleFeedbackResolved: (feedbackId: string, isresolved: boolean) => Promise<{ error?: string }>;
 };
 
 const allCategoryFilter = 'all';
@@ -73,9 +79,16 @@ const finalMode = 'final';
 type CategoryFilter = typeof allCategoryFilter | IdeaCategory;
 type StatusFilter = typeof allStatusFilter | IdeaStatus;
 type BoardMode = typeof listMode | typeof mindMapMode | typeof finalMode;
+type SortMode = 'newest' | 'oldest' | 'likes' | 'favorite' | 'status';
 
-const categoryFilters: CategoryFilter[] = [allCategoryFilter, ...IdeaCategories];
 const statusFilters: StatusFilter[] = [allStatusFilter, ...IdeaStatuses];
+const sortOptions: { id: SortMode; label: string }[] = [
+  { id: 'newest', label: '최신순' },
+  { id: 'oldest', label: '오래된순' },
+  { id: 'likes', label: '공감순' },
+  { id: 'favorite', label: '즐겨찾기순' },
+  { id: 'status', label: '진행순' },
+];
 
 const statusColors: Record<IdeaStatus, { background: string; border: string; text: string }> = {
   thought: { background: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' },
@@ -84,11 +97,19 @@ const statusColors: Record<IdeaStatus, { background: string; border: string; tex
   selected: { background: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9' },
 };
 
-const categoryColors: Record<IdeaCategory, { background: string; border: string; text: string }> = {
+type CategoryPalette = { background: string; border: string; text: string };
+
+const categoryColors: Record<DefaultIdeaCategoryKey, CategoryPalette> = {
   planning: { background: '#f8fafc', border: '#cbd5e1', text: '#475569' },
   design: { background: '#fdf2f8', border: '#f9a8d4', text: '#be185d' },
   develop: { background: '#ecfdf5', border: '#86efac', text: '#15803d' },
   research: { background: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' },
+};
+
+const customCategoryPalette: CategoryPalette = {
+  background: '#f8fafc',
+  border: '#94a3b8',
+  text: '#334155',
 };
 
 const boardTabs: { id: BoardMode; label: string }[] = [
@@ -98,7 +119,11 @@ const boardTabs: { id: BoardMode; label: string }[] = [
 ];
 
 function getCategoryLabel(filter: CategoryFilter) {
-  return filter === allCategoryFilter ? '전체' : IdeaCategoryLabels[filter];
+  return filter === allCategoryFilter ? '전체' : getIdeaCategoryLabel(filter);
+}
+
+function getCategoryPalette(category: IdeaCategory) {
+  return categoryColors[category as DefaultIdeaCategoryKey] ?? customCategoryPalette;
 }
 
 function getStatusLabel(filter: StatusFilter) {
@@ -206,16 +231,20 @@ function StatusSelector({
 }
 
 function CategorySelector({
+  categories,
   selectedCategory,
   onSelect,
+  onOpenCreate,
 }: {
+  categories: IdeaCategory[];
   selectedCategory: IdeaCategory;
   onSelect: (category: IdeaCategory) => void;
+  onOpenCreate: () => void;
 }) {
   return (
     <View style={styles.chipRow}>
-      {IdeaCategories.map((category) => {
-        const palette = categoryColors[category];
+      {categories.map((category) => {
+        const palette = getCategoryPalette(category);
         const isSelected = selectedCategory === category;
 
         return (
@@ -231,16 +260,33 @@ function CategorySelector({
               pressed && styles.pressed,
             ]}>
             <ThemedText type="smallBold" style={{ color: isSelected ? palette.text : palette.border }}>
-              {IdeaCategoryLabels[category]}
+              {getIdeaCategoryLabel(category)}
             </ThemedText>
           </Pressable>
         );
       })}
+      <Pressable
+        onPress={onOpenCreate}
+        style={({ pressed }) => [styles.addCategoryInlineButton, pressed && styles.pressed]}>
+        <ThemedText type="smallBold" style={styles.addCategoryInlineText}>
+          + 새 카테고리 추가하기
+        </ThemedText>
+      </Pressable>
     </View>
   );
 }
 
-function IdeaForm({ idea, submitLabel, isBusy = false, error, onSubmit, onCancel }: IdeaFormProps) {
+function IdeaForm({
+  idea,
+  categories,
+  draftKey,
+  submitLabel,
+  isBusy = false,
+  error,
+  onSubmit,
+  onCreateCategory,
+  onCancel,
+}: IdeaFormProps) {
   const theme = useTheme();
   const [title, setTitle] = useState(idea?.title ?? '');
   const [content, setContent] = useState(idea?.content ?? '');
@@ -248,6 +294,59 @@ function IdeaForm({ idea, submitLabel, isBusy = false, error, onSubmit, onCancel
   const [status, setStatus] = useState<IdeaStatus>(normalizeIdeaStatus(idea?.status));
   const [titleError, setTitleError] = useState('');
   const [contentError, setContentError] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+  const [categoryError, setCategoryError] = useState('');
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [isCategoryInputOpen, setIsCategoryInputOpen] = useState(false);
+
+  useEffect(() => {
+    if (!draftKey || idea) {
+      return;
+    }
+
+    let isActive = true;
+    AsyncStorage.getItem(draftKey).then((value) => {
+      if (!isActive || !value) {
+        return;
+      }
+
+      try {
+        const draft = JSON.parse(value) as Partial<IdeaInput>;
+        setTitle(typeof draft.title === 'string' ? draft.title : '');
+        setContent(typeof draft.content === 'string' ? draft.content : '');
+        setCategory(normalizeIdeaCategory(draft.category));
+        setStatus(normalizeIdeaStatus(draft.status));
+      } catch {
+        // Ignore invalid local drafts.
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [draftKey, idea]);
+
+  useEffect(() => {
+    if (!draftKey || idea) {
+      return;
+    }
+
+    const timeout = globalThis.setTimeout(() => {
+      void AsyncStorage.setItem(
+        draftKey,
+        JSON.stringify({
+          title,
+          content,
+          category,
+          status,
+        } satisfies IdeaInput),
+      );
+    }, 300);
+
+    return () => {
+      globalThis.clearTimeout(timeout);
+    };
+  }, [category, content, draftKey, idea, status, title]);
 
   const inputStyle = [
     styles.input,
@@ -272,11 +371,36 @@ function IdeaForm({ idea, submitLabel, isBusy = false, error, onSubmit, onCancel
     await onSubmit({ title, content, category, status });
 
     if (!idea) {
+      if (draftKey) {
+        void AsyncStorage.removeItem(draftKey);
+      }
       setTitle('');
       setContent('');
       setCategory('planning');
       setStatus('thought');
     }
+  };
+
+  const handleCreateCategory = async () => {
+    const nextCategory = newCategory.trim();
+    if (!nextCategory) {
+      setCategoryError('카테고리 이름을 입력해 주세요.');
+      return;
+    }
+
+    setIsAddingCategory(true);
+    setCategoryError('');
+
+    const result = await onCreateCategory(nextCategory);
+    if (result.error) {
+      setCategoryError(result.error);
+    } else if (result.category) {
+      setCategory(result.category);
+      setNewCategory('');
+      setIsCategoryInputOpen(false);
+    }
+
+    setIsAddingCategory(false);
   };
 
   return (
@@ -326,7 +450,58 @@ function IdeaForm({ idea, submitLabel, isBusy = false, error, onSubmit, onCancel
 
       <View style={styles.field}>
         <ThemedText type="smallBold">카테고리</ThemedText>
-        <CategorySelector selectedCategory={category} onSelect={setCategory} />
+        <CategorySelector
+          categories={categories}
+          selectedCategory={category}
+          onSelect={setCategory}
+          onOpenCreate={() => {
+            setIsCategoryInputOpen((current) => {
+              if (current) {
+                setNewCategory('');
+              }
+
+              return !current;
+            });
+            setCategoryError('');
+          }}
+        />
+        {isCategoryInputOpen ? (
+          <View style={styles.addCategoryRow}>
+            <TextInput
+              value={newCategory}
+              editable={!isBusy && !isAddingCategory}
+              onChangeText={(value) => {
+                setNewCategory(value);
+                if (categoryError) {
+                  setCategoryError('');
+                }
+              }}
+              placeholder="새 카테고리"
+              placeholderTextColor={theme.textSecondary}
+              style={[inputStyle, styles.addCategoryInput]}
+            />
+            <Pressable
+              disabled={isBusy || isAddingCategory}
+              onPress={handleCreateCategory}
+              style={({ pressed }) => [
+                styles.addCategoryButton,
+                (pressed || isBusy || isAddingCategory) && styles.pressed,
+              ]}>
+              {isAddingCategory ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <ThemedText type="smallBold" style={styles.primaryButtonText}>
+                  추가
+                </ThemedText>
+              )}
+            </Pressable>
+          </View>
+        ) : null}
+        {categoryError ? (
+          <ThemedText type="small" style={styles.errorText}>
+            {categoryError}
+          </ThemedText>
+        ) : null}
       </View>
 
       <View style={styles.field}>
@@ -371,7 +546,8 @@ function FeedbackSection({
   feedbacks,
   isLoadingFeedbacks,
   onAddFeedback,
-}: Pick<IdeaCardProps, 'idea' | 'feedbacks' | 'isLoadingFeedbacks' | 'onAddFeedback'>) {
+  onToggleFeedbackResolved,
+}: Pick<IdeaCardProps, 'idea' | 'feedbacks' | 'isLoadingFeedbacks' | 'onAddFeedback' | 'onToggleFeedbackResolved'>) {
   const theme = useTheme();
   const [draft, setDraft] = useState('');
   const [feedbackError, setFeedbackError] = useState('');
@@ -460,9 +636,24 @@ function FeedbackSection({
           {feedbacks.slice(0, 3).map((feedback) => (
             <ThemedView key={feedback.id} style={styles.feedbackItem}>
               <ThemedText style={styles.feedbackText}>{feedback.content}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {formatFeedbackDate(feedback.createdat)}
-              </ThemedText>
+              <View style={styles.feedbackMetaRow}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {formatFeedbackDate(feedback.createdat)}
+                </ThemedText>
+                <Pressable
+                  onPress={() => onToggleFeedbackResolved(feedback.id, !feedback.isresolved)}
+                  style={({ pressed }) => [
+                    styles.feedbackResolveButton,
+                    feedback.isresolved && styles.feedbackResolvedButton,
+                    pressed && styles.pressed,
+                  ]}>
+                  <ThemedText
+                    type="smallBold"
+                    style={feedback.isresolved ? styles.feedbackResolvedText : styles.feedbackResolveText}>
+                    {feedback.isresolved ? '반영함' : '미해결'}
+                  </ThemedText>
+                </Pressable>
+              </View>
             </ThemedView>
           ))}
         </View>
@@ -484,12 +675,12 @@ function StatusTag({ status }: { status: IdeaStatus }) {
 }
 
 function CategoryTag({ category }: { category: IdeaCategory }) {
-  const palette = categoryColors[category];
+  const palette = getCategoryPalette(category);
 
   return (
     <View style={[styles.tag, { backgroundColor: palette.background, borderColor: palette.border }]}>
       <ThemedText type="smallBold" style={{ color: palette.text }}>
-        {IdeaCategoryLabels[category]}
+        {getIdeaCategoryLabel(category)}
       </ThemedText>
     </View>
   );
@@ -510,6 +701,7 @@ function IdeaCard({
   onToggleLike,
   onStatusChange,
   onAddFeedback,
+  onToggleFeedbackResolved,
 }: IdeaCardProps) {
   const status = normalizeIdeaStatus(idea.status);
   const category = normalizeIdeaCategory(idea.category);
@@ -604,28 +796,173 @@ function IdeaCard({
           feedbacks={feedbacks}
           isLoadingFeedbacks={isLoadingFeedbacks}
           onAddFeedback={onAddFeedback}
+          onToggleFeedbackResolved={onToggleFeedbackResolved}
         />
       ) : null}
     </ThemedView>
   );
 }
 
+function CategoryManager({
+  customCategories,
+  isBusy,
+  onRenameCategory,
+  onDeleteCategory,
+}: {
+  customCategories: IdeaCategory[];
+  isBusy?: boolean;
+  onRenameCategory: (oldName: string, nextName: string) => Promise<{ error?: string }>;
+  onDeleteCategory: (name: string) => Promise<{ error?: string }>;
+}) {
+  const theme = useTheme();
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [nextName, setNextName] = useState('');
+  const [managerError, setManagerError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  if (customCategories.length === 0) {
+    return null;
+  }
+
+  const activeCategory = selectedCategory || customCategories[0];
+
+  const handleRename = async () => {
+    setIsSaving(true);
+    setManagerError('');
+    const result = await onRenameCategory(activeCategory, nextName);
+    if (result.error) {
+      setManagerError(result.error);
+    } else {
+      setSelectedCategory('');
+      setNextName('');
+    }
+    setIsSaving(false);
+  };
+
+  const handleDelete = async () => {
+    setIsSaving(true);
+    setManagerError('');
+    const result = await onDeleteCategory(activeCategory);
+    if (result.error) {
+      setManagerError(result.error);
+    } else {
+      setSelectedCategory('');
+      setNextName('');
+    }
+    setIsSaving(false);
+  };
+
+  return (
+    <View style={styles.filterGroup}>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.filterGroupLabel}>
+        직접 추가 카테고리 관리
+      </ThemedText>
+      <View style={styles.filterRow}>
+        {customCategories.map((category) => {
+          const isSelected = activeCategory === category;
+
+          return (
+            <Pressable
+              key={category}
+              onPress={() => setSelectedCategory(category)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                {
+                  borderColor: isSelected ? '#2563eb' : '#cbd5e1',
+                  backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                },
+                pressed && styles.pressed,
+              ]}>
+              <ThemedText type="smallBold" style={{ color: isSelected ? '#1d4ed8' : theme.text }}>
+                {category}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
+      </View>
+      <View style={styles.categoryManageRow}>
+        <TextInput
+          value={nextName}
+          editable={!isBusy && !isSaving}
+          onChangeText={(value) => {
+            setNextName(value);
+            if (managerError) {
+              setManagerError('');
+            }
+          }}
+          placeholder="New name or existing category"
+          placeholderTextColor={theme.textSecondary}
+          style={[
+            styles.input,
+            styles.categoryManageInput,
+            {
+              borderColor: theme.backgroundSelected,
+              color: theme.text,
+              backgroundColor: theme.background,
+            },
+          ]}
+        />
+        <Pressable
+          disabled={isBusy || isSaving}
+          onPress={handleRename}
+          style={({ pressed }) => [styles.compactButton, (pressed || isBusy || isSaving) && styles.pressed]}>
+          <ThemedText type="smallBold">Rename</ThemedText>
+        </Pressable>
+        <Pressable
+          disabled={isBusy || isSaving}
+          onPress={handleDelete}
+          style={({ pressed }) => [styles.compactDangerButton, (pressed || isBusy || isSaving) && styles.pressed]}>
+          <ThemedText type="smallBold" style={styles.dangerButtonText}>
+            Delete
+          </ThemedText>
+        </Pressable>
+      </View>
+      {managerError ? (
+        <ThemedText type="small" style={styles.errorText}>
+          {managerError}
+        </ThemedText>
+      ) : null}
+    </View>
+  );
+}
+
 function FilterBlock({
+  categories,
+  customCategories,
   categoryFilter,
   statusFilter,
   favoriteOnly,
+  searchDraft,
+  sortMode,
   onChangeCategory,
   onChangeStatus,
   onToggleFavorite,
+  onChangeSearchDraft,
+  onSubmitSearch,
+  onChangeSort,
+  onRenameCategory,
+  onDeleteCategory,
+  isBusy,
 }: {
+  categories: IdeaCategory[];
+  customCategories: IdeaCategory[];
   categoryFilter: CategoryFilter;
   statusFilter: StatusFilter;
   favoriteOnly: boolean;
+  searchDraft: string;
+  sortMode: SortMode;
   onChangeCategory: (category: CategoryFilter) => void;
   onChangeStatus: (status: StatusFilter) => void;
   onToggleFavorite: () => void;
+  onChangeSearchDraft: (query: string) => void;
+  onSubmitSearch: () => void;
+  onChangeSort: (sortMode: SortMode) => void;
+  onRenameCategory: (oldName: string, nextName: string) => Promise<{ error?: string }>;
+  onDeleteCategory: (name: string) => Promise<{ error?: string }>;
+  isBusy?: boolean;
 }) {
   const theme = useTheme();
+  const categoryFilters: CategoryFilter[] = [allCategoryFilter, ...categories];
 
   return (
     <View style={styles.filterBlock}>
@@ -645,6 +982,60 @@ function FilterBlock({
           </ThemedText>
         </Pressable>
       </View>
+      <View style={styles.searchRow}>
+        <TextInput
+          value={searchDraft}
+          onChangeText={onChangeSearchDraft}
+          onSubmitEditing={onSubmitSearch}
+          returnKeyType="search"
+          placeholder="Search ideas"
+          placeholderTextColor={theme.textSecondary}
+          style={[
+            styles.input,
+            styles.searchInput,
+            {
+              borderColor: theme.backgroundSelected,
+              color: theme.text,
+              backgroundColor: theme.background,
+            },
+          ]}
+        />
+        <Pressable
+          onPress={onSubmitSearch}
+          style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}>
+          <ThemedText type="smallBold" style={styles.primaryButtonText}>
+            입력
+          </ThemedText>
+        </Pressable>
+      </View>
+      <View style={styles.filterGroup}>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.filterGroupLabel}>
+          Sort
+        </ThemedText>
+        <View style={styles.filterRow}>
+          {sortOptions.map((option) => {
+            const isSelected = sortMode === option.id;
+
+            return (
+              <Pressable
+                key={option.id}
+                onPress={() => onChangeSort(option.id)}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  {
+                    borderColor: isSelected ? '#93c5fd' : '#cbd5e1',
+                    backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                  },
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold" style={{ color: isSelected ? '#1d4ed8' : theme.text }}>
+                  {option.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
       <View style={styles.filterGroup}>
         <ThemedText type="small" themeColor="textSecondary" style={styles.filterGroupLabel}>
           분류
@@ -652,7 +1043,7 @@ function FilterBlock({
         <View style={styles.filterRow}>
           {categoryFilters.map((category) => {
             const isSelected = categoryFilter === category;
-            const palette = category === allCategoryFilter ? null : categoryColors[category];
+            const palette = category === allCategoryFilter ? null : getCategoryPalette(category);
             const textColor = isSelected ? palette?.text ?? theme.text : palette?.border ?? theme.text;
 
             return (
@@ -705,14 +1096,27 @@ function FilterBlock({
           })}
         </View>
       </View>
+      <CategoryManager
+        customCategories={customCategories}
+        isBusy={isBusy}
+        onRenameCategory={onRenameCategory}
+        onDeleteCategory={onDeleteCategory}
+      />
     </View>
   );
+}
+
+function buildFinalDraftText(ideas: Idea[]) {
+  return ideas
+    .map((idea, index) => `${index + 1}. ${idea.title}\n${idea.content}`)
+    .join('\n\n');
 }
 
 function FinalDraftView({ ideas }: { ideas: Idea[] }) {
   const selectedIdeas = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'selected');
   const approvedIdeas = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'approved');
   const sourceIdeas = selectedIdeas.length > 0 ? selectedIdeas : approvedIdeas;
+  const [copyMessage, setCopyMessage] = useState('');
 
   if (sourceIdeas.length === 0) {
     return (
@@ -724,6 +1128,20 @@ function FinalDraftView({ ideas }: { ideas: Idea[] }) {
       </ThemedView>
     );
   }
+
+  const finalDraftText = buildFinalDraftText(sourceIdeas);
+
+  const copyFinalDraft = async () => {
+    setCopyMessage('');
+
+    if (Platform.OS === 'web' && globalThis.navigator?.clipboard) {
+      await globalThis.navigator.clipboard.writeText(finalDraftText);
+      setCopyMessage('Copied');
+      return;
+    }
+
+    setCopyMessage('Select the text below to copy');
+  };
 
   return (
     <View style={styles.finalBlock}>
@@ -748,6 +1166,23 @@ function FinalDraftView({ ideas }: { ideas: Idea[] }) {
             </View>
           ))}
         </View>
+        <View style={styles.finalExportActions}>
+          <Pressable onPress={copyFinalDraft} style={({ pressed }) => [styles.compactButton, pressed && styles.pressed]}>
+            <ThemedText type="smallBold">Copy outline</ThemedText>
+          </Pressable>
+          {copyMessage ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              {copyMessage}
+            </ThemedText>
+          ) : null}
+        </View>
+        <TextInput
+          value={finalDraftText}
+          editable={false}
+          multiline
+          selectTextOnFocus
+          style={styles.finalExportInput}
+        />
       </ThemedView>
 
       <ThemedView type="backgroundElement" style={styles.finalPanel}>
@@ -776,13 +1211,27 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     toggleIdeaFavorite,
     updateIdeaMindMap,
     deleteIdea,
+    loadIdeas,
   } = useIdeas(projectId);
+  const usedCategories = useMemo(
+    () => ideas.map((idea) => normalizeIdeaCategory(idea.category)),
+    [ideas],
+  );
+  const {
+    categories,
+    customCategories,
+    categoryerror,
+    createCategory,
+    renameCategory,
+    deleteCategory,
+  } = useIdeaCategories(projectId, usedCategories);
   const {
     feedbacks,
     feedbacksByIdeaId,
     isLoadingFeedbacks,
     feedbackError,
     createFeedback,
+    toggleFeedbackResolved,
   } = useIdeaFeedbacks(projectId);
   const {
     likes,
@@ -795,6 +1244,9 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
   const [boardMode, setBoardMode] = useState<BoardMode>(listMode);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(allCategoryFilter);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(allStatusFilter);
+  const [searchDraft, setSearchDraft] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortMode, setSortMode] = useState<SortMode>('newest');
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [editingIdeaId, setEditingIdeaId] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
@@ -807,19 +1259,56 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     [ideaIds, likes],
   );
   const visibleIdeas = useMemo(
-    () =>
-      ideas.filter((idea) => {
+    () => {
+      const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+      const filteredIdeas = ideas.filter((idea) => {
         const matchesCategory =
           categoryFilter === allCategoryFilter || normalizeIdeaCategory(idea.category) === categoryFilter;
         const matchesStatus = statusFilter === allStatusFilter || normalizeIdeaStatus(idea.status) === statusFilter;
         const matchesFavorite = !favoriteOnly || idea.isfavorite;
+        const ideaFeedbacks = feedbacksByIdeaId.get(idea.id) ?? [];
+        const searchableText = [
+          idea.title,
+          idea.content,
+          getIdeaCategoryLabel(normalizeIdeaCategory(idea.category)),
+          getStatusLabel(normalizeIdeaStatus(idea.status)),
+          ...ideaFeedbacks.map((feedback) => feedback.content),
+        ]
+          .join(' ')
+          .toLocaleLowerCase();
+        const matchesSearch = !normalizedQuery || searchableText.includes(normalizedQuery);
 
-        return matchesCategory && matchesStatus && matchesFavorite;
-      }),
-    [categoryFilter, favoriteOnly, ideas, statusFilter],
+        return matchesCategory && matchesStatus && matchesFavorite && matchesSearch;
+      });
+
+      return [...filteredIdeas].sort((left, right) => {
+        if (sortMode === 'oldest') {
+          return left.createdat.localeCompare(right.createdat);
+        }
+
+        if (sortMode === 'likes') {
+          return (likeCountsByIdeaId.get(right.id) ?? 0) - (likeCountsByIdeaId.get(left.id) ?? 0);
+        }
+
+        if (sortMode === 'favorite') {
+          return Number(right.isfavorite) - Number(left.isfavorite) || right.createdat.localeCompare(left.createdat);
+        }
+
+        if (sortMode === 'status') {
+          return (
+            IdeaStatuses.indexOf(normalizeIdeaStatus(right.status)) -
+              IdeaStatuses.indexOf(normalizeIdeaStatus(left.status)) ||
+            right.createdat.localeCompare(left.createdat)
+          );
+        }
+
+        return right.createdat.localeCompare(left.createdat);
+      });
+    },
+    [categoryFilter, favoriteOnly, feedbacksByIdeaId, ideas, likeCountsByIdeaId, searchQuery, sortMode, statusFilter],
   );
   const editingIdea = editingIdeaId ? ideas.find((idea) => idea.id === editingIdeaId) : undefined;
-  const currentError = ideaError || mutationError || feedbackError || likeError;
+  const currentError = ideaError || mutationError || categoryerror || feedbackError || likeError;
 
   const handleCreate = async (input: IdeaInput) => {
     setIsMutating(true);
@@ -931,6 +1420,48 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     return {};
   };
 
+  const handleToggleFeedbackResolved = async (feedbackId: string, isresolved: boolean) => {
+    const result = await toggleFeedbackResolved(feedbackId, isresolved);
+
+    if (result.error) {
+      return { error: result.error };
+    }
+
+    return {};
+  };
+
+  const handleRenameCategory = async (oldName: string, nextName: string) => {
+    setMutationError('');
+    const result = await renameCategory(oldName, nextName);
+    if (result.error) {
+      setMutationError(result.error);
+      return { error: result.error };
+    }
+
+    if (categoryFilter === oldName) {
+      setCategoryFilter(result.category ?? allCategoryFilter);
+    }
+
+    await loadIdeas();
+    return {};
+  };
+
+  const handleDeleteCategory = async (name: string) => {
+    setMutationError('');
+    const result = await deleteCategory(name);
+    if (result.error) {
+      setMutationError(result.error);
+      return { error: result.error };
+    }
+
+    if (categoryFilter === name) {
+      setCategoryFilter(allCategoryFilter);
+    }
+
+    await loadIdeas();
+    return {};
+  };
+
   const handleToggleLike = async (idea: Idea) => {
     setIsMutating(true);
     setMutationError('');
@@ -996,10 +1527,13 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
       {boardMode === listMode ? (
         <>
           <IdeaForm
+            categories={categories}
+            draftKey={`ideadraft:${projectId}`}
             submitLabel="등록"
             isBusy={isMutating && !editingIdeaId}
             error={!editingIdeaId ? mutationError : ''}
             onSubmit={handleCreate}
+            onCreateCategory={createCategory}
           />
 
           {editingIdea ? (
@@ -1007,10 +1541,12 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
               <ThemedText type="smallBold">아이디어 수정</ThemedText>
               <IdeaForm
                 idea={editingIdea}
+                categories={categories}
                 submitLabel="저장"
                 isBusy={isMutating}
                 error={editingIdeaId ? mutationError : ''}
                 onSubmit={handleUpdate}
+                onCreateCategory={createCategory}
                 onCancel={() => {
                   setEditingIdeaId(null);
                   setMutationError('');
@@ -1020,12 +1556,22 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
           ) : null}
 
           <FilterBlock
+            categories={categories}
+            customCategories={customCategories}
             categoryFilter={categoryFilter}
             statusFilter={statusFilter}
             favoriteOnly={favoriteOnly}
+            searchDraft={searchDraft}
+            sortMode={sortMode}
             onChangeCategory={setCategoryFilter}
             onChangeStatus={setStatusFilter}
             onToggleFavorite={() => setFavoriteOnly((current) => !current)}
+            onChangeSearchDraft={setSearchDraft}
+            onSubmitSearch={() => setSearchQuery(searchDraft)}
+            onChangeSort={setSortMode}
+            onRenameCategory={handleRenameCategory}
+            onDeleteCategory={handleDeleteCategory}
+            isBusy={isMutating}
           />
 
           {currentError ? (
@@ -1066,6 +1612,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
                   onToggleLike={() => handleToggleLike(idea)}
                   onStatusChange={(status) => handleStatusChange(idea, status)}
                   onAddFeedback={handleAddFeedback}
+                  onToggleFeedbackResolved={handleToggleFeedbackResolved}
                 />
               ))}
             </View>
@@ -1181,6 +1728,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
+  addCategoryRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  addCategoryInlineButton: {
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  addCategoryInlineText: {
+    color: '#2563eb',
+  },
+  addCategoryInput: {
+    flex: 1,
+  },
+  addCategoryButton: {
+    minHeight: 46,
+    borderRadius: Spacing.two,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
   modeToggle: {
     flexDirection: 'row',
     gap: Spacing.one,
@@ -1226,6 +1802,32 @@ const styles = StyleSheet.create({
   },
   filterBlock: {
     gap: Spacing.two,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  searchInput: {
+    flex: 1,
+  },
+  searchButton: {
+    minHeight: 46,
+    borderRadius: Spacing.two,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  categoryManageRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  categoryManageInput: {
+    flex: 1,
+    minWidth: 180,
   },
   filterChip: {
     minHeight: 38,
@@ -1401,6 +2003,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
+  feedbackMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  feedbackResolveButton: {
+    minHeight: 30,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: Spacing.two,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  feedbackResolvedButton: {
+    borderColor: '#86efac',
+    backgroundColor: '#ecfdf5',
+  },
+  feedbackResolveText: {
+    color: '#475569',
+  },
+  feedbackResolvedText: {
+    color: '#15803d',
+  },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1482,6 +2110,24 @@ const styles = StyleSheet.create({
   finalTitle: {
     fontSize: 18,
     lineHeight: 24,
+  },
+  finalExportActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  finalExportInput: {
+    minHeight: 160,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: Spacing.two,
+    color: '#0f172a',
+    backgroundColor: '#ffffff',
+    fontSize: 14,
+    lineHeight: 20,
+    padding: Spacing.two,
+    textAlignVertical: 'top',
   },
   outlineList: {
     gap: Spacing.three,

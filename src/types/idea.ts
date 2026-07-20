@@ -13,16 +13,30 @@ export const IdeaStatusLabels: Record<IdeaStatus, string> = {
 
 export const IdeaCategories = ['planning', 'design', 'develop', 'research'] as const;
 
-export type IdeaCategory = (typeof IdeaCategories)[number];
+export type DefaultIdeaCategoryKey = (typeof IdeaCategories)[number];
 
-export const DefaultIdeaCategory: IdeaCategory = 'planning';
+export type IdeaCategory = string;
 
-export const IdeaCategoryLabels: Record<IdeaCategory, string> = {
+export const DefaultIdeaCategory: DefaultIdeaCategoryKey = 'planning';
+
+export const IdeaCategoryLabels: Record<DefaultIdeaCategoryKey, string> = {
   planning: '기획',
   design: '디자인',
   develop: '개발',
   research: '자료조사',
 };
+
+export function getIdeaCategoryLabel(category: IdeaCategory) {
+  return IdeaCategoryLabels[category as DefaultIdeaCategoryKey] ?? category;
+}
+
+export function cleanIdeaCategory(category: unknown) {
+  if (typeof category !== 'string') {
+    return '';
+  }
+
+  return category.trim().replace(/\s+/g, ' ');
+}
 
 export const MindMapSides = [
   'left',
@@ -78,11 +92,7 @@ export function normalizeIdeaStatus(status: unknown): IdeaStatus {
 }
 
 export function normalizeIdeaCategory(category: unknown): IdeaCategory {
-  if (IdeaCategories.includes(category as IdeaCategory)) {
-    return category as IdeaCategory;
-  }
-
-  return DefaultIdeaCategory;
+  return cleanIdeaCategory(category) || DefaultIdeaCategory;
 }
 
 export function normalizeMindMapSide(side: unknown): MindMapSide | null {

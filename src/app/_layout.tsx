@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
 import { AuthScreen } from '@/components/auth-screen';
+import { NotificationToastProvider } from '@/components/notification/notification-toast-provider';
 import { ThemedView } from '@/components/themed-view';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppProvider } from '@/context/AppContext';
@@ -35,8 +36,10 @@ export default function TabLayout() {
       <AppProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <AuthProvider>
-            <AnimatedSplashOverlay />
-            <AuthGate />
+            <NotificationToastProvider>
+              <AnimatedSplashOverlay />
+              <AuthGate />
+            </NotificationToastProvider>
           </AuthProvider>
         </ThemeProvider>
       </AppProvider>

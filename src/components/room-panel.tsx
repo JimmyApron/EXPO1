@@ -181,7 +181,7 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
           }}
           style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
           <ThemedText type="smallBold" style={styles.primaryButtonText}>
-            과제 만들기
+            + 새 과제
           </ThemedText>
         </Pressable>
       </View>
@@ -236,7 +236,17 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
   );
 }
 
-function RoomCard({ item, onManage }: { item: RoomWithDetails; onManage: () => void }) {
+function RoomCard({
+  item,
+  isOpen,
+  onToggle,
+  onManage,
+}: {
+  item: RoomWithDetails;
+  isOpen: boolean;
+  onToggle: () => void;
+  onManage: () => void;
+}) {
   const pendingInvites = item.invites.length;
 
   return (
@@ -264,18 +274,33 @@ function RoomCard({ item, onManage }: { item: RoomWithDetails; onManage: () => v
         <ThemedText type="small" themeColor="textSecondary">
           대기 초대 {pendingInvites}개
         </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          코드 {item.room.invitecode}
-        </ThemedText>
+        <View style={styles.roomCodeRow}>
+          <ThemedText type="small" themeColor="textSecondary">
+            코드 {item.room.invitecode}
+          </ThemedText>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${item.room.name} 방 ${isOpen ? '접기' : '펼치기'}`}
+            onPress={onToggle}
+            style={({ pressed }) => [styles.roomToggleButton, pressed && styles.pressed]}>
+            <ThemedText type="smallBold" style={styles.roomToggleText}>
+              {isOpen ? '접기' : '펼치기'}
+            </ThemedText>
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.roomActions}>
-        <Pressable onPress={onManage} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-          <ThemedText type="smallBold">방 설정/초대</ThemedText>
-        </Pressable>
-      </View>
+      {isOpen ? (
+        <>
+          <View style={styles.roomActions}>
+            <Pressable onPress={onManage} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+              <ThemedText type="smallBold">방 설정/초대</ThemedText>
+            </Pressable>
+          </View>
 
-      <RoomWorkspace roomid={item.room.id} />
+          <RoomWorkspace roomid={item.room.id} />
+        </>
+      ) : null}
     </ThemedView>
   );
 }
@@ -466,6 +491,8 @@ export function RoomPanel() {
   const [invitecode, setInvitecode] = useState('');
   const [isbusy, setIsbusy] = useState(false);
   const [mutationerror, setMutationerror] = useState('');
+  const [openRoomIds, setOpenRoomIds] = useState<Record<string, boolean>>({});
+  const [isRoomSectionOpen, setIsRoomSectionOpen] = useState(false);
 
   const selectedroom = useMemo(() => rooms.find((item) => item.room.id === selectedroomid), [rooms, selectedroomid]);
   const ownedCount = rooms.filter((item) => item.membership.role === 'owner').length;
@@ -484,70 +511,97 @@ export function RoomPanel() {
     setIsbusy(false);
   };
 
+  const toggleRoom = (roomid: string) => {
+    setOpenRoomIds((current) => ({ ...current, [roomid]: !current[roomid] }));
+  };
+
   return (
     <ThemedView style={styles.panel}>
-      <View style={styles.sectionHeader}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`내 방 섹션 ${isRoomSectionOpen ? '접기' : '펼치기'}`}
+        onPress={() => setIsRoomSectionOpen((current) => !current)}
+        style={({ pressed }) => [styles.sectionHeader, pressed && styles.pressed]}>
         <View style={styles.sectionCopy}>
           <ThemedText type="smallBold">내 방</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             방을 만들고 팀원을 초대해서 같은 과제와 아이디어 보드를 공유합니다.
           </ThemedText>
         </View>
-        <View style={styles.headerActions}>
-          <Pressable onPress={() => setIsjoinopen(true)} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-            <ThemedText type="smallBold">코드 참가</ThemedText>
-          </Pressable>
-          <Pressable onPress={() => setIscreateopen(true)} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-            <ThemedText type="smallBold" style={styles.primaryButtonText}>
-              방 만들기
+        <View style={styles.sectionHeaderMeta}>
+          <ThemedText type="small" themeColor="textSecondary">
+            {rooms.length}개
+          </ThemedText>
+          <ThemedText type="smallBold" style={styles.roomToggleText}>
+            {isRoomSectionOpen ? '접기' : '펼치기'}
+          </ThemedText>
+        </View>
+      </Pressable>
+
+      {isRoomSectionOpen ? (
+        <>
+          <View style={styles.headerActions}>
+            <Pressable onPress={() => setIsjoinopen(true)} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+              <ThemedText type="smallBold">코드 참가</ThemedText>
+            </Pressable>
+            <Pressable onPress={() => setIscreateopen(true)} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+              <ThemedText type="smallBold" style={styles.primaryButtonText}>
+                방 만들기
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          <View style={styles.summaryGrid}>
+            <ThemedView type="backgroundElement" style={styles.summaryCard}>
+              <ThemedText type="small" themeColor="textSecondary">
+                참여 중
+              </ThemedText>
+              <ThemedText type="subtitle" style={styles.summaryValue}>
+                {rooms.length}
+              </ThemedText>
+            </ThemedView>
+            <ThemedView type="backgroundElement" style={styles.summaryCard}>
+              <ThemedText type="small" themeColor="textSecondary">
+                내가 방장
+              </ThemedText>
+              <ThemedText type="subtitle" style={styles.summaryValue}>
+                {ownedCount}
+              </ThemedText>
+            </ThemedView>
+          </View>
+
+          {roomerror || mutationerror ? (
+            <ThemedText type="small" style={styles.errorText}>
+              {mutationerror || roomerror}
             </ThemedText>
-          </Pressable>
-        </View>
-      </View>
+          ) : null}
 
-      <View style={styles.summaryGrid}>
-        <ThemedView type="backgroundElement" style={styles.summaryCard}>
-          <ThemedText type="small" themeColor="textSecondary">
-            참여 중
-          </ThemedText>
-          <ThemedText type="subtitle" style={styles.summaryValue}>
-            {rooms.length}
-          </ThemedText>
-        </ThemedView>
-        <ThemedView type="backgroundElement" style={styles.summaryCard}>
-          <ThemedText type="small" themeColor="textSecondary">
-            내가 방장
-          </ThemedText>
-          <ThemedText type="subtitle" style={styles.summaryValue}>
-            {ownedCount}
-          </ThemedText>
-        </ThemedView>
-      </View>
-
-      {roomerror || mutationerror ? (
-        <ThemedText type="small" style={styles.errorText}>
-          {mutationerror || roomerror}
-        </ThemedText>
+          {isloadingrooms ? (
+            <ThemedView type="backgroundElement" style={styles.emptyState}>
+              <ActivityIndicator />
+            </ThemedView>
+          ) : rooms.length === 0 ? (
+            <ThemedView type="backgroundElement" style={styles.emptyState}>
+              <ThemedText type="smallBold">아직 참여 중인 방이 없습니다.</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
+                먼저 방을 만들면 그 안에서 팀 과제와 아이디어를 만들 수 있습니다.
+              </ThemedText>
+            </ThemedView>
+          ) : (
+            <View style={styles.list}>
+              {rooms.map((item) => (
+                <RoomCard
+                  key={item.room.id}
+                  item={item}
+                  isOpen={Boolean(openRoomIds[item.room.id])}
+                  onToggle={() => toggleRoom(item.room.id)}
+                  onManage={() => setSelectedroomid(item.room.id)}
+                />
+              ))}
+            </View>
+          )}
+        </>
       ) : null}
-
-      {isloadingrooms ? (
-        <ThemedView type="backgroundElement" style={styles.emptyState}>
-          <ActivityIndicator />
-        </ThemedView>
-      ) : rooms.length === 0 ? (
-        <ThemedView type="backgroundElement" style={styles.emptyState}>
-          <ThemedText type="smallBold">아직 참여 중인 방이 없습니다.</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-            먼저 방을 만들면 그 안에서 팀 과제와 아이디어를 만들 수 있습니다.
-          </ThemedText>
-        </ThemedView>
-      ) : (
-        <View style={styles.list}>
-          {rooms.map((item) => (
-            <RoomCard key={item.room.id} item={item} onManage={() => setSelectedroomid(item.room.id)} />
-          ))}
-        </View>
-      )}
 
       <Modal visible={iscreateopen} transparent animationType="fade" onRequestClose={() => setIscreateopen(false)}>
         <View style={styles.modalOverlay}>
@@ -668,7 +722,12 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'flex-end',
     gap: Spacing.two,
+  },
+  sectionHeaderMeta: {
+    alignItems: 'flex-end',
+    gap: Spacing.one,
   },
   summaryGrid: {
     flexDirection: 'row',
@@ -676,8 +735,8 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   summaryCard: {
-    flexGrow: 1,
-    minWidth: 150,
+    width: '48%',
+    minHeight: 96,
     gap: Spacing.one,
     borderRadius: Spacing.three,
     borderWidth: 1,
@@ -722,10 +781,31 @@ const styles = StyleSheet.create({
   roleText: {
     color: '#1d4ed8',
   },
+  roomToggleText: {
+    color: '#2563eb',
+  },
   metricRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
     gap: Spacing.two,
+  },
+  roomCodeRow: {
+    flexGrow: 1,
+    minWidth: 220,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  roomToggleButton: {
+    minHeight: 34,
+    marginLeft: 'auto',
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
   },
   roomActions: {
     flexDirection: 'row',

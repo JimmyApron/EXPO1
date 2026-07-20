@@ -52,28 +52,6 @@ from (
 where like_row.ctid = duplicate_ids.ctid
   and duplicate_ids.rownumber > 1;
 
-do $$
-begin
-  if to_regclass('public.idea_likes') is not null then
-    insert into public.idealikes (id, ideaid, userid, createdat, updatedat)
-    select
-      source_like.id,
-      source_like.idea_id,
-      source_like.user_id,
-      coalesce(source_like.created_at, now()),
-      coalesce(source_like.created_at, now())
-    from public.idea_likes source_like
-    where source_like.idea_id is not null
-      and source_like.user_id is not null
-      and not exists (
-        select 1
-        from public.idealikes target_like
-        where target_like.ideaid = source_like.idea_id
-          and target_like.userid = source_like.user_id
-      );
-  end if;
-end $$;
-
 delete from public.idealikes like_row
 where like_row.ideaid is null
   or like_row.userid is null

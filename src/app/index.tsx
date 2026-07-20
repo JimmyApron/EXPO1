@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProjectForm } from '@/components/project-form';
@@ -15,9 +15,8 @@ import { useProjectIdeaStats, type ProjectIdeaStats } from '@/hooks/use-project-
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
-import { IdeaCategoryLabels, type IdeaCategory } from '@/types/idea';
+import { getIdeaCategoryLabel, type IdeaCategory } from '@/types/idea';
 import type { Project, ProjectInput } from '@/types/project';
-import { useApp } from '../context/AppContext';
 
 
 type FavoriteProjectSummary = {
@@ -25,6 +24,8 @@ type FavoriteProjectSummary = {
   projectTitle: string;
   categories: IdeaCategory[];
 };
+
+type HomeSectionKey = 'urgent' | 'favorite' | 'all';
 
 function getDeadlineTime(deadline: string | null) {
   if (!deadline) {
@@ -117,7 +118,7 @@ function FavoriteProjectCard({ item }: { item: FavoriteProjectSummary }) {
           {item.categories.map((category) => (
             <View key={category} style={styles.categoryPill}>
               <ThemedText type="smallBold" style={styles.categoryText}>
-                {IdeaCategoryLabels[category]}
+                {getIdeaCategoryLabel(category)}
               </ThemedText>
             </View>
           ))}
@@ -134,12 +135,14 @@ export default function HomeScreen() {
   const { unreadCount } = useNotifications(projects);
   const { totals, isLoadingStats, statsError, getStatsForProject } = useProjectIdeaStats();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const { categories, addCategory } = useApp();
-  const [newCatInput, setNewCatInput] = useState('');
   const [iscreating, setIscreating] = useState(false);
   const [formerror, setFormerror] = useState('');
+  const [openSections, setOpenSections] = useState<Record<HomeSectionKey, boolean>>({
+    urgent: false,
+    favorite: false,
+    all: false,
+  });
   const theme = useTheme();
-  const colorScheme = useColorScheme(); // 시스템이 다크모드인지 확인하는 부품
 
   const isLoading = isloadingprojects || isLoadingStats;
   const urgentProjects = useMemo(
@@ -190,6 +193,10 @@ export default function HomeScreen() {
     setIscreating(false);
   };
 
+  const toggleSection = (section: HomeSectionKey) => {
+    setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+  };
+
   return (
     <ScrollView
       style={[styles.scrollView, { backgroundColor: theme.background }]}
@@ -201,7 +208,8 @@ export default function HomeScreen() {
               <View style={styles.headerTitle}>
                 <ThemedText type="subtitle">IdeaNote Lab</ThemedText>
                 <ThemedText themeColor="textSecondary" style={styles.headerCopy}>
-                  흩어진 과제 아이디어를 모으고, 상태별로 정리하고, 최종안까지 발전시키는 프로젝트 노트입니다.
+                  흩어진 과제 아이디어를 모으고, 상태별로 정리하고,{'\n'}
+                  최종안까지 발전시키는 프로젝트 노트입니다.
                 </ThemedText>
               </View>
               <View style={styles.headerActions}>
@@ -246,55 +254,6 @@ export default function HomeScreen() {
             <DashboardStat label="모은 아이디어" value={`${totals.totalIdeas}개`} />
             <DashboardStat label="최종 사용" value={`${totals.selectedIdeas}개`} tone="green" />
             <DashboardStat label="즐겨찾기" value={`${totals.favoriteIdeas}개`} tone="orange" />
-            {/* 🌟 서은님이 만든 카테고리 가로 탭 목록 */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 8 }}>
-              {categories.map((cat: string) => (
-                <TouchableOpacity
-                 key={cat}
-                  style={{
-                 paddingHorizontal: 16,
-                 paddingVertical: 8,
-                  borderRadius: 20,
-                 backgroundColor: '#007AFF',
-                  marginRight: 8,
-                 }}
-                >
-                  <ThemedText style={{ color: '#fff', fontWeight: 'bold' }}>{cat}</ThemedText>
-                </TouchableOpacity>
-             ))}
-            </ScrollView>
-
-            {/* 🌟 서은님이 만든 카테고리 직접 추가 입력창 */}
-            <ThemedView style={{ paddingHorizontal: 16, paddingBottom: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-             <TextInput
-              style={{ 
-                flex: 1, 
-                backgroundColor: colorScheme === 'dark' ? '#333' : '#f0f0f0', 
-                padding: 12, 
-                borderRadius: 8,
-               color: colorScheme === 'dark' ? '#fff' : '#000'
-              }}
-              placeholder="새 카테고리 직접 입력..."
-              placeholderTextColor="#999"
-              value={newCatInput}
-              onChangeText={setNewCatInput}
-            />
-            <TouchableOpacity
-             style={{ 
-               backgroundColor: '#007AFF', 
-                paddingVertical: 12,
-               paddingHorizontal: 16, 
-                justifyContent: 'center', 
-               borderRadius: 8 
-             }}
-              onPress={() => {
-               addCategory(newCatInput); // 보관함에 카테고리 추가
-               setNewCatInput('');       // 입력창 비우기
-             }}
-           >
-            <ThemedText style={{ color: '#fff', fontWeight: 'bold' }}>추가</ThemedText>
-         </TouchableOpacity>
-        </ThemedView>
           </View>
 
           {(projecterror || statsError) ? (
@@ -306,16 +265,28 @@ export default function HomeScreen() {
           <RoomPanel />
 
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`마감 임박 섹션 ${openSections.urgent ? '접기' : '펼치기'}`}
+              onPress={() => toggleSection('urgent')}
+              style={({ pressed }) => [styles.sectionHeader, pressed && styles.pressed]}>
               <View>
                 <ThemedText type="smallBold">마감 임박</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   먼저 챙겨야 할 과제입니다.
                 </ThemedText>
               </View>
-            </View>
+              <View style={styles.sectionHeaderMeta}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {urgentProjects.length}개
+                </ThemedText>
+                <ThemedText type="smallBold" style={styles.sectionToggleText}>
+                  {openSections.urgent ? '접기' : '펼치기'}
+                </ThemedText>
+              </View>
+            </Pressable>
 
-            {isLoading ? (
+            {openSections.urgent ? isLoading ? (
               <ThemedView type="backgroundElement" style={styles.emptyState}>
                 <ActivityIndicator />
               </ThemedView>
@@ -332,62 +303,84 @@ export default function HomeScreen() {
                   <ProjectCard key={project.id} project={project} stats={getStatsForProject(project.id)} />
                 ))}
               </View>
-            )}
+            ) : null}
           </View>
 
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`즐겨찾기 아이디어 섹션 ${openSections.favorite ? '접기' : '펼치기'}`}
+              onPress={() => toggleSection('favorite')}
+              style={({ pressed }) => [styles.sectionHeader, pressed && styles.pressed]}>
               <View>
                 <ThemedText type="smallBold">즐겨찾기 아이디어</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   다시 볼 만한 아이디어가 있는 과제입니다.
                 </ThemedText>
               </View>
-              <ThemedText type="small" themeColor="textSecondary">
-                {favoriteProjects.length}개 과제
-              </ThemedText>
-            </View>
-
-            {favoriteIdeaError ? (
-              <ThemedText type="small" style={styles.errorText}>
-                {favoriteIdeaError}
-              </ThemedText>
-            ) : null}
-
-            {isLoadingFavoriteIdeas || isloadingprojects ? (
-              <ThemedView type="backgroundElement" style={styles.emptyState}>
-                <ActivityIndicator />
-              </ThemedView>
-            ) : favoriteProjects.length === 0 ? (
-              <ThemedView type="backgroundElement" style={styles.emptyState}>
-                <ThemedText type="smallBold">즐겨찾기한 아이디어가 없습니다.</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-                  과제 상세에서 중요한 아이디어에 별표를 눌러 모아 보세요.
+              <View style={styles.sectionHeaderMeta}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {favoriteProjects.length}개
                 </ThemedText>
-              </ThemedView>
-            ) : (
-              <View style={styles.favoriteList}>
-                {favoriteProjects.map((item) => (
-                  <FavoriteProjectCard key={item.projectid} item={item} />
-                ))}
+                <ThemedText type="smallBold" style={styles.sectionToggleText}>
+                  {openSections.favorite ? '접기' : '펼치기'}
+                </ThemedText>
               </View>
-            )}
+            </Pressable>
+
+            {openSections.favorite ? (
+              <>
+                {favoriteIdeaError ? (
+                  <ThemedText type="small" style={styles.errorText}>
+                    {favoriteIdeaError}
+                  </ThemedText>
+                ) : null}
+
+                {isLoadingFavoriteIdeas || isloadingprojects ? (
+                  <ThemedView type="backgroundElement" style={styles.emptyState}>
+                    <ActivityIndicator />
+                  </ThemedView>
+                ) : favoriteProjects.length === 0 ? (
+                  <ThemedView type="backgroundElement" style={styles.emptyState}>
+                    <ThemedText type="smallBold">즐겨찾기한 아이디어가 없습니다.</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
+                      과제 상세에서 중요한 아이디어에 별표를 눌러 모아 보세요.
+                    </ThemedText>
+                  </ThemedView>
+                ) : (
+                  <View style={styles.favoriteList}>
+                    {favoriteProjects.map((item) => (
+                      <FavoriteProjectCard key={item.projectid} item={item} />
+                    ))}
+                  </View>
+                )}
+              </>
+            ) : null}
           </View>
 
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`전체 과제 섹션 ${openSections.all ? '접기' : '펼치기'}`}
+              onPress={() => toggleSection('all')}
+              style={({ pressed }) => [styles.sectionHeader, pressed && styles.pressed]}>
               <View>
                 <ThemedText type="smallBold">전체 과제</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   아이디어 수와 최종 사용 현황을 한눈에 확인하세요.
                 </ThemedText>
               </View>
-              <ThemedText type="small" themeColor="textSecondary">
-                {projects.length}개
-              </ThemedText>
-            </View>
+              <View style={styles.sectionHeaderMeta}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {projects.length}개
+                </ThemedText>
+                <ThemedText type="smallBold" style={styles.sectionToggleText}>
+                  {openSections.all ? '접기' : '펼치기'}
+                </ThemedText>
+              </View>
+            </Pressable>
 
-            {isLoading ? (
+            {openSections.all ? isLoading ? (
               <ThemedView type="backgroundElement" style={styles.emptyState}>
                 <ActivityIndicator />
               </ThemedView>
@@ -404,7 +397,7 @@ export default function HomeScreen() {
                   <ProjectCard key={project.id} project={project} stats={getStatsForProject(project.id)} />
                 ))}
               </View>
-            )}
+            ) : null}
           </View>
         </ThemedView>
       </SafeAreaView>
@@ -468,6 +461,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     minWidth: 240,
+    maxWidth: 520,
     gap: Spacing.two,
   },
   headerCopy: {
@@ -476,7 +470,9 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
+    justifyContent: 'flex-end',
+    marginLeft: 'auto',
     gap: Spacing.two,
   },
   notificationButton: {
@@ -514,8 +510,8 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   statCard: {
-    flexGrow: 1,
-    minWidth: 150,
+    width: '48%',
+    minHeight: 96,
     gap: Spacing.one,
     borderRadius: Spacing.three,
     borderWidth: 1,
@@ -539,6 +535,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: Spacing.three,
+  },
+  sectionHeaderMeta: {
+    alignItems: 'flex-end',
+    gap: Spacing.one,
+  },
+  sectionToggleText: {
+    color: '#2563eb',
   },
   favoriteList: {
     gap: Spacing.two,

@@ -10,3 +10,5 @@ Starting Metro Bundler
 spawn EPERM
 Waiting on http://localhost:8081
 Logs for your project will appear below.
+Web Bundled 6265ms node_modules\expo-router\entry.js (1438 modules)
+λ Bundled 6334ms node_modules\expo\node_modules\@expo\cli\node_modules\@expo\router-server\node\render.js (1489 modules)

@@ -9,6 +9,9 @@ const kindColors: Record<NotificationKind, { background: string; text: string }>
   deadline: { background: '#fee2e2', text: '#b91c1c' },
   ideareview: { background: '#fef3c7', text: '#92400e' },
   finalselection: { background: '#dbeafe', text: '#1d4ed8' },
+  stalledidea: { background: '#f1f5f9', text: '#475569' },
+  feedback: { background: '#dcfce7', text: '#15803d' },
+  likesurge: { background: '#fce7f3', text: '#be185d' },
 };
 
 function formatRelativeTime(value: string) {

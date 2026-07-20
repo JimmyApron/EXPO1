@@ -171,10 +171,6 @@ update ideas
 set status = 'thought'
 where status not in ('thought', 'research', 'approved', 'selected');
 
-update ideas
-set category = 'planning'
-where category not in ('planning', 'design', 'develop', 'research');
-
 alter table ideas
   drop constraint if exists ideas_status_check;
 
@@ -185,11 +181,46 @@ alter table ideas
   add constraint ideas_status_check
   check (status in ('thought', 'research', 'approved', 'selected'));
 
-alter table ideas
-  add constraint ideas_category_check
-  check (category in ('planning', 'design', 'develop', 'research'));
-
 alter table ideas disable row level security;
+
+create table if not exists ideacategories (
+  id uuid primary key default gen_random_uuid(),
+  userid uuid not null references auth.users(id) on delete cascade,
+  projectid uuid not null references projects(id) on delete cascade,
+  name text not null,
+  createdat timestamptz not null default now(),
+  updatedat timestamptz not null default now()
+);
+
+alter table ideacategories
+  add column if not exists userid uuid references auth.users(id) on delete cascade,
+  add column if not exists projectid uuid references projects(id) on delete cascade,
+  add column if not exists name text not null default '',
+  add column if not exists createdat timestamptz not null default now(),
+  add column if not exists updatedat timestamptz not null default now();
+
+delete from ideacategories
+where projectid is null
+  or userid is null
+  or btrim(name) = '';
+
+alter table ideacategories
+  alter column userid set not null,
+  alter column projectid set not null,
+  alter column name set not null,
+  alter column name drop default,
+  alter column createdat set not null,
+  alter column updatedat set not null;
+
+alter table ideacategories disable row level security;
+
+create unique index if not exists ideacategoriesprojectidnameidx
+  on ideacategories (projectid, lower(name));
+
+create index if not exists ideacategoriesuseridprojectididx
+  on ideacategories (userid, projectid);
+
+grant select, insert, update, delete on table ideacategories to authenticated;
 
 alter table projects
   add column if not exists roomid uuid null references rooms(id) on delete set null;
@@ -256,28 +287,6 @@ from (
 ) duplicate_ids
 where like_row.ctid = duplicate_ids.ctid
   and duplicate_ids.rownumber > 1;
-
-do $$
-begin
-  if to_regclass('public.idea_likes') is not null then
-    insert into idealikes (id, ideaid, userid, createdat, updatedat)
-    select
-      source_like.id,
-      source_like.idea_id,
-      source_like.user_id,
-      coalesce(source_like.created_at, now()),
-      coalesce(source_like.created_at, now())
-    from idea_likes source_like
-    where source_like.idea_id is not null
-      and source_like.user_id is not null
-      and not exists (
-        select 1
-        from idealikes target_like
-        where target_like.ideaid = source_like.idea_id
-          and target_like.userid = source_like.user_id
-      );
-  end if;
-end $$;
 
 delete from idealikes like_row
 where like_row.ideaid is null
@@ -385,12 +394,14 @@ create table if not exists feedbacks (
   userid uuid not null references auth.users(id) on delete cascade,
   ideaid uuid not null references ideas(id) on delete cascade,
   comment text not null,
+  isresolved boolean not null default false,
   createdat timestamptz not null default now(),
   updatedat timestamptz not null default now()
 );
 
 alter table feedbacks
   add column if not exists comment text not null default '',
+  add column if not exists isresolved boolean not null default false,
   add column if not exists createdat timestamptz not null default now(),
   add column if not exists updatedat timestamptz not null default now();
 
