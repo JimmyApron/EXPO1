@@ -23,9 +23,13 @@ type MindMapMutationResult = {
 type IdeaMindMapProps = {
   ideas: Idea[];
   isBusy?: boolean;
+  likeCountsByIdeaId?: Map<string, number>;
+  likedIdeaIds?: Set<string>;
+  isLoadingLikes?: boolean;
   onCreateNode: (input: IdeaInput, mindMapInput: IdeaMindMapInput) => Promise<MindMapMutationResult>;
   onUpdateNode: (id: string, input: IdeaInput) => Promise<MindMapMutationResult>;
   onPersistNodeLayout: (id: string, mindMapInput: IdeaMindMapInput) => Promise<MindMapMutationResult>;
+  onToggleLike?: (idea: Idea) => void;
 };
 
 type LayoutedIdea = Idea & {
@@ -36,7 +40,7 @@ type LayoutedIdea = Idea & {
 };
 
 const nodeWidth = 230;
-const nodeHeight = 150;
+const nodeHeight = 172;
 const mapWidth = 1320;
 const mapHeight = 820;
 const originX = mapWidth / 2;
@@ -116,11 +120,19 @@ function buildMindMapLayout(ideas: Idea[]): LayoutedIdea[] {
 function MindMapNodeCard({
   idea,
   isBusy,
+  likesCount,
+  isLiked,
+  isLoadingLikes,
   onUpdateNode,
+  onToggleLike,
 }: {
   idea: LayoutedIdea;
   isBusy: boolean;
+  likesCount: number;
+  isLiked: boolean;
+  isLoadingLikes: boolean;
   onUpdateNode: (id: string, input: IdeaInput) => Promise<MindMapMutationResult>;
+  onToggleLike?: (idea: Idea) => void;
 }) {
   const theme = useTheme();
   const status = normalizeIdeaStatus(idea.status);
@@ -210,6 +222,29 @@ function MindMapNodeCard({
           {nodeError}
         </ThemedText>
       ) : null}
+      <View style={styles.nodeReactionRow}>
+        <Pressable
+          disabled={isBusy || isLoadingLikes || !onToggleLike}
+          accessibilityRole="button"
+          accessibilityLabel={isLiked ? '공감 취소' : '공감하기'}
+          onPress={() => onToggleLike?.(idea)}
+          style={({ pressed }) => [
+            styles.nodeLikeButton,
+            isLiked && styles.activeNodeLikeButton,
+            (pressed || isBusy || isLoadingLikes) && styles.pressed,
+          ]}>
+          {isLoadingLikes ? (
+            <ActivityIndicator color={isLiked ? '#ffffff' : '#e11d48'} size="small" />
+          ) : (
+            <ThemedText type="smallBold" style={isLiked ? styles.activeNodeLikeText : styles.nodeLikeText}>
+              ♥ {likesCount}
+            </ThemedText>
+          )}
+        </Pressable>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.nodeLikeCountText}>
+          공감
+        </ThemedText>
+      </View>
       {isDirty ? (
         <View style={styles.nodeActions}>
           <Pressable
@@ -243,9 +278,13 @@ function MindMapNodeCard({
 export function IdeaMindMap({
   ideas,
   isBusy = false,
+  likeCountsByIdeaId,
+  likedIdeaIds,
+  isLoadingLikes = false,
   onCreateNode,
   onUpdateNode,
   onPersistNodeLayout,
+  onToggleLike,
 }: IdeaMindMapProps) {
   const [localError, setLocalError] = useState('');
   const persistedLayoutIds = useRef(new Set<string>());
@@ -390,7 +429,15 @@ export function IdeaMindMap({
                     +
                   </ThemedText>
                 </Pressable>
-                <MindMapNodeCard idea={idea} isBusy={isBusy} onUpdateNode={onUpdateNode} />
+                <MindMapNodeCard
+                  idea={idea}
+                  isBusy={isBusy}
+                  likesCount={likeCountsByIdeaId?.get(idea.id) ?? 0}
+                  isLiked={likedIdeaIds?.has(idea.id) ?? false}
+                  isLoadingLikes={isLoadingLikes}
+                  onUpdateNode={onUpdateNode}
+                  onToggleLike={onToggleLike}
+                />
               </View>
             ))}
           </View>
@@ -464,6 +511,37 @@ const styles = StyleSheet.create({
   },
   statusText: {
     color: '#2563eb',
+  },
+  nodeReactionRow: {
+    minHeight: 26,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  nodeLikeButton: {
+    minHeight: 26,
+    minWidth: 52,
+    borderWidth: 1,
+    borderColor: '#fecdd3',
+    borderRadius: Spacing.one,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.half,
+  },
+  activeNodeLikeButton: {
+    backgroundColor: '#e11d48',
+    borderColor: '#e11d48',
+  },
+  nodeLikeText: {
+    color: '#be123c',
+  },
+  activeNodeLikeText: {
+    color: '#ffffff',
+  },
+  nodeLikeCountText: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   nodeActions: {
     flexDirection: 'row',

@@ -1,19 +1,19 @@
-export const NotificationKinds = ['deadline', 'idea-review', 'final-selection'] as const;
+export const NotificationKinds = ['deadline', 'ideareview', 'finalselection'] as const;
 
 export type NotificationKind = (typeof NotificationKinds)[number];
 
 export const NotificationKindLabels: Record<NotificationKind, string> = {
   deadline: '마감 임박',
-  'idea-review': '아이디어 확인 필요',
-  'final-selection': '최종 선택 필요',
+  ideareview: '아이디어 확인 필요',
+  finalselection: '최종 선택 필요',
 };
 
 export type AppNotification = {
   id: string;
-  projectId: string;
+  projectid: string;
   title: string;
   message: string;
   kind: NotificationKind;
-  createdAt: string;
-  isRead: boolean;
+  createdat: string;
+  isread: boolean;
 };

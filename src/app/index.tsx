@@ -10,6 +10,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { useFavoriteIdeas } from '@/hooks/use-favorite-ideas';
+import { useNotifications } from '@/hooks/use-notifications';
 import { useProjectIdeaStats, type ProjectIdeaStats } from '@/hooks/use-project-idea-stats';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
@@ -128,6 +129,7 @@ export default function HomeScreen() {
   const { user, signout } = useAuth();
   const { projects, isloadingprojects, projecterror, createProject } = useProjects();
   const { favoriteIdeas, isLoadingFavoriteIdeas, favoriteIdeaError } = useFavoriteIdeas();
+  const { unreadCount } = useNotifications(projects);
   const { totals, isLoadingStats, statsError, getStatsForProject } = useProjectIdeaStats();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [iscreating, setIscreating] = useState(false);
@@ -204,6 +206,13 @@ export default function HomeScreen() {
                   <ThemedText type="smallBold" style={styles.notificationButtonText}>
                     알림
                   </ThemedText>
+                  {unreadCount > 0 ? (
+                    <View style={styles.notificationBadge}>
+                      <ThemedText type="smallBold" style={styles.notificationBadgeText}>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </ThemedText>
+                    </View>
+                  ) : null}
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -418,6 +427,8 @@ const styles = StyleSheet.create({
   },
   notificationButton: {
     minHeight: 44,
+    flexDirection: 'row',
+    gap: Spacing.two,
     borderRadius: Spacing.two,
     borderWidth: 1,
     borderColor: '#93c5fd',
@@ -428,6 +439,20 @@ const styles = StyleSheet.create({
   },
   notificationButtonText: {
     color: '#2563eb',
+  },
+  notificationBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563eb',
+    paddingHorizontal: Spacing.one,
+  },
+  notificationBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    lineHeight: 16,
   },
   statGrid: {
     flexDirection: 'row',

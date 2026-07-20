@@ -71,47 +71,47 @@ function createNotifications(projects: Project[], ideas: NotificationIdeaRow[], 
       const id = `deadline:${project.id}:${project.deadline}`;
       notifications.push({
         id,
-        projectId: project.id,
+        projectid: project.id,
         title: `${project.title} 마감 임박`,
         message: getDeadlineMessage(daysUntil),
         kind: 'deadline',
-        createdAt: project.updatedat,
-        isRead: readIds.has(id),
+        createdat: project.updatedat,
+        isread: readIds.has(id),
       });
     }
 
     const researchIdeas = projectIdeas.filter((idea) => normalizeIdeaStatus(idea.status) === 'research');
     if (researchIdeas.length > 0) {
-      const id = `idea-review:${project.id}`;
+      const id = `ideareview:${project.id}`;
       const latestUpdate = researchIdeas
         .map((idea) => idea.updatedat ?? '')
         .sort((left, right) => right.localeCompare(left))[0];
 
       notifications.push({
         id,
-        projectId: project.id,
+        projectid: project.id,
         title: `${project.title} 아이디어 확인`,
         message:
           researchIdeas.length === 1
             ? '조사 필요 상태의 아이디어가 있습니다.'
             : `조사 필요 상태의 아이디어가 ${researchIdeas.length}개 있습니다.`,
-        kind: 'idea-review',
-        createdAt: latestUpdate || project.updatedat,
-        isRead: readIds.has(id),
+        kind: 'ideareview',
+        createdat: latestUpdate || project.updatedat,
+        isread: readIds.has(id),
       });
     }
 
     const hasSelectedIdea = projectIdeas.some((idea) => normalizeIdeaStatus(idea.status) === 'selected');
-    if (!hasSelectedIdea) {
-      const id = `final-selection:${project.id}`;
+    if (projectIdeas.length > 0 && !hasSelectedIdea) {
+      const id = `finalselection:${project.id}`;
       notifications.push({
         id,
-        projectId: project.id,
+        projectid: project.id,
         title: `${project.title} 최종 선택 필요`,
         message: '최종 사용 아이디어가 아직 선택되지 않았습니다.',
-        kind: 'final-selection',
-        createdAt: project.updatedat,
-        isRead: readIds.has(id),
+        kind: 'finalselection',
+        createdat: project.updatedat,
+        isread: readIds.has(id),
       });
     }
 
@@ -202,10 +202,10 @@ export function useNotifications(projects: Project[]) {
       createNotifications(projects, ideas, readIds)
         .filter((notification) => !deletedIds.has(notification.id))
         .sort((left, right) => {
-          if (left.isRead !== right.isRead) {
-            return left.isRead ? 1 : -1;
+          if (left.isread !== right.isread) {
+            return left.isread ? 1 : -1;
           }
-          return right.createdAt.localeCompare(left.createdAt);
+          return right.createdat.localeCompare(left.createdat);
         }),
     [deletedIds, ideas, projects, readIds],
   );
@@ -245,7 +245,7 @@ export function useNotifications(projects: Project[]) {
 
   return {
     notifications,
-    unreadCount: notifications.filter((notification) => !notification.isRead).length,
+    unreadCount: notifications.filter((notification) => !notification.isread).length,
     isLoadingNotifications,
     notificationError,
     markAsRead,

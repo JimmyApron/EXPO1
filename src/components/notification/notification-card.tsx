@@ -7,8 +7,8 @@ import { NotificationKindLabels, type AppNotification, type NotificationKind } f
 
 const kindColors: Record<NotificationKind, { background: string; text: string }> = {
   deadline: { background: '#fee2e2', text: '#b91c1c' },
-  'idea-review': { background: '#fef3c7', text: '#92400e' },
-  'final-selection': { background: '#dbeafe', text: '#1d4ed8' },
+  ideareview: { background: '#fef3c7', text: '#92400e' },
+  finalselection: { background: '#dbeafe', text: '#1d4ed8' },
 };
 
 function formatRelativeTime(value: string) {
@@ -55,8 +55,8 @@ export function NotificationCard({
 
   return (
     <ThemedView
-      type={notification.isRead ? 'backgroundElement' : undefined}
-      style={[styles.card, !notification.isRead && styles.unreadCard]}>
+      type={notification.isread ? 'backgroundElement' : undefined}
+      style={[styles.card, !notification.isread && styles.unreadCard]}>
       <Pressable
         accessibilityRole="button"
         onPress={() => {
@@ -67,16 +67,16 @@ export function NotificationCard({
         <View style={styles.metaRow}>
           <View style={[styles.kindBadge, { backgroundColor: kindColor.background }]}>
             <ThemedText type="smallBold" style={{ color: kindColor.text }}>
-              {NotificationKindLabels[notification.kind]}
+            {NotificationKindLabels[notification.kind]}
             </ThemedText>
           </View>
           <ThemedText type="small" themeColor="textSecondary">
-            {formatRelativeTime(notification.createdAt)}
+            {formatRelativeTime(notification.createdat)}
           </ThemedText>
         </View>
 
         <View style={styles.titleRow}>
-          {!notification.isRead ? <View accessibilityLabel="읽지 않음" style={styles.unreadDot} /> : null}
+          {!notification.isread ? <View accessibilityLabel="읽지 않음" style={styles.unreadDot} /> : null}
           <ThemedText type="smallBold" style={styles.title}>
             {notification.title}
           </ThemedText>
@@ -85,7 +85,7 @@ export function NotificationCard({
       </Pressable>
 
       <View style={styles.actions}>
-        {!notification.isRead ? (
+        {!notification.isread ? (
           <Pressable onPress={onRead} style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}>
             <ThemedText type="smallBold" style={styles.readText}>
               읽음

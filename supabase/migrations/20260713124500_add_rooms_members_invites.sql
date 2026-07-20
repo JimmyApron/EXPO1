@@ -10,6 +10,7 @@ create table if not exists rooms (
 );
 
 alter table rooms
+  add column if not exists ownerid uuid references auth.users(id) on delete cascade,
   add column if not exists description text not null default '',
   add column if not exists invitecode text not null default upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)),
   add column if not exists allowmemberinvite boolean not null default true,

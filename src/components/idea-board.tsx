@@ -14,6 +14,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useIdeaFeedbacks } from '@/hooks/use-idea-feedbacks';
+import { useIdeaLikes } from '@/hooks/use-idea-likes';
 import { useIdeas } from '@/hooks/use-ideas';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
@@ -49,12 +50,16 @@ type IdeaFormProps = {
 type IdeaCardProps = {
   idea: Idea;
   feedbacks: IdeaFeedback[];
+  likesCount: number;
+  isLiked: boolean;
   isBusy?: boolean;
   isLoadingFeedbacks?: boolean;
+  isLoadingLikes?: boolean;
   compact?: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onToggleFavorite: () => void;
+  onToggleLike: () => void;
   onStatusChange: (status: IdeaStatus) => void;
   onAddFeedback: (ideaId: string, content: string) => Promise<{ error?: string }>;
 };
@@ -493,12 +498,16 @@ function CategoryTag({ category }: { category: IdeaCategory }) {
 function IdeaCard({
   idea,
   feedbacks,
+  likesCount,
+  isLiked,
   isBusy = false,
   isLoadingFeedbacks = false,
+  isLoadingLikes = false,
   compact = false,
   onEdit,
   onDelete,
   onToggleFavorite,
+  onToggleLike,
   onStatusChange,
   onAddFeedback,
 }: IdeaCardProps) {
@@ -553,6 +562,32 @@ function IdeaCard({
       <ThemedText themeColor="textSecondary" style={styles.ideaContent}>
         {idea.content}
       </ThemedText>
+      <View style={styles.reactionRow}>
+        <Pressable
+          disabled={isBusy || isLoadingLikes}
+          onPress={onToggleLike}
+          accessibilityRole="button"
+          accessibilityLabel={isLiked ? '공감 취소' : '공감하기'}
+          style={({ pressed }) => [
+            styles.likeButton,
+            isLiked && styles.activeLikeButton,
+            (pressed || isBusy || isLoadingLikes) && styles.pressed,
+          ]}>
+          {isLoadingLikes ? (
+            <ActivityIndicator color={isLiked ? '#ffffff' : '#e11d48'} size="small" />
+          ) : (
+            <ThemedText type="smallBold" style={isLiked ? styles.activeLikeMark : styles.likeMark}>
+              ♥
+            </ThemedText>
+          )}
+          <ThemedText type="smallBold" style={isLiked ? styles.activeLikeText : styles.likeText}>
+            공감
+          </ThemedText>
+        </Pressable>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.likeCountText}>
+          팀원 {likesCount}명이 공감
+        </ThemedText>
+      </View>
       {nextStatus ? (
         <Pressable
           disabled={isBusy}
@@ -749,6 +784,14 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     feedbackError,
     createFeedback,
   } = useIdeaFeedbacks(projectId);
+  const {
+    likes,
+    likeCountsByIdeaId,
+    likedIdeaIds,
+    isLoadingLikes,
+    likeError,
+    toggleLike,
+  } = useIdeaLikes(projectId);
   const [boardMode, setBoardMode] = useState<BoardMode>(listMode);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(allCategoryFilter);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(allStatusFilter);
@@ -758,6 +801,11 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
   const [mutationError, setMutationError] = useState('');
 
   const favoriteCount = useMemo(() => ideas.filter((idea) => idea.isfavorite).length, [ideas]);
+  const ideaIds = useMemo(() => new Set(ideas.map((idea) => idea.id)), [ideas]);
+  const likeCount = useMemo(
+    () => likes.filter((like) => ideaIds.has(like.ideaid)).length,
+    [ideaIds, likes],
+  );
   const visibleIdeas = useMemo(
     () =>
       ideas.filter((idea) => {
@@ -771,7 +819,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     [categoryFilter, favoriteOnly, ideas, statusFilter],
   );
   const editingIdea = editingIdeaId ? ideas.find((idea) => idea.id === editingIdeaId) : undefined;
-  const currentError = ideaError || mutationError || feedbackError;
+  const currentError = ideaError || mutationError || feedbackError || likeError;
 
   const handleCreate = async (input: IdeaInput) => {
     setIsMutating(true);
@@ -883,6 +931,18 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     return {};
   };
 
+  const handleToggleLike = async (idea: Idea) => {
+    setIsMutating(true);
+    setMutationError('');
+
+    const result = await toggleLike(idea.id, likedIdeaIds.has(idea.id));
+    if (result.error) {
+      setMutationError(result.error);
+    }
+
+    setIsMutating(false);
+  };
+
   const handleDelete = (ideaId: string) => {
     confirmDelete(async () => {
       setIsMutating(true);
@@ -907,7 +967,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
         <View style={styles.boardTitleBlock}>
           <ThemedText type="smallBold">과제 진행 보드</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            전체 {ideas.length}개 · 즐겨찾기 {favoriteCount}개 · 피드백 {feedbacks.length}개
+            전체 {ideas.length}개 · 공감 {likeCount}개 · 즐겨찾기 {favoriteCount}개 · 피드백 {feedbacks.length}개
           </ThemedText>
         </View>
       </View>
@@ -992,14 +1052,18 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
                   key={idea.id}
                   idea={idea}
                   feedbacks={feedbacksByIdeaId.get(idea.id) ?? []}
+                  likesCount={likeCountsByIdeaId.get(idea.id) ?? 0}
+                  isLiked={likedIdeaIds.has(idea.id)}
                   isBusy={isMutating}
                   isLoadingFeedbacks={isLoadingFeedbacks}
+                  isLoadingLikes={isLoadingLikes}
                   onEdit={() => {
                     setEditingIdeaId(idea.id);
                     setMutationError('');
                   }}
                   onDelete={() => handleDelete(idea.id)}
                   onToggleFavorite={() => handleToggleFavorite(idea)}
+                  onToggleLike={() => handleToggleLike(idea)}
                   onStatusChange={(status) => handleStatusChange(idea, status)}
                   onAddFeedback={handleAddFeedback}
                 />
@@ -1025,9 +1089,13 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
             <IdeaMindMap
               ideas={ideas}
               isBusy={isMutating}
+              likeCountsByIdeaId={likeCountsByIdeaId}
+              likedIdeaIds={likedIdeaIds}
+              isLoadingLikes={isLoadingLikes}
               onCreateNode={handleCreateMindMapNode}
               onUpdateNode={handleUpdateMindMapNode}
               onPersistNodeLayout={handlePersistMindMapLayout}
+              onToggleLike={handleToggleLike}
             />
           )}
         </>
@@ -1235,6 +1303,43 @@ const styles = StyleSheet.create({
   ideaContent: {
     fontSize: 15,
     lineHeight: 22,
+  },
+  reactionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  likeButton: {
+    minHeight: 36,
+    borderWidth: 1,
+    borderColor: '#fecdd3',
+    borderRadius: Spacing.two,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+  },
+  activeLikeButton: {
+    backgroundColor: '#e11d48',
+    borderColor: '#e11d48',
+  },
+  likeMark: {
+    color: '#e11d48',
+  },
+  activeLikeMark: {
+    color: '#ffffff',
+  },
+  likeText: {
+    color: '#be123c',
+  },
+  activeLikeText: {
+    color: '#ffffff',
+  },
+  likeCountText: {
+    lineHeight: 20,
   },
   nextStatusButton: {
     alignSelf: 'flex-start',

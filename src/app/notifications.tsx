@@ -84,7 +84,7 @@ export default function NotificationsScreen() {
                   notification={notification}
                   onRead={() => markAsRead(notification.id)}
                   onDelete={() => deleteNotification(notification.id)}
-                  onOpenProject={() => router.push(`/projects/${notification.projectId}` as Href)}
+                  onOpenProject={() => router.push(`/projects/${notification.projectid}` as Href)}
                 />
               ))}
             </View>
