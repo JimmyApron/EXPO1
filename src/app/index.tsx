@@ -199,6 +199,13 @@ export default function HomeScreen() {
               </View>
               <View style={styles.headerActions}>
                 <Pressable
+                  onPress={() => router.push('/notifications' as Href)}
+                  style={({ pressed }) => [styles.notificationButton, pressed && styles.pressed]}>
+                  <ThemedText type="smallBold" style={styles.notificationButtonText}>
+                    알림
+                  </ThemedText>
+                </Pressable>
+                <Pressable
                   onPress={() => {
                     setFormerror('');
                     setIsCreateOpen(true);
@@ -408,6 +415,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.two,
+  },
+  notificationButton: {
+    minHeight: 44,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#93c5fd',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  notificationButtonText: {
+    color: '#2563eb',
   },
   statGrid: {
     flexDirection: 'row',
