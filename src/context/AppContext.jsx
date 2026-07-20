@@ -376,9 +376,22 @@ export const AppProvider = ({ children }) => {
       toggleRoadmapNode,
       initMentorship,
       releaseEscrowPoints,
-      chargePoints
+      chargePoints,
+      categories,
+      addCategory
     }}>
       {children}
     </AppContext.Provider>
   );
 };
+
+// 🌟 서은님이 새로 만든 카테고리 목록 보관함!
+  const [categories, setCategories] = useState(['all', 'major', 'project', 'mentoring', 'skill', 'career']);
+
+  // 🌟 새 카테고리를 직접 추가하는 리모컨 함수
+  const addCategory = (newCategory) => {
+    // 입력한 카테고리가 비어있지 않고, 기존 목록에 없을 때만 추가합니다!
+    if (newCategory.trim() !== '' && !categories.includes(newCategory)) {
+      setCategories([...categories, newCategory]);
+    }
+  };
