@@ -8,14 +8,12 @@ import {
   normalizeRoomRole,
   type Room,
   type RoomInput,
-  type RoomInvite,
   type RoomMember,
   type RoomWithDetails,
 } from '@/types/room';
 
 type RoomMutationResult = {
   room?: RoomWithDetails;
-  invite?: RoomInvite;
   error?: string;
 };
 
@@ -27,9 +25,8 @@ type ProfileRow = {
 
 const roomSelect = 'id, ownerid, name, description, invitecode, allowmemberinvite, createdat, updatedat';
 const memberSelect = 'id, roomid, userid, role, createdat, updatedat';
-const inviteSelect = 'id, roomid, invitedemail, invitedby, code, status, expiresat, createdat, updatedat';
 const missingSchemaMessage =
-  '방 기능 DB 테이블이 아직 Supabase에 적용되지 않았습니다. Supabase SQL Editor에서 rooms, roommembers, roominvites 생성 SQL을 먼저 실행해 주세요.';
+  '방 기능 DB 테이블이 아직 Supabase에 적용되지 않았습니다. Supabase SQL Editor에서 rooms, roommembers 생성 SQL을 먼저 실행해 주세요.';
 
 function generateInviteCode() {
   return Math.random().toString(36).slice(2, 10).toUpperCase();
@@ -61,8 +58,7 @@ function getRoomErrorMessage(error: { message?: string; code?: string } | null) 
     error.code === 'PGRST205' ||
     message.includes('schema cache') ||
     message.includes('rooms') ||
-    message.includes('roommembers') ||
-    message.includes('roominvites')
+    message.includes('roommembers')
   ) {
     return missingSchemaMessage;
   }
@@ -78,20 +74,6 @@ function normalizeRoom(row: Partial<Room>): Room {
     description: row.description ?? '',
     invitecode: row.invitecode ?? '',
     allowmemberinvite: row.allowmemberinvite !== false,
-    createdat: row.createdat ?? '',
-    updatedat: row.updatedat ?? '',
-  };
-}
-
-function normalizeInvite(row: Partial<RoomInvite>): RoomInvite {
-  return {
-    id: row.id ?? '',
-    roomid: row.roomid ?? '',
-    invitedemail: row.invitedemail ?? null,
-    invitedby: row.invitedby ?? '',
-    code: row.code ?? '',
-    status: row.status ?? 'pending',
-    expiresat: row.expiresat ?? null,
     createdat: row.createdat ?? '',
     updatedat: row.updatedat ?? '',
   };
@@ -117,21 +99,13 @@ function buildRoomDetails(
   userId: string,
   rooms: Room[],
   members: RoomMember[],
-  invites: RoomInvite[],
 ) {
   const membersByRoomId = new Map<string, RoomMember[]>();
-  const invitesByRoomId = new Map<string, RoomInvite[]>();
 
   members.forEach((member) => {
     const current = membersByRoomId.get(member.roomid) ?? [];
     current.push(member);
     membersByRoomId.set(member.roomid, current);
-  });
-
-  invites.forEach((invite) => {
-    const current = invitesByRoomId.get(invite.roomid) ?? [];
-    current.push(invite);
-    invitesByRoomId.set(invite.roomid, current);
   });
 
   return rooms
@@ -147,7 +121,7 @@ function buildRoomDetails(
         room,
         membership,
         members: roomMembers,
-        invites: invitesByRoomId.get(room.id) ?? [],
+        invites: [],
       };
     })
     .filter(Boolean) as RoomWithDetails[];
@@ -193,19 +167,13 @@ export function useRooms() {
       return;
     }
 
-    const [{ data: roomRows, error: roomsError }, { data: memberRows, error: membersError }, { data: inviteRows, error: invitesError }] =
+    const [{ data: roomRows, error: roomsError }, { data: memberRows, error: membersError }] =
       await Promise.all([
         supabase.from('rooms').select(roomSelect).in('id', roomIds).order('createdat', { ascending: false }),
         supabase.from('roommembers').select(memberSelect).in('roomid', roomIds).order('createdat', { ascending: true }),
-        supabase
-          .from('roominvites')
-          .select(inviteSelect)
-          .in('roomid', roomIds)
-          .eq('status', 'pending')
-          .order('createdat', { ascending: false }),
       ]);
 
-    const firstError = roomsError || membersError || invitesError;
+    const firstError = roomsError || membersError;
     if (firstError) {
       setRoomerror(getRoomErrorMessage(firstError));
       setRooms([]);
@@ -233,9 +201,8 @@ export function useRooms() {
     const normalizedMembers = (memberRows ?? []).map((row) =>
       normalizeMember(row as Partial<RoomMember>, profiles),
     );
-    const normalizedInvites = (inviteRows ?? []).map((row) => normalizeInvite(row as Partial<RoomInvite>));
 
-    setRooms(buildRoomDetails(user.id, normalizedRooms, normalizedMembers, normalizedInvites));
+    setRooms(buildRoomDetails(user.id, normalizedRooms, normalizedMembers));
     setIsloadingrooms(false);
   }, [user]);
 
@@ -370,8 +337,8 @@ export function useRooms() {
     [roomById, user],
   );
 
-  const createInvite = useCallback(
-    async (roomid: string, invitedemail: string): Promise<RoomMutationResult> => {
+  const leaveRoom = useCallback(
+    async (roomid: string) => {
       if (!user) {
         return { error: '로그인이 필요합니다.' };
       }
@@ -381,57 +348,16 @@ export function useRooms() {
         return { error: '방을 찾을 수 없습니다.' };
       }
 
-      const canInvite = canManageRoom(current.membership.role) || current.room.allowmemberinvite;
-      if (!canInvite) {
-        return { error: '초대 권한이 없습니다.' };
-      }
-
-      const email = invitedemail.trim().toLowerCase() || null;
-      const now = new Date().toISOString();
-      const { data, error } = await supabase
-        .from('roominvites')
-        .insert({
-          roomid,
-          invitedemail: email,
-          invitedby: user.id,
-          code: generateInviteCode(),
-          status: 'pending',
-          expiresat: null,
-          createdat: now,
-          updatedat: now,
-        })
-        .select(inviteSelect)
-        .single();
-
-      if (error) {
-        const message = getRoomErrorMessage(error);
-        setRoomerror(message);
-        return { error: message };
-      }
-
-      const invite = normalizeInvite(data as Partial<RoomInvite>);
-      setRooms((items) =>
-        items.map((item) =>
-          item.room.id === roomid ? { ...item, invites: [invite, ...item.invites] } : item,
-        ),
-      );
-      return { invite };
-    },
-    [roomById, user],
-  );
-
-  const cancelInvite = useCallback(
-    async (roomid: string, inviteid: string) => {
-      const current = roomById.get(roomid);
-      if (!current || !canManageRoom(current.membership.role)) {
-        return { error: '초대를 취소할 권한이 없습니다.' };
+      if (canOwnRoom(current.membership.role)) {
+        return { error: '방장은 방 나가기 대신 방 삭제를 사용해 주세요.' };
       }
 
       const { error } = await supabase
-        .from('roominvites')
-        .update({ status: 'canceled', updatedat: new Date().toISOString() })
-        .eq('id', inviteid)
-        .eq('roomid', roomid);
+        .from('roommembers')
+        .delete()
+        .eq('roomid', roomid)
+        .eq('userid', user.id)
+        .neq('role', 'owner');
 
       if (error) {
         const message = getRoomErrorMessage(error);
@@ -439,16 +365,10 @@ export function useRooms() {
         return { error: message };
       }
 
-      setRooms((items) =>
-        items.map((item) =>
-          item.room.id === roomid
-            ? { ...item, invites: item.invites.filter((invite) => invite.id !== inviteid) }
-            : item,
-        ),
-      );
+      setRooms((items) => items.filter((item) => item.room.id !== roomid));
       return {};
     },
-    [roomById],
+    [roomById, user],
   );
 
   const joinRoomByCode = useCallback(
@@ -462,39 +382,35 @@ export function useRooms() {
         return { error: '초대코드를 입력해 주세요.' };
       }
 
-      const { data: inviteRow, error: inviteError } = await supabase
-        .from('roominvites')
-        .select(inviteSelect)
-        .eq('code', code)
-        .eq('status', 'pending')
+      const { data: roomRow, error: roomError } = await supabase
+        .from('rooms')
+        .select(roomSelect)
+        .eq('invitecode', code)
         .maybeSingle();
 
-      if (inviteError) {
-        const message = getRoomErrorMessage(inviteError);
+      if (roomError) {
+        const message = getRoomErrorMessage(roomError);
         setRoomerror(message);
         return { error: message };
       }
 
-      if (!inviteRow) {
+      if (!roomRow) {
         return { error: '사용 가능한 초대코드를 찾을 수 없습니다.' };
       }
 
-      const invite = normalizeInvite(inviteRow as Partial<RoomInvite>);
-      if (invite.invitedemail && user.email && invite.invitedemail !== user.email.toLowerCase()) {
-        return { error: '이 이메일로 받은 초대가 아닙니다.' };
-      }
+      const room = normalizeRoom(roomRow as Partial<Room>);
 
       const { data: existingMember } = await supabase
         .from('roommembers')
         .select(memberSelect)
-        .eq('roomid', invite.roomid)
+        .eq('roomid', room.id)
         .eq('userid', user.id)
         .maybeSingle();
 
       const now = new Date().toISOString();
       if (!existingMember) {
         const { error: memberError } = await supabase.from('roommembers').insert({
-          roomid: invite.roomid,
+          roomid: room.id,
           userid: user.id,
           role: 'member',
           createdat: now,
@@ -506,17 +422,6 @@ export function useRooms() {
           setRoomerror(message);
           return { error: message };
         }
-      }
-
-      const { error: updateError } = await supabase
-        .from('roominvites')
-        .update({ status: 'accepted', updatedat: now })
-        .eq('id', invite.id);
-
-      if (updateError) {
-        const message = getRoomErrorMessage(updateError);
-        setRoomerror(message);
-        return { error: message };
       }
 
       await loadRooms();
@@ -585,8 +490,7 @@ export function useRooms() {
     createRoom,
     updateRoom,
     deleteRoom,
-    createInvite,
-    cancelInvite,
+    leaveRoom,
     joinRoomByCode,
     changeMemberRole,
     removeMember,

@@ -1,6 +1,7 @@
+import * as Clipboard from 'expo-clipboard';
 import { router, type Href } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
@@ -26,7 +27,6 @@ function RoomForm({ room, submitLabel, isbusy = false, error, onSubmit, onCancel
   const theme = useTheme();
   const [name, setName] = useState(room?.room.name ?? '');
   const [description, setDescription] = useState(room?.room.description ?? '');
-  const [allowmemberinvite, setAllowmemberinvite] = useState(room?.room.allowmemberinvite ?? true);
   const [nameerror, setNameerror] = useState('');
 
   const inputStyle = [
@@ -44,7 +44,7 @@ function RoomForm({ room, submitLabel, isbusy = false, error, onSubmit, onCancel
       return;
     }
 
-    await onSubmit({ name, description, allowmemberinvite });
+    await onSubmit({ name, description, allowmemberinvite: room?.room.allowmemberinvite ?? true });
     setNameerror('');
   };
 
@@ -83,16 +83,6 @@ function RoomForm({ room, submitLabel, isbusy = false, error, onSubmit, onCancel
           placeholderTextColor={theme.textSecondary}
           style={[inputStyle, styles.multilineInput]}
         />
-      </View>
-
-      <View style={styles.switchRow}>
-        <View style={styles.switchCopy}>
-          <ThemedText type="smallBold">멤버 초대 허용</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            켜면 방장/관리자 외 멤버도 초대코드를 만들 수 있습니다.
-          </ThemedText>
-        </View>
-        <Switch value={allowmemberinvite} onValueChange={setAllowmemberinvite} disabled={isbusy} />
       </View>
 
       {error ? (
@@ -139,6 +129,32 @@ function RoomProjectCard({ project }: { project: Project }) {
       </View>
       <ThemedText type="small" themeColor="textSecondary">
         {formatDeadlineLabel(project.deadline)}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
+function InviteCodeCopyButton({ code }: { code: string }) {
+  const [iscopied, setIscopied] = useState(false);
+
+  const handleCopy = async () => {
+    const didCopy = await Clipboard.setStringAsync(code);
+    if (!didCopy) {
+      return;
+    }
+
+    setIscopied(true);
+    globalThis.setTimeout(() => setIscopied(false), 1600);
+  };
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`초대코드 ${code} 복사`}
+      onPress={handleCopy}
+      style={({ pressed }) => [styles.codeCopyButton, pressed && styles.pressed]}>
+      <ThemedText type="smallBold" style={styles.roomToggleText}>
+        {iscopied ? '복사됨' : '복사'}
       </ThemedText>
     </Pressable>
   );
@@ -247,8 +263,6 @@ function RoomCard({
   onToggle: () => void;
   onManage: () => void;
 }) {
-  const pendingInvites = item.invites.length;
-
   return (
     <ThemedView type="backgroundElement" style={styles.roomCard}>
       <View style={styles.roomCardHeader}>
@@ -271,13 +285,11 @@ function RoomCard({
         <ThemedText type="small" themeColor="textSecondary">
           멤버 {item.members.length}명
         </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          대기 초대 {pendingInvites}개
-        </ThemedText>
         <View style={styles.roomCodeRow}>
           <ThemedText type="small" themeColor="textSecondary">
             코드 {item.room.invitecode}
           </ThemedText>
+          <InviteCodeCopyButton code={item.room.invitecode} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${item.room.name} 방 ${isOpen ? '접기' : '펼치기'}`}
@@ -294,7 +306,7 @@ function RoomCard({
         <>
           <View style={styles.roomActions}>
             <Pressable onPress={onManage} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-              <ThemedText type="smallBold">방 설정/초대</ThemedText>
+              <ThemedText type="smallBold">방 설정/멤버</ThemedText>
             </Pressable>
           </View>
 
@@ -312,8 +324,7 @@ function RoomManager({
   onClose,
   onUpdate,
   onDelete,
-  onInvite,
-  onCancelInvite,
+  onLeave,
   onChangeRole,
   onRemoveMember,
 }: {
@@ -323,13 +334,10 @@ function RoomManager({
   onClose: () => void;
   onUpdate: (input: RoomInput) => Promise<void>;
   onDelete: () => Promise<void>;
-  onInvite: (email: string) => Promise<void>;
-  onCancelInvite: (inviteid: string) => Promise<void>;
+  onLeave: () => Promise<void>;
   onChangeRole: (memberid: string, role: 'admin' | 'member') => Promise<void>;
   onRemoveMember: (memberid: string) => Promise<void>;
 }) {
-  const theme = useTheme();
-  const [inviteemail, setInviteemail] = useState('');
   const canManage = canManageRoom(item.membership.role);
   const canOwn = canOwnRoom(item.membership.role);
 
@@ -362,67 +370,17 @@ function RoomManager({
 
       <ThemedView type="backgroundElement" style={styles.form}>
         <View style={styles.sectionHeader}>
-          <ThemedText type="smallBold">멤버 초대</ThemedText>
+          <ThemedText type="smallBold">초대코드</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            이메일은 선택 사항입니다.
+            이 코드를 알려주면 누구나 코드 참가로 방에 들어올 수 있습니다.
           </ThemedText>
         </View>
-        <View style={styles.inviteRow}>
-          <TextInput
-            value={inviteemail}
-            editable={!isbusy}
-            onChangeText={setInviteemail}
-            placeholder="member@example.com"
-            placeholderTextColor={theme.textSecondary}
-            style={[
-              styles.input,
-              {
-                flex: 1,
-                borderColor: theme.backgroundSelected,
-                color: theme.text,
-                backgroundColor: theme.background,
-              },
-            ]}
-          />
-          <Pressable
-            disabled={isbusy}
-            onPress={async () => {
-              await onInvite(inviteemail);
-              setInviteemail('');
-            }}
-            style={({ pressed }) => [styles.primaryButton, (pressed || isbusy) && styles.pressed]}>
-            <ThemedText type="smallBold" style={styles.primaryButtonText}>
-              초대
-            </ThemedText>
-          </Pressable>
-        </View>
-
-        {item.invites.length === 0 ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            대기 중인 초대가 없습니다.
+        <View style={styles.codeBox}>
+          <ThemedText type="subtitle" style={styles.codeText}>
+            {item.room.invitecode}
           </ThemedText>
-        ) : (
-          <View style={styles.list}>
-            {item.invites.map((invite) => (
-              <View key={invite.id} style={styles.listItem}>
-                <View style={styles.listItemCopy}>
-                  <ThemedText type="smallBold">{invite.code}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {invite.invitedemail || '이메일 제한 없음'}
-                  </ThemedText>
-                </View>
-                {canManage ? (
-                  <Pressable
-                    disabled={isbusy}
-                    onPress={() => onCancelInvite(invite.id)}
-                    style={({ pressed }) => [styles.compactButton, (pressed || isbusy) && styles.pressed]}>
-                    <ThemedText type="smallBold">취소</ThemedText>
-                  </Pressable>
-                ) : null}
-              </View>
-            ))}
-          </View>
-        )}
+          <InviteCodeCopyButton code={item.room.invitecode} />
+        </View>
       </ThemedView>
 
       <ThemedView type="backgroundElement" style={styles.form}>
@@ -465,7 +423,13 @@ function RoomManager({
             방 삭제
           </ThemedText>
         </Pressable>
-      ) : null}
+      ) : (
+        <Pressable disabled={isbusy} onPress={onLeave} style={({ pressed }) => [styles.fullDangerButton, (pressed || isbusy) && styles.pressed]}>
+          <ThemedText type="smallBold" style={styles.primaryButtonText}>
+            방 나가기
+          </ThemedText>
+        </Pressable>
+      )}
     </ScrollView>
   );
 }
@@ -479,8 +443,7 @@ export function RoomPanel() {
     createRoom,
     updateRoom,
     deleteRoom,
-    createInvite,
-    cancelInvite,
+    leaveRoom,
     joinRoomByCode,
     changeMemberRole,
     removeMember,
@@ -525,7 +488,7 @@ export function RoomPanel() {
         <View style={styles.sectionCopy}>
           <ThemedText type="smallBold">내 방</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            방을 만들고 팀원을 초대해서 같은 과제와 아이디어 보드를 공유합니다.
+            방을 만들고 초대코드로 팀원을 불러 같은 과제와 아이디어 보드를 공유합니다.
           </ThemedText>
         </View>
         <View style={styles.sectionHeaderMeta}>
@@ -690,8 +653,7 @@ export function RoomPanel() {
                 onClose={() => setSelectedroomid(null)}
                 onUpdate={(input) => runMutation(() => updateRoom(selectedroom.room.id, input))}
                 onDelete={() => runMutation(() => deleteRoom(selectedroom.room.id), () => setSelectedroomid(null))}
-                onInvite={(email) => runMutation(() => createInvite(selectedroom.room.id, email))}
-                onCancelInvite={(inviteid) => runMutation(() => cancelInvite(selectedroom.room.id, inviteid))}
+                onLeave={() => runMutation(() => leaveRoom(selectedroom.room.id), () => setSelectedroomid(null))}
                 onChangeRole={(memberid, role) => runMutation(() => changeMemberRole(selectedroom.room.id, memberid, role))}
                 onRemoveMember={(memberid) => runMutation(() => removeMember(selectedroom.room.id, memberid))}
               />
@@ -794,6 +756,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minWidth: 220,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
@@ -882,20 +845,32 @@ const styles = StyleSheet.create({
     minHeight: 96,
     textAlignVertical: 'top',
   },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-  },
-  switchCopy: {
-    flex: 1,
-    gap: Spacing.one,
-  },
-  inviteRow: {
+  codeBox: {
+    minHeight: 56,
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.two,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  codeText: {
+    color: '#1d4ed8',
+    letterSpacing: 1,
+  },
+  codeCopyButton: {
+    minHeight: 34,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
   },
   listItem: {
     flexDirection: 'row',

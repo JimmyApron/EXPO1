@@ -57,6 +57,7 @@ const mapPadding = 48;
 const minMapZoom = 0.5;
 const maxMapZoom = 1.6;
 const mapZoomStep = 0.1;
+const mapViewportHeight = 620;
 const directionOffsets = [
   { side: 'right' as const, x: 340, y: 0 },
   { side: 'left' as const, x: -340, y: 0 },
@@ -652,8 +653,16 @@ export function IdeaMindMap({
           </Pressable>
         </View>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator>
-        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator
+        style={styles.mapViewport}
+        contentContainerStyle={styles.horizontalMapContent}>
+        <ScrollView
+          nestedScrollEnabled
+          showsVerticalScrollIndicator
+          style={styles.verticalMapScroll}
+          contentContainerStyle={styles.verticalMapContent}>
           <View style={[styles.scaledMapFrame, { width: scaledMapWidth, height: scaledMapHeight }]}>
             <View
               style={[
@@ -756,6 +765,8 @@ export function IdeaMindMap({
 const styles = StyleSheet.create({
   container: {
     gap: Spacing.two,
+    alignSelf: 'stretch',
+    width: '100%',
   },
   mapToolbar: {
     flexDirection: 'row',
@@ -801,6 +812,24 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontSize: 13,
     lineHeight: 17,
+  },
+  mapViewport: {
+    width: '100%',
+    height: mapViewportHeight,
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: Spacing.two,
+    backgroundColor: '#f8fafc',
+  },
+  horizontalMapContent: {
+    minHeight: mapViewportHeight,
+  },
+  verticalMapScroll: {
+    height: mapViewportHeight,
+  },
+  verticalMapContent: {
+    minHeight: mapViewportHeight,
   },
   scaledMapFrame: {
     position: 'relative',
