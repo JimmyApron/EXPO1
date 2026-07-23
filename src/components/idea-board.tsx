@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,10 +17,12 @@ import { Spacing } from '@/constants/theme';
 import { useIdeaFeedbacks } from '@/hooks/use-idea-feedbacks';
 import { useIdeaCategories } from '@/hooks/use-idea-categories';
 import { useIdeaLikes } from '@/hooks/use-idea-likes';
+import { useFinalIdeaAnalysis } from '@/hooks/use-final-idea-analysis';
 import { useIdeas } from '@/hooks/use-ideas';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import type { IdeaFeedback } from '@/types/feedback';
+import type { FinalIdeaAnalysis, FinalIdeaAnalysisResult, FinalAnalysisLevel } from '@/types/final-analysis';
 import {
   IdeaStatusLabels,
   IdeaStatuses,
@@ -1112,20 +1114,171 @@ function buildFinalDraftText(ideas: Idea[]) {
     .join('\n\n');
 }
 
-function FinalDraftView({ ideas }: { ideas: Idea[] }) {
+function AnalysisLevelBadge({ value }: { value: FinalAnalysisLevel }) {
+  const palette =
+    value === '높음'
+      ? { background: '#ecfdf5', border: '#86efac', text: '#15803d' }
+      : value === '보통'
+        ? { background: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' }
+        : { background: '#fff7ed', border: '#fdba74', text: '#c2410c' };
+
+  return (
+    <View style={[styles.analysisBadge, { backgroundColor: palette.background, borderColor: palette.border }]}>
+      <ThemedText type="smallBold" style={{ color: palette.text }}>
+        {value}
+      </ThemedText>
+    </View>
+  );
+}
+
+function AnalysisBulletList({ items }: { items: string[] }) {
+  return (
+    <View style={styles.analysisBulletList}>
+      {items.map((item, index) => (
+        <View key={`${item}:${index}`} style={styles.analysisBulletItem}>
+          <ThemedText type="small" style={styles.analysisBulletDot}>
+            {'\u2022'}
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.analysisBulletText}>
+            {item}
+          </ThemedText>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function AnalysisTextBlock({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <View style={styles.analysisTextBlock}>
+      <ThemedText type="smallBold">{label}</ThemedText>
+      {children}
+    </View>
+  );
+}
+
+function IdeaAnalysisCard({ analysis }: { analysis: FinalIdeaAnalysis }) {
+  return (
+    <ThemedView type="backgroundElement" style={styles.analysisCard}>
+      <ThemedText type="smallBold" style={styles.analysisCardTitle}>
+        {analysis.title || '제목 없는 아이디어'}
+      </ThemedText>
+
+      <AnalysisTextBlock label="핵심 요약">
+        <ThemedText type="small" themeColor="textSecondary">
+          {analysis.summary}
+        </ThemedText>
+      </AnalysisTextBlock>
+
+      <AnalysisTextBlock label="장점">
+        <AnalysisBulletList items={analysis.strengths} />
+      </AnalysisTextBlock>
+
+      <AnalysisTextBlock label="보완점">
+        <AnalysisBulletList items={analysis.improvements} />
+      </AnalysisTextBlock>
+
+      <View style={styles.analysisLevelRow}>
+        <View style={styles.analysisLevelItem}>
+          <ThemedText type="smallBold">실현 가능성</ThemedText>
+          <AnalysisLevelBadge value={analysis.feasibility} />
+        </View>
+        <View style={styles.analysisLevelItem}>
+          <ThemedText type="smallBold">과제 적합성</ThemedText>
+          <AnalysisLevelBadge value={analysis.projectFit} />
+        </View>
+      </View>
+    </ThemedView>
+  );
+}
+
+function OverallAnalysisCard({ result, ideas }: { result: FinalIdeaAnalysisResult; ideas: Idea[] }) {
+  const ideaTitleById = useMemo(() => {
+    const titles = new Map<string, string>();
+    ideas.forEach((idea) => {
+      titles.set(idea.id, idea.title.trim() || '제목 없는 아이디어');
+    });
+    return titles;
+  }, [ideas]);
+  const recommendedTitles = result.overall.recommendedIdeaIds
+    .map((ideaId) => ideaTitleById.get(ideaId))
+    .filter((title): title is string => Boolean(title));
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.analysisCard}>
+      <ThemedText type="smallBold" style={styles.analysisCardTitle}>
+        전체 종합 의견
+      </ThemedText>
+
+      <AnalysisTextBlock label="전체 비교 의견">
+        <ThemedText type="small" themeColor="textSecondary">
+          {result.overall.comparison}
+        </ThemedText>
+      </AnalysisTextBlock>
+
+      <AnalysisTextBlock label="추천 아이디어">
+        <ThemedText type="small" themeColor="textSecondary">
+          {recommendedTitles.length > 0 ? recommendedTitles.join(', ') : '추천 후보를 확인할 수 없습니다.'}
+        </ThemedText>
+      </AnalysisTextBlock>
+
+      <AnalysisTextBlock label="추천 이유">
+        <ThemedText type="small" themeColor="textSecondary">
+          {result.overall.recommendationReason}
+        </ThemedText>
+      </AnalysisTextBlock>
+
+      <AnalysisTextBlock label="아이디어 결합 제안">
+        <ThemedText type="small" themeColor="textSecondary">
+          {result.overall.combinationSuggestion}
+        </ThemedText>
+      </AnalysisTextBlock>
+
+      <ThemedText type="small" themeColor="textSecondary" style={styles.analysisNotice}>
+        {result.notice}
+      </ThemedText>
+    </ThemedView>
+  );
+}
+
+function FinalDraftView({ ideas, projectId }: { ideas: Idea[]; projectId: string }) {
   const selectedIdeas = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'selected');
   const approvedIdeas = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'approved');
   const sourceIdeas = selectedIdeas.length > 0 ? selectedIdeas : approvedIdeas;
   const [copyMessage, setCopyMessage] = useState('');
+  const {
+    analysis,
+    analysisError,
+    analyzeIdeas,
+    canAnalyze,
+    emptyFinalIdeaMessage,
+    isAnalyzing,
+    isLimited,
+    maxAnalysisIdeas,
+    requestIdeas,
+    skippedBlankCount,
+  } = useFinalIdeaAnalysis(projectId, selectedIdeas);
 
   if (sourceIdeas.length === 0) {
     return (
-      <ThemedView type="backgroundElement" style={styles.emptyState}>
-        <ThemedText type="smallBold">최종안에 넣을 아이디어가 없습니다.</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-          목록에서 좋은 아이디어를 쓸 만함 또는 최종 사용 상태로 올려 보세요.
-        </ThemedText>
-      </ThemedView>
+      <View style={styles.finalBlock}>
+        <ThemedView type="backgroundElement" style={styles.emptyState}>
+          <ThemedText type="smallBold">최종안에 넣을 아이디어가 없습니다.</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
+            목록에서 좋은 아이디어를 쓸 만함 또는 최종 사용 상태로 올려 보세요.
+          </ThemedText>
+        </ThemedView>
+        <View style={styles.finalAnalysisBlock}>
+          <Pressable disabled style={[styles.finalAnalysisButton, styles.disabledButton]}>
+            <ThemedText type="smallBold" style={styles.primaryButtonText}>
+              AI 비교 분석
+            </ThemedText>
+          </Pressable>
+          <ThemedText type="small" themeColor="textSecondary">
+            {emptyFinalIdeaMessage}
+          </ThemedText>
+        </View>
+      </View>
     );
   }
 
@@ -1165,6 +1318,76 @@ function FinalDraftView({ ideas }: { ideas: Idea[] }) {
               </View>
             </View>
           ))}
+        </View>
+        <View style={styles.finalAnalysisBlock}>
+          <Pressable
+            disabled={!canAnalyze || isAnalyzing}
+            onPress={analyzeIdeas}
+            style={({ pressed }) => [
+              styles.finalAnalysisButton,
+              (!canAnalyze || isAnalyzing) && styles.disabledButton,
+              pressed && canAnalyze && !isAnalyzing && styles.pressed,
+            ]}>
+            {isAnalyzing ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <ThemedText type="smallBold" style={styles.primaryButtonText}>
+                AI 비교 분석
+              </ThemedText>
+            )}
+          </Pressable>
+          {!canAnalyze ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              {emptyFinalIdeaMessage}
+            </ThemedText>
+          ) : null}
+          {isLimited ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              최대 {maxAnalysisIdeas}개까지 분석할 수 있어 {requestIdeas.length}개 후보만 보냅니다.
+            </ThemedText>
+          ) : null}
+          {skippedBlankCount > 0 ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              제목과 내용이 모두 없는 아이디어 {skippedBlankCount}개는 제외했습니다.
+            </ThemedText>
+          ) : null}
+          {isAnalyzing ? (
+            <ThemedView type="backgroundElement" style={styles.analysisLoadingPanel}>
+              <ActivityIndicator />
+              <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
+                AI가 최종 후보 아이디어를 비교하고 있습니다.
+              </ThemedText>
+            </ThemedView>
+          ) : null}
+          {analysisError ? (
+            <ThemedView type="backgroundElement" style={styles.analysisErrorPanel}>
+              <ThemedText type="small" style={styles.errorText}>
+                {analysisError}
+              </ThemedText>
+              {canAnalyze ? (
+                <Pressable
+                  disabled={isAnalyzing}
+                  onPress={analyzeIdeas}
+                  style={({ pressed }) => [styles.secondaryButton, (pressed || isAnalyzing) && styles.pressed]}>
+                  <ThemedText type="smallBold">다시 시도</ThemedText>
+                </Pressable>
+              ) : null}
+            </ThemedView>
+          ) : null}
+          {analysis ? (
+            <View style={styles.analysisResultBlock}>
+              {analysis.analyses.map((item) => (
+                <IdeaAnalysisCard key={item.ideaId} analysis={item} />
+              ))}
+              <OverallAnalysisCard result={analysis} ideas={selectedIdeas} />
+              <Pressable
+                disabled={isAnalyzing}
+                onPress={analyzeIdeas}
+                style={({ pressed }) => [styles.secondaryButton, (pressed || isAnalyzing) && styles.pressed]}>
+                <ThemedText type="smallBold">다시 분석하기</ThemedText>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
         <View style={styles.finalExportActions}>
           <Pressable onPress={copyFinalDraft} style={({ pressed }) => [styles.compactButton, pressed && styles.pressed]}>
@@ -1648,7 +1871,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
         </>
       ) : null}
 
-      {boardMode === finalMode ? <FinalDraftView ideas={ideas} /> : null}
+      {boardMode === finalMode ? <FinalDraftView ideas={ideas} projectId={projectId} /> : null}
     </ThemedView>
   );
 }
@@ -2116,6 +2339,94 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: Spacing.two,
+  },
+  finalAnalysisBlock: {
+    gap: Spacing.two,
+  },
+  finalAnalysisButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    borderRadius: Spacing.two,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  disabledButton: {
+    opacity: 0.48,
+  },
+  analysisLoadingPanel: {
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: Spacing.three,
+  },
+  analysisErrorPanel: {
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    padding: Spacing.three,
+  },
+  analysisResultBlock: {
+    gap: Spacing.three,
+  },
+  analysisCard: {
+    gap: Spacing.three,
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: Spacing.three,
+  },
+  analysisCardTitle: {
+    fontSize: 17,
+    lineHeight: 24,
+  },
+  analysisTextBlock: {
+    gap: Spacing.one,
+  },
+  analysisBulletList: {
+    gap: Spacing.one,
+  },
+  analysisBulletItem: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  analysisBulletDot: {
+    color: '#2563eb',
+    lineHeight: 20,
+  },
+  analysisBulletText: {
+    flex: 1,
+    lineHeight: 20,
+  },
+  analysisLevelRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  analysisLevelItem: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  analysisBadge: {
+    minHeight: 30,
+    borderWidth: 1,
+    borderRadius: Spacing.two,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  analysisNotice: {
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    paddingTop: Spacing.two,
   },
   finalExportInput: {
     minHeight: 160,
