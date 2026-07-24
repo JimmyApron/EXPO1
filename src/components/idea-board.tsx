@@ -16,6 +16,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useIdeaFeedbacks } from '@/hooks/use-idea-feedbacks';
 import { useIdeaCategories } from '@/hooks/use-idea-categories';
+import { useIdeaDraftAnalysis } from '@/hooks/use-idea-draft-analysis';
 import { useIdeaLikes } from '@/hooks/use-idea-likes';
 import { useFinalIdeaAnalysis } from '@/hooks/use-final-idea-analysis';
 import { useIdeas } from '@/hooks/use-ideas';
@@ -23,6 +24,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import type { IdeaFeedback } from '@/types/feedback';
 import type { FinalIdeaAnalysis, FinalIdeaAnalysisResult, FinalAnalysisLevel } from '@/types/final-analysis';
+import type { IdeaDraftAnalysisResult } from '@/types/idea-draft-analysis';
 import {
   IdeaStatusLabels,
   IdeaStatuses,
@@ -46,6 +48,7 @@ type IdeaFormProps = {
   idea?: Idea;
   categories: IdeaCategory[];
   draftKey?: string;
+  projectId?: string;
   submitLabel: string;
   isBusy?: boolean;
   error?: string;
@@ -278,10 +281,130 @@ function CategorySelector({
   );
 }
 
+function IdeaDraftCoach({
+  analysis,
+  analysisError,
+  isAnalyzing,
+  isDisabled,
+  onAnalyze,
+}: {
+  analysis: IdeaDraftAnalysisResult | null;
+  analysisError: string;
+  isAnalyzing: boolean;
+  isDisabled: boolean;
+  onAnalyze: () => void;
+}) {
+  return (
+    <View style={styles.draftCoachRow}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="AI 초안 진단"
+        disabled={isDisabled || isAnalyzing}
+        onPress={onAnalyze}
+        style={({ pressed }) => [
+          styles.draftCoachAvatar,
+          (pressed || isDisabled || isAnalyzing) && styles.pressed,
+        ]}>
+        <View style={styles.draftCoachFace}>
+          <View style={styles.draftCoachEyes}>
+            <View style={styles.draftCoachEye} />
+            <View style={styles.draftCoachEye} />
+          </View>
+          <ThemedText type="smallBold" style={styles.draftCoachAvatarText}>
+            AI
+          </ThemedText>
+        </View>
+      </Pressable>
+
+      <ThemedView type="backgroundElement" style={styles.draftCoachBubble}>
+        <View style={styles.draftCoachBubbleTail} />
+        {isAnalyzing ? (
+          <View style={styles.draftCoachLoading}>
+            <ActivityIndicator size="small" />
+            <ThemedText type="small" themeColor="textSecondary">
+              초안을 읽고 있어요.
+            </ThemedText>
+          </View>
+        ) : analysisError ? (
+          <View style={styles.draftCoachContent}>
+            <ThemedText type="smallBold">진단이 멈췄어요</ThemedText>
+            <ThemedText type="small" style={styles.errorText}>
+              {analysisError}
+            </ThemedText>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isDisabled || isAnalyzing}
+              onPress={onAnalyze}
+              style={({ pressed }) => [
+                styles.draftCoachActionButton,
+                (pressed || isDisabled || isAnalyzing) && styles.pressed,
+              ]}>
+              <ThemedText type="smallBold" style={styles.draftCoachActionText}>
+                다시 진단
+              </ThemedText>
+            </Pressable>
+          </View>
+        ) : analysis ? (
+          <View style={styles.draftCoachContent}>
+            <View style={styles.draftCoachTitleRow}>
+              <ThemedText type="smallBold">초안 진단</ThemedText>
+              <AnalysisLevelBadge value={analysis.readiness} />
+            </View>
+            <AnalysisTextBlock label="요약">
+              <ThemedText type="small" themeColor="textSecondary">
+                {analysis.summary}
+              </ThemedText>
+            </AnalysisTextBlock>
+            <AnalysisTextBlock label="제목">
+              <ThemedText type="small" themeColor="textSecondary">
+                {analysis.titleFeedback}
+              </ThemedText>
+            </AnalysisTextBlock>
+            <AnalysisTextBlock label="내용">
+              <ThemedText type="small" themeColor="textSecondary">
+                {analysis.contentFeedback}
+              </ThemedText>
+            </AnalysisTextBlock>
+            <AnalysisTextBlock label="보완할 점">
+              <AnalysisBulletList items={analysis.improvements} />
+            </AnalysisTextBlock>
+            <AnalysisTextBlock label="다음 질문">
+              <AnalysisBulletList items={analysis.nextQuestions} />
+            </AnalysisTextBlock>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.analysisNotice}>
+              {analysis.notice}
+            </ThemedText>
+          </View>
+        ) : (
+          <View style={styles.draftCoachContent}>
+            <ThemedText type="smallBold">등록 전에 한번 짚어볼게요.</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              제목과 내용이 충분히 적히면 짧게 진단해줄 수 있어요.
+            </ThemedText>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isDisabled || isAnalyzing}
+              onPress={onAnalyze}
+              style={({ pressed }) => [
+                styles.draftCoachActionButton,
+                (pressed || isDisabled || isAnalyzing) && styles.pressed,
+              ]}>
+              <ThemedText type="smallBold" style={styles.draftCoachActionText}>
+                초안 진단
+              </ThemedText>
+            </Pressable>
+          </View>
+        )}
+      </ThemedView>
+    </View>
+  );
+}
+
 function IdeaForm({
   idea,
   categories,
   draftKey,
+  projectId,
   submitLabel,
   isBusy = false,
   error,
@@ -300,6 +423,14 @@ function IdeaForm({
   const [categoryError, setCategoryError] = useState('');
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [isCategoryInputOpen, setIsCategoryInputOpen] = useState(false);
+  const {
+    analysis: draftAnalysis,
+    analysisError: draftAnalysisError,
+    analyzeDraft,
+    clearAnalysis,
+    isAnalyzing,
+  } = useIdeaDraftAnalysis(projectId);
+  const showDraftCoach = !idea;
 
   useEffect(() => {
     if (!draftKey || idea) {
@@ -405,6 +536,20 @@ function IdeaForm({
     setIsAddingCategory(false);
   };
 
+  const handleAnalyzeDraft = () => {
+    const nextTitleError = title.trim() ? '' : '아이디어 제목을 입력해 주세요.';
+    const nextContentError = content.trim() ? '' : '아이디어 내용을 입력해 주세요.';
+
+    setTitleError(nextTitleError);
+    setContentError(nextContentError);
+
+    if (nextTitleError || nextContentError) {
+      return;
+    }
+
+    void analyzeDraft({ title, content, category, status });
+  };
+
   return (
     <ThemedView type="backgroundElement" style={styles.form}>
       <View style={styles.field}>
@@ -413,6 +558,7 @@ function IdeaForm({
           value={title}
           onChangeText={(value) => {
             setTitle(value);
+            clearAnalysis();
             if (titleError) {
               setTitleError('');
             }
@@ -434,6 +580,7 @@ function IdeaForm({
           value={content}
           onChangeText={(value) => {
             setContent(value);
+            clearAnalysis();
             if (contentError) {
               setContentError('');
             }
@@ -515,6 +662,16 @@ function IdeaForm({
         <ThemedText type="small" style={styles.errorText}>
           {error}
         </ThemedText>
+      ) : null}
+
+      {showDraftCoach ? (
+        <IdeaDraftCoach
+          analysis={draftAnalysis}
+          analysisError={draftAnalysisError}
+          isAnalyzing={isAnalyzing}
+          isDisabled={isBusy}
+          onAnalyze={handleAnalyzeDraft}
+        />
       ) : null}
 
       <View style={styles.actions}>
@@ -1752,6 +1909,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
           <IdeaForm
             categories={categories}
             draftKey={`ideadraft:${projectId}`}
+            projectId={projectId}
             submitLabel="등록"
             isBusy={isMutating && !editingIdeaId}
             error={!editingIdeaId ? mutationError : ''}
@@ -1979,6 +2137,85 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
+  },
+  draftCoachRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+  },
+  draftCoachAvatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 1,
+    borderColor: '#93c5fd',
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  draftCoachFace: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  draftCoachEyes: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  draftCoachEye: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#1d4ed8',
+  },
+  draftCoachAvatarText: {
+    color: '#1d4ed8',
+    lineHeight: 18,
+  },
+  draftCoachBubble: {
+    flex: 1,
+    minWidth: 0,
+    gap: Spacing.two,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    padding: Spacing.three,
+  },
+  draftCoachBubbleTail: {
+    position: 'absolute',
+    left: -7,
+    top: 22,
+    width: 12,
+    height: 12,
+    borderLeftWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#ffffff',
+    transform: [{ rotate: '45deg' }],
+  },
+  draftCoachContent: {
+    gap: Spacing.two,
+  },
+  draftCoachLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  draftCoachTitleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  draftCoachActionButton: {
+    alignSelf: 'flex-start',
+    borderRadius: Spacing.two,
+    backgroundColor: '#2563eb',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  draftCoachActionText: {
+    color: '#ffffff',
   },
   modeToggle: {
     flexDirection: 'row',

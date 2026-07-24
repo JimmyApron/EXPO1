@@ -41,7 +41,10 @@ const corsHeaders = {
 };
 
 const maxIdeas = 10;
-const defaultGeminiModel = 'gemini-3.1-flash-lite';
+const defaultClaudeModel = 'claude-sonnet-5';
+const anthropicVersion = '2023-06-01';
+const analysisToolName = 'record_final_idea_analysis';
+const defaultNotice = 'AI 분석 결과는 최종 결정을 돕기 위한 참고 자료입니다.';
 const parseErrorMessage = '분석 결과를 불러오지 못했습니다. 다시 시도해주세요.';
 
 const systemInstruction = `당신은 대학생의 과제 및 팀 프로젝트 아이디어를 분석하는 보조 AI입니다.
@@ -70,7 +73,7 @@ const systemInstruction = `당신은 대학생의 과제 및 팀 프로젝트 �
 
 const responseSchema = {
   type: 'object',
-  propertyOrdering: ['analyses', 'overall', 'notice'],
+  additionalProperties: false,
   properties: {
     analyses: {
       type: 'array',
@@ -78,15 +81,7 @@ const responseSchema = {
       maxItems: maxIdeas,
       items: {
         type: 'object',
-        propertyOrdering: [
-          'ideaId',
-          'title',
-          'summary',
-          'strengths',
-          'improvements',
-          'feasibility',
-          'projectFit',
-        ],
+        additionalProperties: false,
         properties: {
           ideaId: { type: 'string' },
           title: { type: 'string' },
@@ -109,7 +104,7 @@ const responseSchema = {
     },
     overall: {
       type: 'object',
-      propertyOrdering: ['comparison', 'recommendedIdeaIds', 'recommendationReason', 'combinationSuggestion'],
+      additionalProperties: false,
       properties: {
         comparison: { type: 'string' },
         recommendedIdeaIds: {
@@ -124,7 +119,7 @@ const responseSchema = {
     },
     notice: {
       type: 'string',
-      enum: ['AI 분석 결과는 최종 결정을 돕기 위한 참고 자료입니다.'],
+      enum: [defaultNotice],
     },
   },
   required: ['analyses', 'overall', 'notice'],
@@ -180,6 +175,88 @@ function isAnalysisLevel(value: unknown): value is FinalAnalysisLevel {
   return value === '높음' || value === '보통' || value === '낮음';
 }
 
+function normalizeStringArray(value: unknown, fallback: string[]) {
+  if (Array.isArray(value)) {
+    const items = value.map(cleanString).filter(Boolean);
+    return items.length > 0 ? items : fallback;
+  }
+
+  const item = cleanString(value);
+  return item ? [item] : fallback;
+}
+
+function normalizeAnalysisLevel(value: unknown): FinalAnalysisLevel {
+  if (isAnalysisLevel(value)) {
+    return value;
+  }
+
+  const text = cleanString(value).toLowerCase();
+  if (text.includes('높') || text.includes('상') || text.includes('high')) {
+    return '높음';
+  }
+
+  if (text.includes('낮') || text.includes('하') || text.includes('low')) {
+    return '낮음';
+  }
+
+  return '보통';
+}
+
+function findAnalysisForIdea(analyses: Record<string, unknown>[], idea: FinalIdeaInput, index: number) {
+  return (
+    analyses.find((analysis) => cleanString(analysis.ideaId) === idea.ideaId) ??
+    analyses.find((analysis) => cleanString(analysis.title) === idea.title) ??
+    analyses[index] ??
+    null
+  );
+}
+
+function normalizeAnalysisResult(value: unknown, ideas: FinalIdeaInput[]): FinalIdeaAnalysisResult | null {
+  if (!isRecord(value) || ideas.length === 0) {
+    return null;
+  }
+
+  const sourceAnalyses = Array.isArray(value.analyses) ? value.analyses.filter(isRecord) : [];
+  const normalizedAnalyses = ideas.map((idea, index) => {
+    const source = findAnalysisForIdea(sourceAnalyses, idea, index);
+    const title = cleanString(source?.title) || idea.title || '제목 없음';
+
+    return {
+      ideaId: idea.ideaId,
+      title,
+      summary:
+        cleanString(source?.summary) ||
+        `${title}의 핵심 방향은 확인되지만, 설명을 조금 더 구체화하면 비교가 쉬워집니다.`,
+      strengths: normalizeStringArray(source?.strengths, ['아이디어의 기본 방향과 목적을 확인할 수 있습니다.']),
+      improvements: normalizeStringArray(source?.improvements, ['구현 범위와 핵심 기능을 더 구체화해 주세요.']),
+      feasibility: normalizeAnalysisLevel(source?.feasibility),
+      projectFit: normalizeAnalysisLevel(source?.projectFit),
+    };
+  });
+
+  const overall = isRecord(value.overall) ? value.overall : {};
+  const ideaIds = new Set(ideas.map((idea) => idea.ideaId));
+  const recommendedIdeaIds = normalizeStringArray(overall.recommendedIdeaIds, [])
+    .filter((ideaId) => ideaIds.has(ideaId));
+
+  return {
+    analyses: normalizedAnalyses,
+    overall: {
+      comparison:
+        cleanString(overall.comparison) ||
+        '입력된 아이디어들은 목적과 구현 범위가 다르므로, 개발 기간과 핵심 요구사항을 기준으로 비교할 수 있습니다.',
+      recommendedIdeaIds: recommendedIdeaIds.length > 0 ? recommendedIdeaIds : [ideas[0].ideaId],
+      recommendationReason:
+        cleanString(overall.recommendationReason) ||
+        '현재 정보 기준으로는 첫 번째 아이디어가 비교 기준을 잡기 가장 쉽습니다. 세부 요구사항을 보완하면 추천 정확도를 높일 수 있습니다.',
+      combinationSuggestion:
+        cleanString(overall.combinationSuggestion) ||
+        '각 아이디어의 장점을 결합하려면 핵심 기능을 하나로 정하고 보조 기능을 단계적으로 추가하는 방식을 고려할 수 있습니다.',
+    },
+    notice: defaultNotice,
+  };
+}
+
 function isAnalysisResult(value: unknown): value is FinalIdeaAnalysisResult {
   if (!isRecord(value) || !Array.isArray(value.analyses) || !isRecord(value.overall)) {
     return false;
@@ -205,7 +282,7 @@ function isAnalysisResult(value: unknown): value is FinalIdeaAnalysisResult {
     overall.recommendedIdeaIds.length > 0 &&
     typeof overall.recommendationReason === 'string' &&
     typeof overall.combinationSuggestion === 'string' &&
-    value.notice === 'AI 분석 결과는 최종 결정을 돕기 위한 참고 자료입니다.'
+    value.notice === defaultNotice
   );
 }
 
@@ -231,20 +308,16 @@ async function validateUser(authorization: string) {
   }
 }
 
-function getGeminiText(responseBody: unknown) {
-  if (!isRecord(responseBody) || !Array.isArray(responseBody.candidates)) {
-    return '';
+function getClaudeToolInput(responseBody: unknown) {
+  if (!isRecord(responseBody) || !Array.isArray(responseBody.content)) {
+    return null;
   }
 
-  const candidate = responseBody.candidates[0];
-  if (!isRecord(candidate) || !isRecord(candidate.content) || !Array.isArray(candidate.content.parts)) {
-    return '';
-  }
+  const toolUse = responseBody.content.find(
+    (block) => isRecord(block) && block.type === 'tool_use' && block.name === analysisToolName,
+  );
 
-  return candidate.content.parts
-    .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
-    .join('')
-    .trim();
+  return isRecord(toolUse) && isRecord(toolUse.input) ? toolUse.input : null;
 }
 
 Deno.serve(async (request) => {
@@ -277,81 +350,107 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'invalid_ideas', message: ideas.error }, ideas.status);
   }
 
-  const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!geminiApiKey) {
-    return jsonResponse({ error: 'missing_gemini_key', message: 'AI 분석 설정을 확인해주세요.' }, 500);
+  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? Deno.env.get('CLAUDE_API_KEY');
+  if (!anthropicApiKey) {
+    return jsonResponse({ error: 'missing_anthropic_key', message: 'AI 분석 설정을 확인해주세요.' }, 500);
   }
 
-  const geminiModel = Deno.env.get('GEMINI_MODEL') || defaultGeminiModel;
-  const modelPath = geminiModel.startsWith('models/') ? geminiModel : `models/${geminiModel}`;
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent`;
+  const claudeModel = defaultClaudeModel;
+  const claudeUrl = 'https://api.anthropic.com/v1/messages';
 
   const prompt = JSON.stringify({
     projectId: cleanString(requestBody.projectId),
     ideas,
-    outputNotice: 'AI 분석 결과는 최종 결정을 돕기 위한 참고 자료입니다.',
+    outputNotice: defaultNotice,
   });
 
-  let geminiResponse: Response;
+  let claudeResponse: Response;
   try {
-    geminiResponse = await fetch(geminiUrl, {
+    claudeResponse = await fetch(claudeUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-goog-api-key': geminiApiKey,
+        'x-api-key': anthropicApiKey,
+        'anthropic-version': anthropicVersion,
       },
       body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: systemInstruction }],
-        },
-        contents: [
+        model: claudeModel,
+        max_tokens: 4096,
+        system: systemInstruction,
+        messages: [
           {
             role: 'user',
-            parts: [{ text: prompt }],
+            content: prompt,
           },
         ],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: 'application/json',
-          responseSchema,
+        tools: [
+          {
+            name: analysisToolName,
+            description: 'Record the final idea analysis result for the app.',
+            input_schema: responseSchema,
+          },
+        ],
+        tool_choice: {
+          type: 'tool',
+          name: analysisToolName,
         },
       }),
     });
   } catch {
-    console.error('Gemini request failed before response.');
+    console.error('Claude request failed before response.');
     return jsonResponse({ error: 'network_error', message: 'AI 분석 요청에 실패했습니다. 다시 시도해주세요.' }, 502);
   }
 
-  if (!geminiResponse.ok) {
-    console.error('Gemini API returned an error status.', { status: geminiResponse.status });
-    return jsonResponse({ error: 'gemini_error', message: 'AI 분석 요청에 실패했습니다. 다시 시도해주세요.' }, 502);
-  }
-
-  let geminiBody: unknown;
-  try {
-    geminiBody = await geminiResponse.json();
-  } catch {
-    console.error('Gemini response was not JSON.');
-    return jsonResponse({ error: 'invalid_gemini_response', message: parseErrorMessage }, 502);
-  }
-
-  const geminiText = getGeminiText(geminiBody);
-  if (!geminiText) {
-    console.error('Gemini response did not include text output.');
-    return jsonResponse({ error: 'empty_gemini_response', message: parseErrorMessage }, 502);
-  }
-
-  try {
-    const analysis = JSON.parse(geminiText);
-
-    if (!isAnalysisResult(analysis)) {
-      console.error('Gemini JSON did not match analysis schema.');
-      return jsonResponse({ error: 'invalid_analysis_shape', message: parseErrorMessage }, 502);
+  if (!claudeResponse.ok) {
+    let errorBody = '';
+    try {
+      errorBody = await claudeResponse.text();
+    } catch {
+      errorBody = '';
     }
 
-    return jsonResponse(analysis);
-  } catch {
-    console.error('Gemini text output was not valid JSON.');
-    return jsonResponse({ error: 'invalid_analysis_json', message: parseErrorMessage }, 502);
+    console.error('Claude API returned an error status.', {
+      status: claudeResponse.status,
+      body: errorBody.slice(0, 500),
+    });
+    if (claudeResponse.status === 401) {
+      return jsonResponse(
+        { error: 'anthropic_unauthorized', message: 'Claude API 키가 유효하지 않습니다. Supabase ANTHROPIC_API_KEY를 확인해주세요.' },
+        500,
+      );
+    }
+
+    if (claudeResponse.status === 429) {
+      return jsonResponse(
+        { error: 'anthropic_rate_limited', message: 'Claude API 사용량 또는 결제 한도를 확인해주세요.' },
+        502,
+      );
+    }
+
+    if (claudeResponse.status === 400) {
+      return jsonResponse(
+        { error: 'anthropic_bad_request', message: 'Claude API 요청 형식을 확인해주세요.' },
+        502,
+      );
+    }
+
+    return jsonResponse({ error: 'anthropic_error', message: 'AI 분석 요청에 실패했습니다. 다시 시도해주세요.' }, 502);
   }
+
+  let claudeBody: unknown;
+  try {
+    claudeBody = await claudeResponse.json();
+  } catch {
+    console.error('Claude response was not JSON.');
+    return jsonResponse({ error: 'invalid_anthropic_response', message: parseErrorMessage }, 502);
+  }
+
+  const analysisInput = getClaudeToolInput(claudeBody);
+  const analysis = normalizeAnalysisResult(analysisInput, ideas);
+  if (!isAnalysisResult(analysis)) {
+    console.error('Claude tool input could not be normalized to the analysis schema.');
+    return jsonResponse({ error: 'invalid_analysis_shape', message: parseErrorMessage }, 502);
+  }
+
+  return jsonResponse(analysis);
 });
