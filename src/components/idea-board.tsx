@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { IdeaExtractionPanel } from '@/components/idea-extraction/idea-extraction-panel';
 import { IdeaMindMap } from '@/components/idea-mind-map';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -21,7 +22,9 @@ import { useIdeaLikes } from '@/hooks/use-idea-likes';
 import { useFinalIdeaAnalysis } from '@/hooks/use-final-idea-analysis';
 import { useIdeas } from '@/hooks/use-ideas';
 import { useTheme } from '@/hooks/use-theme';
+import { candidateIdeaToIdeaInput } from '@/lib/candidate-idea';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
+import type { CandidateIdea, CandidateIdeaSaveResult } from '@/types/candidate-idea';
 import type { IdeaFeedback } from '@/types/feedback';
 import type { FinalIdeaAnalysis, FinalIdeaAnalysisResult, FinalAnalysisLevel } from '@/types/final-analysis';
 import type { IdeaDraftAnalysisResult } from '@/types/idea-draft-analysis';
@@ -80,10 +83,11 @@ const allStatusFilter = 'all';
 const listMode = 'list';
 const mindMapMode = 'mindmap';
 const finalMode = 'final';
+const extractionMode = 'extraction';
 
 type CategoryFilter = typeof allCategoryFilter | IdeaCategory;
 type StatusFilter = typeof allStatusFilter | IdeaStatus;
-type BoardMode = typeof listMode | typeof mindMapMode | typeof finalMode;
+type BoardMode = typeof listMode | typeof mindMapMode | typeof finalMode | typeof extractionMode;
 type SortMode = 'newest' | 'oldest' | 'likes' | 'favorite' | 'status';
 
 const statusFilters: StatusFilter[] = [allStatusFilter, ...IdeaStatuses];
@@ -118,6 +122,7 @@ const customCategoryPalette: CategoryPalette = {
 };
 
 const boardTabs: { id: BoardMode; label: string }[] = [
+  { id: extractionMode, label: '아이디어 추출' },
   { id: listMode, label: '목록' },
   { id: mindMapMode, label: '마인드맵' },
   { id: finalMode, label: '최종안' },
@@ -1631,6 +1636,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
   const [editingIdeaId, setEditingIdeaId] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [mutationError, setMutationError] = useState('');
+  const extractionRoots = useRef(new Map<string, { id: string; x: number; y: number }>());
 
   const favoriteCount = useMemo(() => ideas.filter((idea) => idea.isfavorite).length, [ideas]);
   const ideaIds = useMemo(() => new Set(ideas.map((idea) => idea.id)), [ideas]);
@@ -1872,6 +1878,114 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     });
   };
 
+  const handleSaveExtractedCandidates = async (
+    candidates: CandidateIdea[],
+    extractionRunId: string,
+  ): Promise<CandidateIdeaSaveResult> => {
+    if (candidates.length === 0) {
+      return { savedCandidateIds: [], failures: [] };
+    }
+
+    setIsMutating(true);
+    setMutationError('');
+
+    const failures: CandidateIdeaSaveResult['failures'] = [];
+    const savedCandidateIds: string[] = [];
+    let root = extractionRoots.current.get(extractionRunId);
+
+    if (!root) {
+      const centerIdea = ideas.find((idea) => idea.side === 'center') ?? ideas[ideas.length - 1];
+      const rootX = centerIdea
+        ? Math.max(...ideas.map((idea) => idea.x ?? 0), centerIdea.x ?? 0) + 360
+        : 0;
+      const rootY = centerIdea?.y ?? 0;
+      const rootResult = await createIdea(
+        {
+          title: '회의 아이디어',
+          content: `회의록 또는 채팅에서 추출한 후보 ${candidates.length}개의 묶음입니다.`,
+          status: 'thought',
+          category: 'planning',
+        },
+        centerIdea
+          ? { parentnodeid: centerIdea.id, x: rootX, y: rootY, side: 'right' }
+          : { parentnodeid: null, x: 0, y: 0, side: 'center' },
+      );
+
+      if (rootResult.error || !rootResult.idea) {
+        const message = rootResult.error || '마인드맵 루트 노드를 만들지 못했습니다.';
+        setMutationError(message);
+        setIsMutating(false);
+        return {
+          savedCandidateIds,
+          failures: candidates.map((candidate) => ({ candidateId: candidate.id, title: candidate.title, message })),
+        };
+      }
+
+      root = { id: rootResult.idea.id, x: rootResult.idea.x ?? rootX, y: rootResult.idea.y ?? rootY };
+      extractionRoots.current.set(extractionRunId, root);
+    }
+
+    const offsets = [
+      { side: 'right' as const, x: 360, y: 0 },
+      { side: 'bottom' as const, x: 0, y: 240 },
+      { side: 'left' as const, x: -360, y: 0 },
+      { side: 'top' as const, x: 0, y: -240 },
+      { side: 'bottomright' as const, x: 360, y: 240 },
+      { side: 'bottomleft' as const, x: -360, y: 240 },
+      { side: 'topright' as const, x: 360, y: -240 },
+      { side: 'topleft' as const, x: -360, y: -240 },
+    ];
+    const existingKeys = new Set(
+      ideas
+        .filter((idea) => idea.parentnodeid === root.id)
+        .map((idea) => `${idea.title.trim()}\n${idea.content.trim()}`),
+    );
+
+    for (const [index, candidate] of candidates.entries()) {
+      try {
+        const input = candidateIdeaToIdeaInput(candidate);
+        const duplicateKey = `${input.title}\n${input.content}`;
+        if (existingKeys.has(duplicateKey)) {
+          savedCandidateIds.push(candidate.id);
+          continue;
+        }
+
+        const offset = offsets[index % offsets.length];
+        const ring = Math.floor(index / offsets.length) + 1;
+        const result = await createIdea(input, {
+          parentnodeid: root.id,
+          x: root.x + offset.x * ring,
+          y: root.y + offset.y * ring,
+          side: offset.side,
+        });
+
+        if (result.error || !result.idea) {
+          failures.push({
+            candidateId: candidate.id,
+            title: candidate.title,
+            message: result.error || '아이디어를 저장하지 못했습니다.',
+          });
+        } else {
+          existingKeys.add(duplicateKey);
+          savedCandidateIds.push(candidate.id);
+        }
+      } catch (error) {
+        failures.push({
+          candidateId: candidate.id,
+          title: candidate.title,
+          message: error instanceof Error ? error.message : '후보 아이디어 형식이 올바르지 않습니다.',
+        });
+      }
+    }
+
+    if (failures.length > 0) {
+      setMutationError(`${failures.length}개 아이디어를 저장하지 못했습니다.`);
+    }
+    setIsMutating(false);
+
+    return { savedCandidateIds, failures };
+  };
+
   return (
     <ThemedView style={styles.board}>
       <View style={styles.boardHeader}>
@@ -1903,6 +2017,10 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
           </Pressable>
         ))}
       </View>
+
+      {boardMode === extractionMode ? (
+        <IdeaExtractionPanel projectId={projectId} onSave={handleSaveExtractedCandidates} />
+      ) : null}
 
       {boardMode === listMode ? (
         <>

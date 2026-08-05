@@ -27,6 +27,14 @@
     "plugins": [
       "expo-router",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "카카오톡 캡처에서 아이디어를 추출하기 위해 사진을 선택할 수 있도록 허용해 주세요.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#208AEF",
