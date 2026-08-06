@@ -1,5 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+<<<<<<< HEAD
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+=======
+import { router, type Href } from 'expo-router';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+>>>>>>> origin/feature/ai-mvp-generator
 import {
   ActivityIndicator,
   Alert,
@@ -1482,6 +1487,13 @@ function FinalDraftView({ ideas, projectId }: { ideas: Idea[]; projectId: string
           ))}
         </View>
         <View style={styles.finalAnalysisBlock}>
+          <Pressable
+            onPress={() => router.push('/mvp-generator' as Href)}
+            style={({ pressed }) => [styles.finalAnalysisButton, pressed && styles.pressed]}>
+            <ThemedText type="smallBold" style={styles.primaryButtonText}>
+              AI MVP 생성기 열기
+            </ThemedText>
+          </Pressable>
           <Pressable
             disabled={!canAnalyze || isAnalyzing}
             onPress={analyzeIdeas}
