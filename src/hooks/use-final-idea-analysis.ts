@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
+import type { ProjectConditions } from '@/types/candidate-idea';
 import type { FinalIdeaAnalysisInput, FinalIdeaAnalysisResult, FinalAnalysisLevel } from '@/types/final-analysis';
 import { getIdeaCategoryLabel, normalizeIdeaCategory, normalizeIdeaStatus, type Idea } from '@/types/idea';
 
@@ -90,7 +91,7 @@ function isAnalysisResult(value: unknown): value is FinalIdeaAnalysisResult {
   );
 }
 
-export function useFinalIdeaAnalysis(projectId: string, selectedIdeas: Idea[]) {
+export function useFinalIdeaAnalysis(projectId: string, selectedIdeas: Idea[], projectConditions?: ProjectConditions) {
   const { session, user } = useAuth();
   const [analysis, setAnalysis] = useState<FinalIdeaAnalysisResult | null>(null);
   const [analysisError, setAnalysisError] = useState('');
@@ -126,6 +127,7 @@ export function useFinalIdeaAnalysis(projectId: string, selectedIdeas: Idea[]) {
         body: {
           projectId,
           ideas: requestIdeas,
+          projectConditions,
         },
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -151,7 +153,7 @@ export function useFinalIdeaAnalysis(projectId: string, selectedIdeas: Idea[]) {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [accessToken, isAnalyzing, projectId, requestIdeas, userId]);
+  }, [accessToken, isAnalyzing, projectConditions, projectId, requestIdeas, userId]);
 
   return {
     analysis,

@@ -1,15 +1,16 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { MVP_EDGE_FUNCTION_NAME, sampleMvpPlan, selectedIdea } from '@/constants/mvp';
+import { createSampleMvpPlan, MVP_EDGE_FUNCTION_NAME } from '@/constants/mvp';
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
-import type { MvpPlan } from '@/types/mvp-plan';
+import type { ProjectConditions } from '@/types/candidate-idea';
+import type { MvpIdea, MvpPlan } from '@/types/mvp-plan';
 
-function isMvpPlan(value: unknown): value is MvpPlan {
+function isMvpPlan(value: unknown, ideaId: string): value is MvpPlan {
   if (!value || typeof value !== 'object') return false;
   const plan = value as Partial<MvpPlan>;
   return (
-    plan.ideaId === selectedIdea.id &&
+    plan.ideaId === ideaId &&
     typeof plan.ideaTitle === 'string' &&
     typeof plan.summary === 'string' &&
     Array.isArray(plan.mustHaveFeatures) &&
@@ -22,12 +23,25 @@ function isMvpPlan(value: unknown): value is MvpPlan {
   );
 }
 
-export function useMvpPlan() {
+export function useMvpPlan(
+  idea: MvpIdea,
+  conditions?: ProjectConditions,
+  savedPlan?: MvpPlan | null,
+  onSave?: (plan: MvpPlan) => Promise<unknown>,
+) {
   const { session } = useAuth();
-  const [plan, setPlan] = useState<MvpPlan>(sampleMvpPlan);
+  const [plan, setPlan] = useState<MvpPlan>(savedPlan ?? createSampleMvpPlan(idea));
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
   const accessToken = session?.access_token;
+
+  useEffect(() => {
+    const timeout = globalThis.setTimeout(
+      () => setPlan(savedPlan?.ideaId === idea.id ? savedPlan : createSampleMvpPlan(idea)),
+      0,
+    );
+    return () => globalThis.clearTimeout(timeout);
+  }, [idea, savedPlan]);
 
   const generatePlan = useCallback(async () => {
     if (isGenerating) return;
@@ -36,18 +50,19 @@ export function useMvpPlan() {
 
     try {
       const { data, error: invokeError } = await supabase.functions.invoke(MVP_EDGE_FUNCTION_NAME, {
-        body: { selectedIdeaId: selectedIdea.id, idea: selectedIdea },
+        body: { selectedIdeaId: idea.id, idea, projectConditions: conditions },
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       });
       if (invokeError) throw invokeError;
-      if (!isMvpPlan(data)) throw new Error('invalid-response');
+      if (!isMvpPlan(data, idea.id)) throw new Error('invalid-response');
       setPlan(data);
+      await onSave?.(data);
     } catch {
-      setError('AI 계획을 불러오지 못했습니다. 현재는 샘플 계획을 계속 표시합니다.');
+      setError('AI 계획을 불러오지 못했습니다. 현재는 저장 가능한 예시 계획을 표시합니다.');
     } finally {
       setIsGenerating(false);
     }
-  }, [accessToken, isGenerating]);
+  }, [accessToken, conditions, idea, isGenerating, onSave]);
 
   return { plan, isGenerating, error, generatePlan };
 }

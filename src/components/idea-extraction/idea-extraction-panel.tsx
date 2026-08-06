@@ -8,7 +8,7 @@ import {
 } from '@/components/idea-extraction/extraction-source-input';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useCandidateIdeaExtraction } from '@/hooks/use-candidate-idea-extraction';
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeCandidateIdeas, toCandidateIdeasPayload, validateCandidateIdea } from '@/lib/candidate-idea';
@@ -143,12 +143,29 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ThemedView type="backgroundElement" style={styles.panel}>
+      <ThemedView
+        type="backgroundElement"
+        style={[styles.panel, { borderColor: theme.border }, Shadows.card]}>
         <View style={styles.heading}>
           <ThemedText type="subtitle">아이디어 추출</ThemedText>
           <ThemedText themeColor="textSecondary">
             회의록이나 카카오톡 캡처에서 후보를 찾고, 검토한 항목만 아이디어 보드와 마인드맵에 저장합니다.
           </ThemedText>
+        </View>
+
+        <View style={styles.flowRow} accessibilityLabel="아이디어 추출 단계">
+          {['1  자료 입력', '2  AI 추출', '3  후보 검토', '4  선택 저장'].map((step, index) => (
+            <View
+              key={step}
+              style={[
+                styles.flowStep,
+                { backgroundColor: index === 0 ? theme.primarySoft : theme.background, borderColor: theme.border },
+              ]}>
+              <ThemedText type="smallBold" style={{ color: index === 0 ? theme.primary : theme.textSecondary }}>
+                {step}
+              </ThemedText>
+            </View>
+          ))}
         </View>
 
         <ExtractionSourceInput
@@ -174,6 +191,7 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
           onPress={() => void runExtraction()}
           style={({ pressed }) => [
             styles.extractButton,
+            { backgroundColor: theme.primary },
             (pressed || isBusy || (mode === 'text' ? !sourceText.trim() : images.length === 0)) && styles.pressed,
           ]}>
           {isPickingImages || isExtracting ? (
@@ -189,8 +207,8 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
         </Pressable>
 
         {extractionError ? (
-          <ThemedView type="background" style={styles.alertBox}>
-            <ThemedText accessibilityRole="alert" type="small" style={styles.errorText}>{extractionError}</ThemedText>
+          <ThemedView type="dangerSoft" style={styles.alertBox}>
+            <ThemedText accessibilityRole="alert" type="small" style={[styles.errorText, { color: theme.danger }]}>{extractionError}</ThemedText>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="아이디어 추출 다시 시도"
@@ -273,8 +291,12 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
               accessibilityLabel="선택한 아이디어 저장 및 마인드맵 생성"
               disabled={isBusy || unsavedCandidates.length === 0}
               onPress={() => void handleSave()}
-              style={({ pressed }) => [styles.saveButton, (pressed || isBusy || unsavedCandidates.length === 0) && styles.pressed]}>
-              {isSaving ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>선택한 아이디어 저장 및 마인드맵 생성</ThemedText>}
+              style={({ pressed }) => [
+                styles.saveButton,
+                { backgroundColor: theme.success },
+                (pressed || isBusy || unsavedCandidates.length === 0) && styles.pressed,
+              ]}>
+              {isSaving ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>선택한 {unsavedCandidates.length}개 저장하고 마인드맵 만들기</ThemedText>}
             </Pressable>
           </View>
         ) : hasExtractionResult && !isExtracting && !extractionError ? (
@@ -289,25 +311,27 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
 }
 
 const styles = StyleSheet.create({
-  panel: { gap: Spacing.four, borderRadius: Spacing.three, borderWidth: 1, borderColor: '#cbd5e1', padding: Spacing.three },
+  panel: { gap: Spacing.four, borderRadius: Radius.large, borderWidth: 1, padding: Spacing.four },
   heading: { gap: Spacing.one },
-  extractButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: Spacing.two, backgroundColor: '#2563eb', paddingHorizontal: Spacing.three },
-  saveButton: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: Spacing.two, backgroundColor: '#16a34a', paddingHorizontal: Spacing.three },
+  flowRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  flowStep: { flexGrow: 1, flexBasis: 150, minHeight: 42, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  extractButton: { minHeight: ControlHeight.input, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  saveButton: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   primaryButtonText: { color: '#ffffff', textAlign: 'center' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   section: { gap: Spacing.three },
-  ocrInput: { minHeight: 150, borderWidth: 1, borderRadius: Spacing.two, padding: Spacing.three, fontSize: 16, lineHeight: 23, textAlignVertical: 'top' },
-  secondaryButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#94a3b8', borderRadius: Spacing.two, paddingHorizontal: Spacing.three },
-  alertBox: { gap: Spacing.two, borderRadius: Spacing.two, padding: Spacing.three },
-  retryButton: { minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: Spacing.three, borderWidth: 1, borderColor: '#dc2626', borderRadius: Spacing.two },
+  ocrInput: { minHeight: 150, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three, fontSize: 16, lineHeight: 23, textAlignVertical: 'top' },
+  secondaryButton: { minHeight: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#94a3b8', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  alertBox: { gap: Spacing.two, borderRadius: Radius.medium, padding: Spacing.three },
+  retryButton: { minHeight: ControlHeight.touch, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: Spacing.three, borderWidth: 1, borderColor: '#dc2626', borderRadius: Radius.medium },
   retryText: { color: '#b91c1c' },
   candidateToolbar: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.two },
   toolbarActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  textButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: Spacing.two },
-  textButtonLabel: { color: '#2563eb' },
+  textButton: { minHeight: ControlHeight.touch, justifyContent: 'center', paddingHorizontal: Spacing.two },
+  textButtonLabel: { color: '#4050D0' },
   candidateList: { gap: Spacing.three },
-  emptyState: { gap: Spacing.one, borderRadius: Spacing.two, padding: Spacing.three },
+  emptyState: { gap: Spacing.one, borderRadius: Radius.medium, padding: Spacing.three },
   errorText: { color: '#b91c1c' },
-  successText: { color: '#15803d' },
+  successText: { color: '#168B51' },
   pressed: { opacity: 0.55 },
 });

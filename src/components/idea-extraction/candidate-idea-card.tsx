@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { ControlHeight, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { CandidateIdea } from '@/types/candidate-idea';
 
@@ -49,7 +49,12 @@ export function CandidateIdeaCard({
   return (
     <ThemedView
       type="backgroundElement"
-      style={[styles.card, isSelected && styles.selectedCard, isSaved && styles.savedCard]}>
+      style={[
+        styles.card,
+        { borderColor: theme.border },
+        isSelected && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+        isSaved && { borderColor: theme.success },
+      ]}>
       <View style={styles.header}>
         <Pressable
           accessibilityRole="checkbox"
@@ -58,7 +63,12 @@ export function CandidateIdeaCard({
           disabled={isBusy || isSaved}
           onPress={onToggle}
           style={({ pressed }) => [styles.checkboxButton, (pressed || isBusy || isSaved) && styles.pressed]}>
-          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+          <View
+            style={[
+              styles.checkbox,
+              { borderColor: theme.textTertiary },
+              isSelected && { borderColor: theme.primary, backgroundColor: theme.primary },
+            ]}>
             {isSelected ? <ThemedText style={styles.checkmark}>✓</ThemedText> : null}
           </View>
           <ThemedText type="smallBold">{isSaved ? '저장됨' : isSelected ? '선택됨' : '선택'}</ThemedText>
@@ -104,16 +114,13 @@ export function CandidateIdeaCard({
 }
 
 const styles = StyleSheet.create({
-  card: { gap: Spacing.three, borderWidth: 1, borderColor: '#cbd5e1', borderRadius: Spacing.three, padding: Spacing.three },
-  selectedCard: { borderColor: '#2563eb' },
-  savedCard: { borderColor: '#16a34a' },
+  card: { gap: Spacing.three, borderWidth: 1, borderRadius: Radius.large, padding: Spacing.three },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.two },
-  checkboxButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  checkbox: { width: 24, height: 24, borderWidth: 2, borderColor: '#64748b', borderRadius: 5, alignItems: 'center', justifyContent: 'center' },
-  checkboxSelected: { borderColor: '#2563eb', backgroundColor: '#2563eb' },
+  checkboxButton: { minHeight: ControlHeight.touch, flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  checkbox: { width: 24, height: 24, borderWidth: 2, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   checkmark: { color: '#ffffff', lineHeight: 20 },
   field: { gap: Spacing.one },
-  input: { minHeight: 44, borderWidth: 1, borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  input: { minHeight: ControlHeight.touch, borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
   multiline: { minHeight: 84, textAlignVertical: 'top' },
   arrayInput: { minHeight: 92, textAlignVertical: 'top' },
   pressed: { opacity: 0.6 },

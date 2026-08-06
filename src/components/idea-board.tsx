@@ -1,25 +1,28 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-<<<<<<< HEAD
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-=======
 import { router, type Href } from 'expo-router';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
->>>>>>> origin/feature/ai-mvp-generator
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
+import { AppIcon } from '@/components/app-icon';
+import { EmptyState } from '@/components/empty-state';
 import { IdeaExtractionPanel } from '@/components/idea-extraction/idea-extraction-panel';
 import { IdeaMindMap } from '@/components/idea-mind-map';
+import { LoadingSkeleton } from '@/components/loading-skeleton';
+import { ProjectFlowSteps } from '@/components/project-flow-steps';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useIdeaFeedbacks } from '@/hooks/use-idea-feedbacks';
 import { useIdeaCategories } from '@/hooks/use-idea-categories';
 import { useIdeaDraftAnalysis } from '@/hooks/use-idea-draft-analysis';
@@ -105,10 +108,10 @@ const sortOptions: { id: SortMode; label: string }[] = [
 ];
 
 const statusColors: Record<IdeaStatus, { background: string; border: string; text: string }> = {
-  thought: { background: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' },
+  thought: { background: '#EEF0FF', border: '#B9C2FF', text: '#3442B8' },
   research: { background: '#fff7ed', border: '#fdba74', text: '#c2410c' },
-  approved: { background: '#ecfdf5', border: '#86efac', text: '#15803d' },
-  selected: { background: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9' },
+  approved: { background: '#E7F8EF', border: '#83DCAE', text: '#168B51' },
+  selected: { background: '#EEF0FF', border: '#B9C2FF', text: '#4050D0' },
 };
 
 type CategoryPalette = { background: string; border: string; text: string };
@@ -116,8 +119,8 @@ type CategoryPalette = { background: string; border: string; text: string };
 const categoryColors: Record<DefaultIdeaCategoryKey, CategoryPalette> = {
   planning: { background: '#f8fafc', border: '#cbd5e1', text: '#475569' },
   design: { background: '#fdf2f8', border: '#f9a8d4', text: '#be185d' },
-  develop: { background: '#ecfdf5', border: '#86efac', text: '#15803d' },
-  research: { background: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' },
+  develop: { background: '#E7F8EF', border: '#83DCAE', text: '#168B51' },
+  research: { background: '#EEF0FF', border: '#B9C2FF', text: '#3442B8' },
 };
 
 const customCategoryPalette: CategoryPalette = {
@@ -126,11 +129,11 @@ const customCategoryPalette: CategoryPalette = {
   text: '#334155',
 };
 
-const boardTabs: { id: BoardMode; label: string }[] = [
-  { id: extractionMode, label: '아이디어 추출' },
-  { id: listMode, label: '목록' },
-  { id: mindMapMode, label: '마인드맵' },
-  { id: finalMode, label: '최종안' },
+const boardTabs: { id: BoardMode; label: string; compactLabel: string }[] = [
+  { id: extractionMode, label: '아이디어 추출', compactLabel: '추출' },
+  { id: listMode, label: '목록', compactLabel: '목록' },
+  { id: mindMapMode, label: '마인드맵', compactLabel: '마인드맵' },
+  { id: finalMode, label: '최종안', compactLabel: '최종안' },
 ];
 
 function getCategoryLabel(filter: CategoryFilter) {
@@ -171,19 +174,6 @@ function confirmDelete(onConfirm: () => void) {
   ]);
 }
 
-function ProgressStat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <ThemedView type="backgroundElement" style={styles.progressStat}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {label}
-      </ThemedText>
-      <ThemedText type="subtitle" style={styles.progressValue}>
-        {value}
-      </ThemedText>
-    </ThemedView>
-  );
-}
-
 function ProjectProgressSummary({
   ideas,
   projectDeadline,
@@ -191,21 +181,36 @@ function ProjectProgressSummary({
   ideas: Idea[];
   projectDeadline?: string | null;
 }) {
+  const theme = useTheme();
   const selectedCount = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'selected').length;
   const approvedCount = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'approved').length;
 
   return (
-    <View style={styles.progressGrid}>
-      <ProgressStat label="D-day" value={getDDayLabel(projectDeadline ?? null)} />
-      <ProgressStat label="등록 아이디어" value={`${ideas.length}개`} />
-      <ProgressStat label="쓸 만함" value={`${approvedCount}개`} />
-      <ProgressStat label="최종 사용" value={`${selectedCount}개`} />
-      <ThemedView type="backgroundElement" style={styles.deadlineInfo}>
-        <ThemedText type="smallBold">마감 정보</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {formatDeadlineLabel(projectDeadline ?? null)}
+    <View style={styles.progressSummary}>
+      <View style={styles.progressSummaryHeading}>
+        <ThemedText type="cardTitle">진행 요약</ThemedText>
+        <ThemedText type="caption" themeColor="textSecondary">
+          {getDDayLabel(projectDeadline ?? null)} · {formatDeadlineLabel(projectDeadline ?? null)}
         </ThemedText>
-      </ThemedView>
+      </View>
+      <View
+        accessibilityLabel={`진행 요약, 전체 ${ideas.length}개, 검토 완료 ${approvedCount}개, 최종안 ${selectedCount}개`}
+        style={[styles.progressMetrics, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.progressMetric}>
+          <ThemedText type="caption" themeColor="textSecondary">전체</ThemedText>
+          <ThemedText type="cardTitle">{ideas.length}</ThemedText>
+        </View>
+        <View style={[styles.progressMetricDivider, { backgroundColor: theme.divider }]} />
+        <View style={styles.progressMetric}>
+          <ThemedText type="caption" themeColor="textSecondary">검토 완료</ThemedText>
+          <ThemedText type="cardTitle">{approvedCount}</ThemedText>
+        </View>
+        <View style={[styles.progressMetricDivider, { backgroundColor: theme.divider }]} />
+        <View style={styles.progressMetric}>
+          <ThemedText type="caption" themeColor="textSecondary">최종안</ThemedText>
+          <ThemedText type="cardTitle">{selectedCount}</ThemedText>
+        </View>
+      </View>
     </View>
   );
 }
@@ -304,6 +309,8 @@ function IdeaDraftCoach({
   isDisabled: boolean;
   onAnalyze: () => void;
 }) {
+  const theme = useTheme();
+
   return (
     <View style={styles.draftCoachRow}>
       <Pressable
@@ -313,6 +320,7 @@ function IdeaDraftCoach({
         onPress={onAnalyze}
         style={({ pressed }) => [
           styles.draftCoachAvatar,
+          { backgroundColor: theme.primarySoft, borderColor: theme.primary },
           (pressed || isDisabled || isAnalyzing) && styles.pressed,
         ]}>
         <View style={styles.draftCoachFace}>
@@ -326,8 +334,8 @@ function IdeaDraftCoach({
         </View>
       </Pressable>
 
-      <ThemedView type="backgroundElement" style={styles.draftCoachBubble}>
-        <View style={styles.draftCoachBubbleTail} />
+      <ThemedView type="backgroundElement" style={[styles.draftCoachBubble, { borderColor: theme.border }]}>
+        <View style={[styles.draftCoachBubbleTail, { backgroundColor: theme.surface, borderColor: theme.border }]} />
         {isAnalyzing ? (
           <View style={styles.draftCoachLoading}>
             <ActivityIndicator size="small" />
@@ -561,7 +569,7 @@ function IdeaForm({
   };
 
   return (
-    <ThemedView type="backgroundElement" style={styles.form}>
+    <ThemedView type="backgroundElement" style={[styles.form, { borderColor: theme.border }, Shadows.card]}>
       <View style={styles.field}>
         <ThemedText type="smallBold">아이디어 제목</ThemedText>
         <TextInput
@@ -832,7 +840,12 @@ function FeedbackSection({
 }
 
 function StatusTag({ status }: { status: IdeaStatus }) {
-  const palette = statusColors[status];
+  const theme = useTheme();
+  const palette = status === 'research'
+    ? { background: theme.warningSoft, border: theme.warning, text: theme.warning }
+    : status === 'approved'
+      ? { background: theme.successSoft, border: theme.success, text: theme.success }
+      : { background: theme.primarySoft, border: theme.primary, text: theme.primary };
 
   return (
     <View style={[styles.tag, { backgroundColor: palette.background, borderColor: palette.border }]}>
@@ -844,11 +857,11 @@ function StatusTag({ status }: { status: IdeaStatus }) {
 }
 
 function CategoryTag({ category }: { category: IdeaCategory }) {
-  const palette = getCategoryPalette(category);
+  const theme = useTheme();
 
   return (
-    <View style={[styles.tag, { backgroundColor: palette.background, borderColor: palette.border }]}>
-      <ThemedText type="smallBold" style={{ color: palette.text }}>
+    <View style={[styles.tag, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
+      <ThemedText type="captionStrong" style={{ color: theme.textSecondary }}>
         {getIdeaCategoryLabel(category)}
       </ThemedText>
     </View>
@@ -872,13 +885,17 @@ function IdeaCard({
   onAddFeedback,
   onToggleFeedbackResolved,
 }: IdeaCardProps) {
+  const theme = useTheme();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const status = normalizeIdeaStatus(idea.status);
   const category = normalizeIdeaCategory(idea.category);
   const currentStatusIndex = IdeaStatuses.indexOf(status);
   const nextStatus = IdeaStatuses[currentStatusIndex + 1];
 
   return (
-    <ThemedView type="backgroundElement" style={[styles.ideaCard, compact && styles.compactIdeaCard]}>
+    <ThemedView
+      type="backgroundElement"
+      style={[styles.ideaCard, { borderColor: theme.border }, compact && styles.compactIdeaCard]}>
       <View style={styles.cardHeader}>
         <View style={styles.tagRow}>
           <CategoryTag category={category} />
@@ -887,36 +904,41 @@ function IdeaCard({
         <View style={styles.cardActions}>
           <Pressable
             disabled={isBusy}
-            onPress={onToggleFavorite}
+            onPress={() => setIsMenuOpen((current) => !current)}
             accessibilityRole="button"
-            accessibilityLabel={idea.isfavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+            accessibilityLabel="아이디어 추가 작업"
             style={({ pressed }) => [
-              styles.favoriteButton,
-              idea.isfavorite && styles.activeFavoriteButton,
+              styles.overflowButton,
+              { borderColor: theme.border },
               (pressed || isBusy) && styles.pressed,
             ]}>
-            <ThemedText
-              type="smallBold"
-              style={idea.isfavorite ? styles.activeFavoriteText : styles.favoriteText}>
-              {idea.isfavorite ? '★' : '☆'}
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            disabled={isBusy}
-            onPress={onEdit}
-            style={({ pressed }) => [styles.compactButton, (pressed || isBusy) && styles.pressed]}>
-            <ThemedText type="smallBold">수정</ThemedText>
-          </Pressable>
-          <Pressable
-            disabled={isBusy}
-            onPress={onDelete}
-            style={({ pressed }) => [styles.compactDangerButton, (pressed || isBusy) && styles.pressed]}>
-            <ThemedText type="smallBold" style={styles.dangerButtonText}>
-              삭제
-            </ThemedText>
+            <AppIcon name="more" color={theme.textSecondary} size={22} />
           </Pressable>
         </View>
       </View>
+      {isMenuOpen ? (
+        <View style={[styles.overflowMenu, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}>
+          <Pressable
+            disabled={isBusy}
+            onPress={() => { setIsMenuOpen(false); onToggleFavorite(); }}
+            style={({ pressed }) => [styles.overflowMenuItem, pressed && styles.pressed]}>
+            <AppIcon name="favorite" color={idea.isfavorite ? theme.warning : theme.textSecondary} size={19} />
+            <ThemedText type="button">{idea.isfavorite ? '즐겨찾기 해제' : '즐겨찾기'}</ThemedText>
+          </Pressable>
+          <Pressable
+            disabled={isBusy}
+            onPress={() => { setIsMenuOpen(false); onEdit(); }}
+            style={({ pressed }) => [styles.overflowMenuItem, pressed && styles.pressed]}>
+            <ThemedText type="button">수정</ThemedText>
+          </Pressable>
+          <Pressable
+            disabled={isBusy}
+            onPress={() => { setIsMenuOpen(false); onDelete(); }}
+            style={({ pressed }) => [styles.overflowMenuItem, styles.overflowDangerItem, pressed && styles.pressed]}>
+            <ThemedText type="button" style={{ color: theme.danger }}>삭제…</ThemedText>
+          </Pressable>
+        </View>
+      ) : null}
       <ThemedText type="smallBold" style={styles.ideaTitle}>
         {idea.title}
       </ThemedText>
@@ -931,31 +953,30 @@ function IdeaCard({
           accessibilityLabel={isLiked ? '공감 취소' : '공감하기'}
           style={({ pressed }) => [
             styles.likeButton,
-            isLiked && styles.activeLikeButton,
+            { borderColor: theme.primary },
+            isLiked && { backgroundColor: theme.primary, borderColor: theme.primary },
             (pressed || isBusy || isLoadingLikes) && styles.pressed,
           ]}>
           {isLoadingLikes ? (
-            <ActivityIndicator color={isLiked ? '#ffffff' : '#e11d48'} size="small" />
+            <ActivityIndicator color={isLiked ? '#ffffff' : theme.primary} size="small" />
           ) : (
-            <ThemedText type="smallBold" style={isLiked ? styles.activeLikeMark : styles.likeMark}>
-              ♥
-            </ThemedText>
+            <AppIcon name="like" color={isLiked ? '#FFFFFF' : theme.primary} size={18} />
           )}
           <ThemedText type="smallBold" style={isLiked ? styles.activeLikeText : styles.likeText}>
             공감
           </ThemedText>
         </Pressable>
         <ThemedText type="small" themeColor="textSecondary" style={styles.likeCountText}>
-          팀원 {likesCount}명이 공감
+          {likesCount}명 공감
         </ThemedText>
       </View>
       {nextStatus ? (
         <Pressable
           disabled={isBusy}
           onPress={() => onStatusChange(nextStatus)}
-          style={({ pressed }) => [styles.nextStatusButton, (pressed || isBusy) && styles.pressed]}>
-          <ThemedText type="smallBold" style={styles.nextStatusText}>
-            다음 단계: {IdeaStatusLabels[nextStatus]}
+          style={({ pressed }) => [styles.nextStatusButton, { backgroundColor: theme.primarySoft }, (pressed || isBusy) && styles.pressed]}>
+          <ThemedText type="smallBold" style={{ color: theme.primary }}>
+            다음 상태 · {IdeaStatusLabels[nextStatus]}
           </ThemedText>
         </Pressable>
       ) : null}
@@ -1037,12 +1058,12 @@ function CategoryManager({
               style={({ pressed }) => [
                 styles.filterChip,
                 {
-                  borderColor: isSelected ? '#2563eb' : '#cbd5e1',
-                  backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                  borderColor: isSelected ? '#4050D0' : '#cbd5e1',
+                  backgroundColor: isSelected ? '#EEF0FF' : 'transparent',
                 },
                 pressed && styles.pressed,
               ]}>
-              <ThemedText type="smallBold" style={{ color: isSelected ? '#1d4ed8' : theme.text }}>
+              <ThemedText type="smallBold" style={{ color: isSelected ? '#3442B8' : theme.text }}>
                 {category}
               </ThemedText>
             </Pressable>
@@ -1059,7 +1080,7 @@ function CategoryManager({
               setManagerError('');
             }
           }}
-          placeholder="New name or existing category"
+          placeholder="새 이름 또는 기존 카테고리"
           placeholderTextColor={theme.textSecondary}
           style={[
             styles.input,
@@ -1075,14 +1096,14 @@ function CategoryManager({
           disabled={isBusy || isSaving}
           onPress={handleRename}
           style={({ pressed }) => [styles.compactButton, (pressed || isBusy || isSaving) && styles.pressed]}>
-          <ThemedText type="smallBold">Rename</ThemedText>
+          <ThemedText type="button">이름 변경</ThemedText>
         </Pressable>
         <Pressable
           disabled={isBusy || isSaving}
           onPress={handleDelete}
           style={({ pressed }) => [styles.compactDangerButton, (pressed || isBusy || isSaving) && styles.pressed]}>
           <ThemedText type="smallBold" style={styles.dangerButtonText}>
-            Delete
+            삭제
           </ThemedText>
         </Pressable>
       </View>
@@ -1131,33 +1152,18 @@ function FilterBlock({
   isBusy?: boolean;
 }) {
   const theme = useTheme();
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const categoryFilters: CategoryFilter[] = [allCategoryFilter, ...categories];
 
   return (
     <View style={styles.filterBlock}>
-      <View style={styles.filterHeader}>
-        <ThemedText type="smallBold">필터</ThemedText>
-        <Pressable
-          onPress={onToggleFavorite}
-          style={({ pressed }) => [
-            styles.favoriteFilterButton,
-            favoriteOnly && styles.activeFavoriteFilterButton,
-            pressed && styles.pressed,
-          ]}>
-          <ThemedText
-            type="smallBold"
-            style={favoriteOnly ? styles.activeFavoriteFilterText : styles.favoriteFilterText}>
-            ★ 즐겨찾기만
-          </ThemedText>
-        </Pressable>
-      </View>
       <View style={styles.searchRow}>
         <TextInput
           value={searchDraft}
           onChangeText={onChangeSearchDraft}
           onSubmitEditing={onSubmitSearch}
           returnKeyType="search"
-          placeholder="Search ideas"
+          placeholder="아이디어 검색"
           placeholderTextColor={theme.textSecondary}
           style={[
             styles.input,
@@ -1170,16 +1176,44 @@ function FilterBlock({
           ]}
         />
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="아이디어 검색"
           onPress={onSubmitSearch}
-          style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}>
-          <ThemedText type="smallBold" style={styles.primaryButtonText}>
-            입력
-          </ThemedText>
+          style={({ pressed }) => [styles.searchButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
+          <AppIcon name="search" color="#FFFFFF" size={20} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={isAdvancedOpen ? '상세 필터 닫기' : '상세 필터 열기'}
+          onPress={() => setIsAdvancedOpen((current) => !current)}
+          style={({ pressed }) => [
+            styles.advancedFilterButton,
+            { borderColor: theme.border },
+            isAdvancedOpen && { backgroundColor: theme.primarySoft, borderColor: theme.primary },
+            pressed && styles.pressed,
+          ]}>
+          <AppIcon name="filter" color={isAdvancedOpen ? theme.primary : theme.textSecondary} size={20} />
         </Pressable>
       </View>
+      {isAdvancedOpen ? (
+        <View style={styles.advancedFilters}>
+          <View style={styles.filterHeader}>
+            <ThemedText type="cardTitle">상세 필터</ThemedText>
+            <Pressable
+              onPress={onToggleFavorite}
+              style={({ pressed }) => [
+                styles.favoriteFilterButton,
+                favoriteOnly && styles.activeFavoriteFilterButton,
+                pressed && styles.pressed,
+              ]}>
+              <ThemedText type="button" style={favoriteOnly ? styles.activeFavoriteFilterText : styles.favoriteFilterText}>
+                ★ 즐겨찾기만
+              </ThemedText>
+            </Pressable>
+          </View>
       <View style={styles.filterGroup}>
         <ThemedText type="small" themeColor="textSecondary" style={styles.filterGroupLabel}>
-          Sort
+          정렬
         </ThemedText>
         <View style={styles.filterRow}>
           {sortOptions.map((option) => {
@@ -1192,12 +1226,12 @@ function FilterBlock({
                 style={({ pressed }) => [
                   styles.filterChip,
                   {
-                    borderColor: isSelected ? '#93c5fd' : '#cbd5e1',
-                    backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                    borderColor: isSelected ? '#B9C2FF' : '#cbd5e1',
+                    backgroundColor: isSelected ? '#EEF0FF' : 'transparent',
                   },
                   pressed && styles.pressed,
                 ]}>
-                <ThemedText type="smallBold" style={{ color: isSelected ? '#1d4ed8' : theme.text }}>
+                <ThemedText type="smallBold" style={{ color: isSelected ? '#3442B8' : theme.text }}>
                   {option.label}
                 </ThemedText>
               </Pressable>
@@ -1271,6 +1305,8 @@ function FilterBlock({
         onRenameCategory={onRenameCategory}
         onDeleteCategory={onDeleteCategory}
       />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1284,9 +1320,9 @@ function buildFinalDraftText(ideas: Idea[]) {
 function AnalysisLevelBadge({ value }: { value: FinalAnalysisLevel }) {
   const palette =
     value === '높음'
-      ? { background: '#ecfdf5', border: '#86efac', text: '#15803d' }
+      ? { background: '#E7F8EF', border: '#83DCAE', text: '#168B51' }
       : value === '보통'
-        ? { background: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' }
+        ? { background: '#EEF0FF', border: '#B9C2FF', text: '#3442B8' }
         : { background: '#fff7ed', border: '#fdba74', text: '#c2410c' };
 
   return (
@@ -1409,6 +1445,7 @@ function OverallAnalysisCard({ result, ideas }: { result: FinalIdeaAnalysisResul
 }
 
 function FinalDraftView({ ideas, projectId }: { ideas: Idea[]; projectId: string }) {
+  const theme = useTheme();
   const selectedIdeas = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'selected');
   const approvedIdeas = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'approved');
   const sourceIdeas = selectedIdeas.length > 0 ? selectedIdeas : approvedIdeas;
@@ -1429,6 +1466,7 @@ function FinalDraftView({ ideas, projectId }: { ideas: Idea[]; projectId: string
   if (sourceIdeas.length === 0) {
     return (
       <View style={styles.finalBlock}>
+        <ProjectFlowSteps current="final" />
         <ThemedView type="backgroundElement" style={styles.emptyState}>
           <ThemedText type="smallBold">최종안에 넣을 아이디어가 없습니다.</ThemedText>
           <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
@@ -1465,7 +1503,8 @@ function FinalDraftView({ ideas, projectId }: { ideas: Idea[]; projectId: string
 
   return (
     <View style={styles.finalBlock}>
-      <ThemedView type="backgroundElement" style={styles.finalPanel}>
+      <ProjectFlowSteps current="final" />
+      <ThemedView type="backgroundElement" style={[styles.finalPanel, { borderColor: theme.border }, Shadows.card]}>
         <ThemedText type="smallBold" style={styles.finalTitle}>
           발표/보고서 구성안
         </ThemedText>
@@ -1488,10 +1527,10 @@ function FinalDraftView({ ideas, projectId }: { ideas: Idea[]; projectId: string
         </View>
         <View style={styles.finalAnalysisBlock}>
           <Pressable
-            onPress={() => router.push('/mvp-generator' as Href)}
+            onPress={() => router.push(`/coach?projectId=${projectId}` as Href)}
             style={({ pressed }) => [styles.finalAnalysisButton, pressed && styles.pressed]}>
             <ThemedText type="smallBold" style={styles.primaryButtonText}>
-              AI MVP 생성기 열기
+              A. 조건별 추천·최종 선정으로 이동
             </ThemedText>
           </Pressable>
           <Pressable
@@ -1578,11 +1617,14 @@ function FinalDraftView({ ideas, projectId }: { ideas: Idea[]; projectId: string
           editable={false}
           multiline
           selectTextOnFocus
-          style={styles.finalExportInput}
+          style={[
+            styles.finalExportInput,
+            { color: theme.text, backgroundColor: theme.background, borderColor: theme.border },
+          ]}
         />
       </ThemedView>
 
-      <ThemedView type="backgroundElement" style={styles.finalPanel}>
+      <ThemedView type="backgroundElement" style={[styles.finalPanel, { borderColor: theme.border }]}>
         <ThemedText type="smallBold">최종 사용 체크리스트</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           1. 각 아이디어의 근거 자료를 확인하기
@@ -1599,6 +1641,9 @@ function FinalDraftView({ ideas, projectId }: { ideas: Idea[]; projectId: string
 }
 
 export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
+  const theme = useTheme();
+  const { width: viewportWidth } = useWindowDimensions();
+  const useCompactTabLabels = viewportWidth < 420;
   const {
     ideas,
     isLoadingIdeas,
@@ -1645,6 +1690,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('newest');
   const [favoriteOnly, setFavoriteOnly] = useState(false);
+  const [isCreateIdeaOpen, setIsCreateIdeaOpen] = useState(false);
   const [editingIdeaId, setEditingIdeaId] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [mutationError, setMutationError] = useState('');
@@ -1715,6 +1761,8 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     const result = await createIdea(input);
     if (result.error) {
       setMutationError(result.error);
+    } else {
+      setIsCreateIdeaOpen(false);
     }
 
     setIsMutating(false);
@@ -2002,8 +2050,8 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     <ThemedView style={styles.board}>
       <View style={styles.boardHeader}>
         <View style={styles.boardTitleBlock}>
-          <ThemedText type="smallBold">과제 진행 보드</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="sectionTitle">아이디어 보드</ThemedText>
+          <ThemedText type="caption" themeColor="textSecondary">
             전체 {ideas.length}개 · 공감 {likeCount}개 · 즐겨찾기 {favoriteCount}개 · 피드백 {feedbacks.length}개
           </ThemedText>
         </View>
@@ -2011,20 +2059,24 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
 
       <ProjectProgressSummary ideas={ideas} projectDeadline={projectDeadline} />
 
-      <View style={styles.modeToggle}>
-        {boardTabs.map((tab) => (
+      <View style={[styles.modeToggle, { borderColor: theme.border }]}>
+        {boardTabs.map((tab, index) => (
           <Pressable
             key={tab.id}
+            accessibilityRole="tab"
+            accessibilityLabel={`${index + 1}. ${tab.label}`}
+            accessibilityState={{ selected: boardMode === tab.id }}
             onPress={() => setBoardMode(tab.id)}
             style={({ pressed }) => [
               styles.modeButton,
-              boardMode === tab.id && styles.activeModeButton,
+              boardMode === tab.id && { backgroundColor: theme.primary },
               pressed && styles.pressed,
             ]}>
             <ThemedText
               type="smallBold"
-              style={boardMode === tab.id ? styles.activeModeButtonText : styles.modeButtonText}>
-              {tab.label}
+              numberOfLines={1}
+              style={boardMode === tab.id ? styles.activeModeButtonText : { color: theme.textSecondary }}>
+              {index + 1}. {useCompactTabLabels ? tab.compactLabel : tab.label}
             </ThemedText>
           </Pressable>
         ))}
@@ -2036,35 +2088,55 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
 
       {boardMode === listMode ? (
         <>
-          <IdeaForm
-            categories={categories}
-            draftKey={`ideadraft:${projectId}`}
-            projectId={projectId}
-            submitLabel="등록"
-            isBusy={isMutating && !editingIdeaId}
-            error={!editingIdeaId ? mutationError : ''}
-            onSubmit={handleCreate}
-            onCreateCategory={createCategory}
-          />
+          <View style={styles.listToolbar}>
+            <ThemedText type="body" themeColor="textSecondary">아이디어를 모으고 공감으로 우선순위를 정하세요.</ThemedText>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="아이디어 추가"
+              onPress={() => { setMutationError(''); setIsCreateIdeaOpen(true); }}
+              style={({ pressed }) => [styles.addIdeaButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
+              <AppIcon name="add" color="#FFFFFF" size={20} />
+              <ThemedText type="button" style={styles.primaryButtonText}>아이디어 추가</ThemedText>
+            </Pressable>
+          </View>
 
-          {editingIdea ? (
-            <View style={styles.editingBlock}>
-              <ThemedText type="smallBold">아이디어 수정</ThemedText>
-              <IdeaForm
-                idea={editingIdea}
-                categories={categories}
-                submitLabel="저장"
-                isBusy={isMutating}
-                error={editingIdeaId ? mutationError : ''}
-                onSubmit={handleUpdate}
-                onCreateCategory={createCategory}
-                onCancel={() => {
-                  setEditingIdeaId(null);
-                  setMutationError('');
-                }}
-              />
+          <Modal
+            visible={isCreateIdeaOpen || Boolean(editingIdea)}
+            transparent
+            animationType="slide"
+            onRequestClose={() => { setIsCreateIdeaOpen(false); setEditingIdeaId(null); }}>
+            <View style={[styles.ideaModalOverlay, { backgroundColor: theme.overlay }]}>
+              <ThemedView type="surfaceElevated" style={[styles.ideaModalPanel, { borderColor: theme.border }, Shadows.floating]}>
+                <View style={styles.ideaModalHeader}>
+                  <View style={styles.boardTitleBlock}>
+                    <ThemedText type="sectionTitle">{editingIdea ? '아이디어 수정' : '아이디어 추가'}</ThemedText>
+                    <ThemedText type="caption" themeColor="textSecondary">핵심을 짧게 적고 필요하면 AI 코치로 다듬어 보세요.</ThemedText>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="아이디어 입력 창 닫기"
+                    onPress={() => { setIsCreateIdeaOpen(false); setEditingIdeaId(null); setMutationError(''); }}
+                    style={({ pressed }) => [styles.overflowButton, { borderColor: theme.border }, pressed && styles.pressed]}>
+                    <AppIcon name="close" color={theme.textSecondary} size={21} />
+                  </Pressable>
+                </View>
+                <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.ideaModalContent}>
+                  <IdeaForm
+                    idea={editingIdea}
+                    categories={categories}
+                    draftKey={editingIdea ? undefined : `ideadraft:${projectId}`}
+                    projectId={editingIdea ? undefined : projectId}
+                    submitLabel={editingIdea ? '저장' : '아이디어 등록'}
+                    isBusy={isMutating}
+                    error={mutationError}
+                    onSubmit={editingIdea ? handleUpdate : handleCreate}
+                    onCreateCategory={createCategory}
+                    onCancel={() => { setIsCreateIdeaOpen(false); setEditingIdeaId(null); setMutationError(''); }}
+                  />
+                </ScrollView>
+              </ThemedView>
             </View>
-          ) : null}
+          </Modal>
 
           <FilterBlock
             categories={categories}
@@ -2092,16 +2164,15 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
           ) : null}
 
           {isLoadingIdeas ? (
-            <ThemedView type="backgroundElement" style={styles.emptyState}>
-              <ActivityIndicator />
-            </ThemedView>
+            <LoadingSkeleton rows={3} />
           ) : visibleIdeas.length === 0 ? (
-            <ThemedView type="backgroundElement" style={styles.emptyState}>
-              <ThemedText type="smallBold">표시할 아이디어가 없습니다.</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-                필터를 바꾸거나 새 아이디어를 등록해 보세요.
-              </ThemedText>
-            </ThemedView>
+            <EmptyState
+              icon="idea"
+              title={ideas.length === 0 ? '첫 아이디어를 추가해 보세요' : '조건에 맞는 아이디어가 없어요'}
+              description={ideas.length === 0 ? '완성된 문장일 필요 없어요. 떠오른 생각부터 기록해 보세요.' : '검색어나 상세 필터를 바꿔 보세요.'}
+              actionLabel="아이디어 추가"
+              onAction={() => setIsCreateIdeaOpen(true)}
+            />
           ) : (
             <View style={styles.ideaList}>
               {visibleIdeas.map((idea) => (
@@ -2166,7 +2237,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
 
 const styles = StyleSheet.create({
   board: {
-    gap: Spacing.three,
+    gap: Spacing.four,
   },
   boardHeader: {
     flexDirection: 'row',
@@ -2176,48 +2247,53 @@ const styles = StyleSheet.create({
   boardTitleBlock: {
     gap: Spacing.one,
   },
-  progressGrid: {
+  progressSummary: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+    paddingVertical: Spacing.two,
   },
-  progressStat: {
-    flexGrow: 1,
-    minWidth: 140,
+  progressSummaryHeading: {
+    flex: 1,
+    minWidth: 220,
     gap: Spacing.one,
-    borderRadius: Spacing.three,
+  },
+  progressMetrics: {
+    flex: 1,
+    minWidth: 280,
+    flexDirection: 'row',
+    alignItems: 'stretch',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: Spacing.three,
+    borderRadius: Radius.medium,
+    overflow: 'hidden',
   },
-  progressValue: {
-    color: '#2563eb',
-  },
-  deadlineInfo: {
-    flexGrow: 1,
-    minWidth: 180,
+  progressMetric: {
+    flex: 1,
+    minHeight: 66,
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: Spacing.one,
-    borderRadius: Spacing.three,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: Spacing.three,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
+  progressMetricDivider: {
+    width: 1,
   },
   form: {
-    gap: Spacing.three,
-    borderRadius: Spacing.three,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: Spacing.three,
+    gap: Spacing.four,
+    borderRadius: Radius.large,
   },
   field: {
     gap: Spacing.two,
   },
   input: {
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     fontSize: 16,
     lineHeight: 22,
-    minHeight: 46,
+    minHeight: ControlHeight.input,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
@@ -2231,9 +2307,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   chip: {
-    minHeight: 40,
+    minHeight: ControlHeight.touch,
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -2254,7 +2330,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   addCategoryInlineText: {
-    color: '#2563eb',
+    color: '#4050D0',
   },
   addCategoryInput: {
     flex: 1,
@@ -2262,7 +2338,7 @@ const styles = StyleSheet.create({
   addCategoryButton: {
     minHeight: 46,
     borderRadius: Spacing.two,
-    backgroundColor: '#2563eb',
+    backgroundColor: '#4050D0',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -2278,8 +2354,8 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 29,
     borderWidth: 1,
-    borderColor: '#93c5fd',
-    backgroundColor: '#eff6ff',
+    borderColor: '#B9C2FF',
+    backgroundColor: '#EEF0FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2295,10 +2371,10 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#1d4ed8',
+    backgroundColor: '#3442B8',
   },
   draftCoachAvatarText: {
-    color: '#1d4ed8',
+    color: '#3442B8',
     lineHeight: 18,
   },
   draftCoachBubble: {
@@ -2307,7 +2383,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     borderRadius: Spacing.two,
     borderWidth: 1,
-    borderColor: '#bfdbfe',
+    borderColor: '#CED4FF',
     padding: Spacing.three,
   },
   draftCoachBubbleTail: {
@@ -2318,8 +2394,6 @@ const styles = StyleSheet.create({
     height: 12,
     borderLeftWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#bfdbfe',
-    backgroundColor: '#ffffff',
     transform: [{ rotate: '45deg' }],
   },
   draftCoachContent: {
@@ -2340,7 +2414,7 @@ const styles = StyleSheet.create({
   draftCoachActionButton: {
     alignSelf: 'flex-start',
     borderRadius: Spacing.two,
-    backgroundColor: '#2563eb',
+    backgroundColor: '#4050D0',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
@@ -2350,21 +2424,22 @@ const styles = StyleSheet.create({
   modeToggle: {
     flexDirection: 'row',
     gap: Spacing.one,
-    borderRadius: Spacing.two,
-    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderRadius: Radius.medium,
     padding: Spacing.one,
   },
   modeButton: {
+    minWidth: 0,
     flex: 1,
-    minHeight: 40,
-    borderRadius: Spacing.two,
+    minHeight: ControlHeight.touch,
+    borderRadius: Radius.small,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.two,
+    paddingHorizontal: Spacing.one,
     paddingVertical: Spacing.two,
   },
   activeModeButton: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#4050D0',
   },
   modeButtonText: {
     color: '#475569',
@@ -2391,7 +2466,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.one,
   },
   filterBlock: {
-    gap: Spacing.two,
+    gap: Spacing.three,
+    paddingVertical: Spacing.one,
   },
   searchRow: {
     flexDirection: 'row',
@@ -2401,9 +2477,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   searchButton: {
-    minHeight: 46,
-    borderRadius: Spacing.two,
-    backgroundColor: '#2563eb',
+    minHeight: ControlHeight.input,
+    borderRadius: Radius.medium,
+    backgroundColor: '#4050D0',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -2420,19 +2496,19 @@ const styles = StyleSheet.create({
     minWidth: 180,
   },
   filterChip: {
-    minHeight: 38,
+    minHeight: ControlHeight.touch,
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
   favoriteFilterButton: {
-    minHeight: 38,
+    minHeight: ControlHeight.touch,
     borderWidth: 1,
     borderColor: '#fbbf24',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -2451,13 +2527,28 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   ideaList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.three,
   },
-  ideaCard: {
-    gap: Spacing.three,
-    borderRadius: Spacing.three,
+  advancedFilterButton: {
+    width: ControlHeight.input,
+    height: ControlHeight.input,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderRadius: Radius.medium,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  advancedFilters: {
+    gap: Spacing.three,
+    paddingTop: Spacing.two,
+  },
+  ideaCard: {
+    flexGrow: 1,
+    flexBasis: 360,
+    gap: Spacing.three,
+    borderRadius: Radius.large,
+    borderWidth: 1,
     padding: Spacing.three,
   },
   compactIdeaCard: {
@@ -2480,9 +2571,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   tag: {
-    minHeight: 34,
+    minHeight: 30,
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
@@ -2503,10 +2594,10 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   likeButton: {
-    minHeight: 36,
+    minHeight: ControlHeight.touch,
     borderWidth: 1,
-    borderColor: '#fecdd3',
-    borderRadius: Spacing.two,
+    borderColor: '#B9C2FF',
+    borderRadius: Radius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2515,17 +2606,17 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
   },
   activeLikeButton: {
-    backgroundColor: '#e11d48',
-    borderColor: '#e11d48',
+    backgroundColor: '#4050D0',
+    borderColor: '#4050D0',
   },
   likeMark: {
-    color: '#e11d48',
+    color: '#4050D0',
   },
   activeLikeMark: {
     color: '#ffffff',
   },
   likeText: {
-    color: '#be123c',
+    color: '#3442B8',
   },
   activeLikeText: {
     color: '#ffffff',
@@ -2535,15 +2626,55 @@ const styles = StyleSheet.create({
   },
   nextStatusButton: {
     alignSelf: 'flex-start',
-    minHeight: 34,
-    borderRadius: Spacing.two,
-    backgroundColor: '#eff6ff',
+    minHeight: ControlHeight.touch,
+    borderRadius: Radius.medium,
+    backgroundColor: '#EEF0FF',
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.one,
   },
   nextStatusText: {
-    color: '#1d4ed8',
+    color: '#3442B8',
+  },
+  listToolbar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  addIdeaButton: {
+    minHeight: ControlHeight.touch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.one,
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
+  },
+  ideaModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  ideaModalPanel: {
+    width: '100%',
+    maxWidth: 720,
+    maxHeight: '92%',
+    borderWidth: 1,
+    borderTopLeftRadius: Radius.xlarge,
+    borderTopRightRadius: Radius.xlarge,
+    padding: Spacing.three,
+    gap: Spacing.three,
+  },
+  ideaModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  ideaModalContent: {
+    paddingBottom: Spacing.four,
   },
   feedbackBlock: {
     gap: Spacing.two,
@@ -2563,18 +2694,18 @@ const styles = StyleSheet.create({
   },
   feedbackInput: {
     flex: 1,
-    minHeight: 42,
+    minHeight: ControlHeight.touch,
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     fontSize: 14,
     lineHeight: 20,
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.two,
   },
   feedbackButton: {
-    minHeight: 42,
-    borderRadius: Spacing.two,
-    backgroundColor: '#2563eb',
+    minHeight: ControlHeight.touch,
+    borderRadius: Radius.medium,
+    backgroundColor: '#4050D0',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -2585,7 +2716,7 @@ const styles = StyleSheet.create({
   },
   feedbackItem: {
     gap: Spacing.one,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     backgroundColor: '#f8fafc',
     padding: Spacing.two,
   },
@@ -2601,23 +2732,23 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   feedbackResolveButton: {
-    minHeight: 30,
+    minHeight: ControlHeight.touch,
     borderWidth: 1,
     borderColor: '#cbd5e1',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.one,
   },
   feedbackResolvedButton: {
-    borderColor: '#86efac',
-    backgroundColor: '#ecfdf5',
+    borderColor: '#83DCAE',
+    backgroundColor: '#E7F8EF',
   },
   feedbackResolveText: {
     color: '#475569',
   },
   feedbackResolvedText: {
-    color: '#15803d',
+    color: '#168B51',
   },
   actions: {
     flexDirection: 'row',
@@ -2626,9 +2757,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   primaryButton: {
-    minHeight: 44,
-    borderRadius: Spacing.two,
-    backgroundColor: '#2563eb',
+    minHeight: ControlHeight.button,
+    borderRadius: Radius.medium,
+    backgroundColor: '#4050D0',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -2638,8 +2769,8 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   secondaryButton: {
-    minHeight: 44,
-    borderRadius: Spacing.two,
+    minHeight: ControlHeight.touch,
+    borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: '#cbd5e1',
     alignItems: 'center',
@@ -2648,9 +2779,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   favoriteButton: {
-    width: 34,
-    minHeight: 34,
-    borderRadius: Spacing.two,
+    width: ControlHeight.touch,
+    minHeight: ControlHeight.touch,
+    borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: '#fbbf24',
     alignItems: 'center',
@@ -2665,9 +2796,35 @@ const styles = StyleSheet.create({
   activeFavoriteText: {
     color: '#92400e',
   },
+  overflowButton: {
+    width: ControlHeight.touch,
+    height: ControlHeight.touch,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  overflowMenu: {
+    alignSelf: 'flex-end',
+    minWidth: 190,
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    overflow: 'hidden',
+  },
+  overflowMenuItem: {
+    minHeight: ControlHeight.touch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+  },
+  overflowDangerItem: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.3)',
+  },
   compactButton: {
-    minHeight: 34,
-    borderRadius: Spacing.two,
+    minHeight: ControlHeight.touch,
+    borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: '#cbd5e1',
     alignItems: 'center',
@@ -2676,8 +2833,8 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
   },
   compactDangerButton: {
-    minHeight: 34,
-    borderRadius: Spacing.two,
+    minHeight: ControlHeight.touch,
+    borderRadius: Radius.medium,
     backgroundColor: '#dc2626',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2691,11 +2848,10 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   finalPanel: {
-    gap: Spacing.three,
-    borderRadius: Spacing.three,
+    gap: Spacing.four,
+    borderRadius: Radius.large,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: Spacing.three,
+    padding: Spacing.four,
   },
   finalTitle: {
     fontSize: 18,
@@ -2712,9 +2868,9 @@ const styles = StyleSheet.create({
   },
   finalAnalysisButton: {
     alignSelf: 'flex-start',
-    minHeight: 44,
-    borderRadius: Spacing.two,
-    backgroundColor: '#2563eb',
+    minHeight: ControlHeight.button,
+    borderRadius: Radius.medium,
+    backgroundColor: '#4050D0',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -2744,7 +2900,7 @@ const styles = StyleSheet.create({
   },
   analysisCard: {
     gap: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.large,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     padding: Spacing.three,
@@ -2764,7 +2920,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   analysisBulletDot: {
-    color: '#2563eb',
+    color: '#4050D0',
     lineHeight: 20,
   },
   analysisBulletText: {
@@ -2798,10 +2954,7 @@ const styles = StyleSheet.create({
   finalExportInput: {
     minHeight: 160,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: Spacing.two,
-    color: '#0f172a',
-    backgroundColor: '#ffffff',
+    borderRadius: Radius.medium,
     fontSize: 14,
     lineHeight: 20,
     padding: Spacing.two,
@@ -2817,8 +2970,8 @@ const styles = StyleSheet.create({
   outlineNumber: {
     width: 28,
     height: 28,
-    borderRadius: 14,
-    backgroundColor: '#2563eb',
+    borderRadius: Radius.pill,
+    backgroundColor: '#4050D0',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2832,7 +2985,7 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     gap: Spacing.two,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.large,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     padding: Spacing.four,

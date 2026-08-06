@@ -1,35 +1,35 @@
 {
   "expo": {
-    "name": "EXPO1",
+    "name": "Watt",
     "slug": "EXPO1",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/watt-icon.png",
+    "backgroundColor": "#4050D0",
+    "primaryColor": "#4050D0",
     "scheme": "expo1",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/watt-icon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#4050D0",
+        "foregroundImage": "./assets/images/watt-icon.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.EXPO1"
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/watt-icon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-image-picker",
         {
-          "photosPermission": "카카오톡 캡처에서 아이디어를 추출하기 위해 사진을 선택할 수 있도록 허용해 주세요.",
+          "photosPermission": "프로필 사진을 설정하거나 캡처 이미지에서 아이디어를 추출할 수 있도록 사진 접근을 허용해 주세요.",
           "cameraPermission": false,
           "microphonePermission": false
         }
@@ -37,13 +37,17 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+          "backgroundColor": "#4050D0",
+          "image": "./assets/images/watt-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#4050D0",
+            "image": "./assets/images/watt-icon.png"
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

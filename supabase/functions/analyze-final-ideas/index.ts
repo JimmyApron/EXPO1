@@ -360,6 +360,7 @@ Deno.serve(async (request) => {
 
   const prompt = JSON.stringify({
     projectId: cleanString(requestBody.projectId),
+    projectConditions: isRecord(requestBody.projectConditions) ? requestBody.projectConditions : {},
     ideas,
     outputNotice: defaultNotice,
   });

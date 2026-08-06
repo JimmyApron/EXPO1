@@ -2,15 +2,16 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { NotificationKindLabels, type AppNotification, type NotificationKind } from '@/types/notification';
 
 const kindColors: Record<NotificationKind, { background: string; text: string }> = {
   deadline: { background: '#fee2e2', text: '#b91c1c' },
   ideareview: { background: '#fef3c7', text: '#92400e' },
-  finalselection: { background: '#dbeafe', text: '#1d4ed8' },
+  finalselection: { background: '#EEF0FF', text: '#3442B8' },
   stalledidea: { background: '#f1f5f9', text: '#475569' },
-  feedback: { background: '#dcfce7', text: '#15803d' },
+  feedback: { background: '#E7F8EF', text: '#168B51' },
   likesurge: { background: '#fce7f3', text: '#be185d' },
 };
 
@@ -54,12 +55,18 @@ export function NotificationCard({
   onDelete,
   onOpenProject,
 }: NotificationCardProps) {
+  const theme = useTheme();
   const kindColor = kindColors[notification.kind];
 
   return (
     <ThemedView
       type={notification.isread ? 'backgroundElement' : undefined}
-      style={[styles.card, !notification.isread && styles.unreadCard]}>
+      style={[
+        styles.card,
+        { borderColor: theme.border },
+        !notification.isread && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+        Shadows.card,
+      ]}>
       <Pressable
         accessibilityRole="button"
         onPress={() => {
@@ -79,7 +86,7 @@ export function NotificationCard({
         </View>
 
         <View style={styles.titleRow}>
-          {!notification.isread ? <View accessibilityLabel="읽지 않음" style={styles.unreadDot} /> : null}
+          {!notification.isread ? <View accessibilityLabel="읽지 않음" style={[styles.unreadDot, { backgroundColor: theme.primary }]} /> : null}
           <ThemedText type="smallBold" style={styles.title}>
             {notification.title}
           </ThemedText>
@@ -87,16 +94,16 @@ export function NotificationCard({
         <ThemedText themeColor="textSecondary">{notification.message}</ThemedText>
       </Pressable>
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, { borderTopColor: theme.divider }]}>
         {!notification.isread ? (
           <Pressable onPress={onRead} style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}>
-            <ThemedText type="smallBold" style={styles.readText}>
+            <ThemedText type="smallBold" style={[styles.readText, { color: theme.primary }]}>
               읽음
             </ThemedText>
           </Pressable>
         ) : null}
         <Pressable onPress={onDelete} style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}>
-          <ThemedText type="smallBold" style={styles.deleteText}>
+          <ThemedText type="smallBold" style={[styles.deleteText, { color: theme.danger }]}>
             삭제
           </ThemedText>
         </Pressable>
@@ -109,12 +116,7 @@ const styles = StyleSheet.create({
   card: {
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: Spacing.three,
-  },
-  unreadCard: {
-    borderColor: '#93c5fd',
-    backgroundColor: '#eff6ff',
+    borderRadius: Radius.large,
   },
   main: {
     gap: Spacing.two,
@@ -127,7 +129,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   kindBadge: {
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.one,
   },
@@ -140,7 +142,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#2563eb',
   },
   title: {
     flex: 1,
@@ -151,19 +152,18 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: Spacing.one,
     borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
     padding: Spacing.two,
   },
   actionButton: {
-    minHeight: 36,
+    minHeight: ControlHeight.touch,
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
   },
   readText: {
-    color: '#2563eb',
+    fontWeight: '700',
   },
   deleteText: {
-    color: '#dc2626',
+    fontWeight: '700',
   },
   pressed: {
     opacity: 0.68,

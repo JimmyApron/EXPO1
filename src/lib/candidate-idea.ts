@@ -142,6 +142,13 @@ export function candidateIdeaToIdeaInput(candidate: CandidateIdea): IdeaInput {
     ].join('\n'),
     status: 'thought',
     category: 'planning',
+    sourceid: normalized.id,
+    summary: normalized.summary,
+    problem: normalized.problem,
+    targetusers: normalized.targetUsers,
+    solution: normalized.solution,
+    keywords: normalized.keywords,
+    corefeatures: normalized.coreFeatures,
   };
 }
 

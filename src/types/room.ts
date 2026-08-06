@@ -1,4 +1,4 @@
-export const RoomRoles = ['owner', 'admin', 'member'] as const;
+export const RoomRoles = ['owner', 'member'] as const;
 
 export type RoomRole = (typeof RoomRoles)[number];
 
@@ -60,7 +60,7 @@ export function normalizeRoomRole(role: unknown): RoomRole {
 }
 
 export function canManageRoom(role: RoomRole) {
-  return role === 'owner' || role === 'admin';
+  return role === 'owner';
 }
 
 export function canOwnRoom(role: RoomRole) {

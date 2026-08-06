@@ -1,5 +1,5 @@
-import { Slot } from 'expo-router';
+import { AppNavigation } from '@/components/app-navigation';
 
 export default function AppTabs() {
-  return <Slot />;
+  return <AppNavigation />;
 }

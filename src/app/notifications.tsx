@@ -1,23 +1,25 @@
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { EmptyState } from '@/components/empty-state';
+import { LoadingSkeleton } from '@/components/loading-skeleton';
 import { NotificationCard } from '@/components/notification/notification-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, ControlHeight, MaxContentWidth, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
 
 const notificationSettingOptions = [
-  ['deadline', 'Deadline'],
-  ['ideareview', 'Review'],
-  ['finalselection', 'Final'],
-  ['stalledidea', 'Stalled'],
-  ['feedback', 'Feedback'],
-  ['likesurge', 'Likes'],
+  ['deadline', '마감 일정'],
+  ['ideareview', '검토 필요'],
+  ['finalselection', '최종 선정'],
+  ['stalledidea', '진행 정체'],
+  ['feedback', '피드백'],
+  ['likesurge', '공감'],
 ] as const;
 
 export default function NotificationsScreen() {
@@ -54,30 +56,36 @@ export default function NotificationsScreen() {
       contentContainerStyle={styles.scrollContent}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.container}>
-          <Pressable onPress={() => router.replace('/')} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-            <ThemedText type="small" themeColor="textSecondary">
-              ← 홈으로
-            </ThemedText>
-          </Pressable>
-
           <View style={styles.header}>
             <View style={styles.headerCopy}>
-              <ThemedText type="subtitle">알림</ThemedText>
-              <ThemedText themeColor="textSecondary">
-                마감 일정과 확인이 필요한 아이디어를 모아 보여드립니다.
+              <ThemedText type="screenTitle">알림</ThemedText>
+              <ThemedText type="body" themeColor="textSecondary">
+                마감과 피드백처럼 확인이 필요한 소식을 모았어요.
               </ThemedText>
             </View>
             <View style={styles.headerActions}>
               {unreadCount > 0 ? (
-                <Pressable onPress={markAllAsRead} style={({ pressed }) => [styles.readAllButton, pressed && styles.pressed]}>
-                  <ThemedText type="smallBold" style={styles.readAllText}>
+                <Pressable
+                  onPress={markAllAsRead}
+                  style={({ pressed }) => [
+                    styles.readAllButton,
+                    { borderColor: theme.border },
+                    pressed && styles.pressed,
+                  ]}>
+                  <ThemedText type="smallBold" style={[styles.readAllText, { color: theme.primary }]}>
                     모두 읽음
                   </ThemedText>
                 </Pressable>
               ) : null}
               {notifications.length > 0 ? (
-                <Pressable onPress={() => setIsDeleteConfirmOpen(true)} style={({ pressed }) => [styles.deleteAllButton, pressed && styles.pressed]}>
-                  <ThemedText type="smallBold" style={styles.deleteAllText}>
+                <Pressable
+                  onPress={() => setIsDeleteConfirmOpen(true)}
+                  style={({ pressed }) => [
+                    styles.deleteAllButton,
+                    { borderColor: theme.danger },
+                    pressed && styles.pressed,
+                  ]}>
+                  <ThemedText type="smallBold" style={[styles.deleteAllText, { color: theme.danger }]}>
                     모두 삭제
                   </ThemedText>
                 </Pressable>
@@ -92,9 +100,16 @@ export default function NotificationsScreen() {
             </ThemedText>
           </View>
 
-          <ThemedView type="backgroundElement" style={styles.settingsPanel}>
+          <ThemedView
+            type="backgroundElement"
+            style={[styles.settingsPanel, { borderColor: theme.border }, Shadows.card]}>
             <View style={styles.settingsHeader}>
-              <ThemedText type="smallBold">Notification settings</ThemedText>
+              <View style={styles.settingsTitleBlock}>
+                <ThemedText type="smallBold" style={styles.settingsTitle}>알림 설정</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  받고 싶은 알림 유형과 마감 알림 시점을 관리하세요.
+                </ThemedText>
+              </View>
               <View style={styles.bulkFilterActions}>
                 <Pressable
                   accessibilityRole="button"
@@ -127,10 +142,13 @@ export default function NotificationsScreen() {
                     onPress={() => updateNotificationSettings({ [settingKey]: !isEnabled })}
                     style={({ pressed }) => [
                       styles.settingToggle,
-                      isEnabled && styles.activeSettingToggle,
+                      { borderColor: theme.border },
+                      isEnabled && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
                       pressed && styles.pressed,
                     ]}>
-                    <ThemedText type="smallBold" style={isEnabled ? styles.activeSettingText : styles.settingText}>
+                    <ThemedText
+                      type="smallBold"
+                      style={{ color: isEnabled ? theme.primary : theme.textSecondary }}>
                       {label}
                     </ThemedText>
                   </Pressable>
@@ -167,16 +185,15 @@ export default function NotificationsScreen() {
           ) : null}
 
           {isLoading ? (
-            <ThemedView type="backgroundElement" style={styles.emptyState}>
-              <ActivityIndicator />
-            </ThemedView>
+            <LoadingSkeleton rows={4} />
           ) : notifications.length === 0 ? (
-            <ThemedView type="backgroundElement" style={styles.emptyState}>
-              <ThemedText type="smallBold">새로운 알림이 없습니다.</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-                확인이 필요한 일정이나 아이디어가 생기면 이곳에 표시됩니다.
-              </ThemedText>
-            </ThemedView>
+            <EmptyState
+              icon="notifications"
+              title="새로운 알림이 없어요"
+              description="마감이나 피드백이 생기면 이곳에서 알려드릴게요."
+              actionLabel="과제 보기"
+              onAction={() => router.push('/projects' as Href)}
+            />
           ) : (
             <View style={styles.list}>
               {notifications.map((notification) => (
@@ -194,8 +211,10 @@ export default function NotificationsScreen() {
       </SafeAreaView>
 
       <Modal visible={isDeleteConfirmOpen} transparent animationType="fade" onRequestClose={() => setIsDeleteConfirmOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <ThemedView style={[styles.confirmPanel, { backgroundColor: theme.background }]}>
+        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+          <ThemedView
+            type="surfaceElevated"
+            style={[styles.confirmPanel, { borderColor: theme.danger }, Shadows.floating]}>
             <View style={styles.confirmCopy}>
               <ThemedText type="smallBold" style={styles.confirmTitle}>
                 알림을 모두 삭제할까요?
@@ -236,11 +255,13 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     maxWidth: MaxContentWidth,
-    gap: Spacing.four,
+    gap: Spacing.five,
     paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.five,
+    paddingTop: Spacing.four,
   },
   backButton: {
+    minHeight: ControlHeight.touch,
+    justifyContent: 'center',
     alignSelf: 'flex-start',
     paddingVertical: Spacing.two,
   },
@@ -263,26 +284,24 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   readAllButton: {
-    minHeight: 44,
+    minHeight: ControlHeight.touch,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#93c5fd',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     paddingHorizontal: Spacing.three,
   },
   readAllText: {
-    color: '#2563eb',
+    fontWeight: '700',
   },
   deleteAllButton: {
-    minHeight: 44,
+    minHeight: ControlHeight.touch,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#fecaca',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     paddingHorizontal: Spacing.three,
   },
   deleteAllText: {
-    color: '#dc2626',
+    fontWeight: '700',
   },
   summary: {
     flexDirection: 'row',
@@ -293,11 +312,10 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   settingsPanel: {
-    gap: Spacing.two,
+    gap: Spacing.three,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
+    borderRadius: Radius.large,
+    padding: Spacing.four,
   },
   settingsHeader: {
     flexDirection: 'row',
@@ -306,21 +324,30 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
+  settingsTitleBlock: {
+    flex: 1,
+    minWidth: 220,
+    gap: Spacing.one,
+  },
+  settingsTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+  },
   bulkFilterActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.one,
   },
   bulkFilterButton: {
-    minHeight: 34,
+    minHeight: ControlHeight.touch,
     borderWidth: 1,
-    borderColor: '#93c5fd',
-    borderRadius: Spacing.two,
+    borderColor: '#B9C2FF',
+    borderRadius: Radius.medium,
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
   },
   bulkFilterText: {
-    color: '#2563eb',
+    color: '#4050D0',
   },
   settingsGrid: {
     flexDirection: 'row',
@@ -328,22 +355,18 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   settingToggle: {
-    minHeight: 36,
+    minHeight: ControlHeight.touch,
     borderWidth: 1,
     borderColor: '#cbd5e1',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.pill,
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
-  },
-  activeSettingToggle: {
-    borderColor: '#93c5fd',
-    backgroundColor: '#eff6ff',
   },
   settingText: {
     color: '#475569',
   },
   activeSettingText: {
-    color: '#1d4ed8',
+    color: '#3442B8',
   },
   settingStepperRow: {
     flexDirection: 'row',
@@ -356,11 +379,11 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   stepperButton: {
-    width: 36,
-    minHeight: 36,
+    width: ControlHeight.touch,
+    minHeight: ControlHeight.touch,
     borderWidth: 1,
     borderColor: '#cbd5e1',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -369,7 +392,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    borderRadius: Spacing.three,
+    borderRadius: Radius.large,
     padding: Spacing.four,
   },
   emptyText: {
@@ -382,7 +405,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.42)',
     padding: Spacing.three,
   },
   confirmPanel: {
@@ -390,9 +412,8 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     gap: Spacing.three,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
+    borderRadius: Radius.large,
+    padding: Spacing.four,
   },
   confirmCopy: {
     gap: Spacing.one,
@@ -407,17 +428,17 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   cancelButton: {
-    minHeight: 40,
+    minHeight: ControlHeight.touch,
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#cbd5e1',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     paddingHorizontal: Spacing.three,
   },
   confirmDeleteButton: {
-    minHeight: 40,
+    minHeight: ControlHeight.touch,
     justifyContent: 'center',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     backgroundColor: '#dc2626',
     paddingHorizontal: Spacing.three,
   },

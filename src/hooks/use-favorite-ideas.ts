@@ -7,6 +7,8 @@ import { normalizeIdeaCategory, type IdeaCategory } from '@/types/idea';
 export type FavoriteIdeaSummary = {
   id: string;
   projectid: string;
+  title: string;
+  content: string;
   category: IdeaCategory;
   updatedat: string;
 };
@@ -15,6 +17,8 @@ function normalizeFavoriteIdea(row: Partial<FavoriteIdeaSummary>): FavoriteIdeaS
   return {
     id: row.id ?? '',
     projectid: row.projectid ?? '',
+    title: row.title ?? '',
+    content: row.content ?? '',
     category: normalizeIdeaCategory(row.category),
     updatedat: row.updatedat ?? '',
   };
@@ -38,7 +42,7 @@ export function useFavoriteIdeas() {
 
     const { data, error } = await supabase
       .from('ideas')
-      .select('id, projectid, category, updatedat')
+      .select('id, projectid, title, content, category, updatedat')
       .eq('userid', user.id)
       .eq('isfavorite', true)
       .order('updatedat', { ascending: false });

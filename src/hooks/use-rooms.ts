@@ -26,11 +26,7 @@ type ProfileRow = {
 const roomSelect = 'id, ownerid, name, description, invitecode, allowmemberinvite, createdat, updatedat';
 const memberSelect = 'id, roomid, userid, role, createdat, updatedat';
 const missingSchemaMessage =
-  '방 기능 DB 테이블이 아직 Supabase에 적용되지 않았습니다. Supabase SQL Editor에서 rooms, roommembers 생성 SQL을 먼저 실행해 주세요.';
-
-function generateInviteCode() {
-  return Math.random().toString(36).slice(2, 10).toUpperCase();
-}
+  '방 기능 DB 마이그레이션이 아직 Supabase에 적용되지 않았습니다. 프로젝트 루트에서 npx supabase db push를 실행해 주세요.';
 
 function cleanRoomInput(input: RoomInput) {
   return {
@@ -57,13 +53,29 @@ function getRoomErrorMessage(error: { message?: string; code?: string } | null) 
   if (
     error.code === 'PGRST205' ||
     message.includes('schema cache') ||
-    message.includes('rooms') ||
-    message.includes('roommembers')
+    message.includes("Could not find the function") ||
+    message.includes('does not exist')
   ) {
     return missingSchemaMessage;
   }
 
-  return message;
+  if (
+    error.code === '401' ||
+    message.includes('JWT') ||
+    message.toLowerCase().includes('session')
+  ) {
+    return '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.';
+  }
+
+  if (
+    message.toLowerCase().includes('network') ||
+    message.toLowerCase().includes('fetch') ||
+    message.toLowerCase().includes('connection')
+  ) {
+    return '네트워크 연결을 확인한 뒤 다시 시도해 주세요.';
+  }
+
+  return message || '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
 }
 
 function normalizeRoom(row: Partial<Room>): Room {
@@ -139,7 +151,7 @@ export function useRooms() {
     if (!user) {
       setRooms([]);
       setIsloadingrooms(false);
-      return;
+      return [];
     }
 
     setIsloadingrooms(true);
@@ -154,7 +166,7 @@ export function useRooms() {
       setRoomerror(getRoomErrorMessage(membershipError));
       setRooms([]);
       setIsloadingrooms(false);
-      return;
+      return null;
     }
 
     const roomIds = Array.from(
@@ -164,7 +176,7 @@ export function useRooms() {
     if (roomIds.length === 0) {
       setRooms([]);
       setIsloadingrooms(false);
-      return;
+      return [];
     }
 
     const [{ data: roomRows, error: roomsError }, { data: memberRows, error: membersError }] =
@@ -178,7 +190,7 @@ export function useRooms() {
       setRoomerror(getRoomErrorMessage(firstError));
       setRooms([]);
       setIsloadingrooms(false);
-      return;
+      return null;
     }
 
     const memberUserIds = Array.from(
@@ -202,8 +214,10 @@ export function useRooms() {
       normalizeMember(row as Partial<RoomMember>, profiles),
     );
 
-    setRooms(buildRoomDetails(user.id, normalizedRooms, normalizedMembers));
+    const nextRooms = buildRoomDetails(user.id, normalizedRooms, normalizedMembers);
+    setRooms(nextRooms);
     setIsloadingrooms(false);
+    return nextRooms;
   }, [user]);
 
   useEffect(() => {
@@ -219,7 +233,7 @@ export function useRooms() {
   const createRoom = useCallback(
     async (input: RoomInput): Promise<RoomMutationResult> => {
       if (!user) {
-        return { error: '로그인이 필요합니다.' };
+        return { error: '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.' };
       }
 
       const validationerror = validateRoomInput(input);
@@ -227,56 +241,26 @@ export function useRooms() {
         return { error: validationerror };
       }
 
-      const now = new Date().toISOString();
-      const { data: roomRow, error: roomError } = await supabase
-        .from('rooms')
-        .insert({
-          ownerid: user.id,
-          invitecode: generateInviteCode(),
-          ...cleanRoomInput(input),
-          createdat: now,
-          updatedat: now,
-        })
-        .select(roomSelect)
-        .single();
-
-      if (roomError) {
-        const message = getRoomErrorMessage(roomError);
-        setRoomerror(message);
-        return { error: message };
+      const cleaned = cleanRoomInput(input);
+      const { data, error } = await supabase.rpc('create_room', {
+        p_name: cleaned.name,
+        p_description: cleaned.description,
+        p_allowmemberinvite: cleaned.allowmemberinvite,
+      });
+      const nextRooms = await loadRooms();
+      const nextRoom = nextRooms?.find((item) => item.room.id === data);
+      if (error && !nextRoom) {
+        return { error: getRoomErrorMessage(error) };
       }
-
-      const room = normalizeRoom(roomRow as Partial<Room>);
-      const { data: memberRow, error: memberError } = await supabase
-        .from('roommembers')
-        .insert({
-          roomid: room.id,
-          userid: user.id,
-          role: 'owner',
-          createdat: now,
-          updatedat: now,
-        })
-        .select(memberSelect)
-        .single();
-
-      if (memberError) {
-        const message = getRoomErrorMessage(memberError);
-        setRoomerror(message);
-        return { error: message };
-      }
-
-      const membership = normalizeMember(memberRow as Partial<RoomMember>, new Map());
-      const nextRoom = { room, membership, members: [membership], invites: [] };
-      setRooms((current) => [nextRoom, ...current]);
       return { room: nextRoom };
     },
-    [user],
+    [loadRooms, user],
   );
 
   const updateRoom = useCallback(
     async (roomid: string, input: RoomInput): Promise<RoomMutationResult> => {
       if (!user) {
-        return { error: '로그인이 필요합니다.' };
+        return { error: '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.' };
       }
 
       const current = roomById.get(roomid);
@@ -289,33 +273,30 @@ export function useRooms() {
         return { error: validationerror };
       }
 
-      const { data, error } = await supabase
-        .from('rooms')
-        .update({
-          ...cleanRoomInput(input),
-          updatedat: new Date().toISOString(),
-        })
-        .eq('id', roomid)
-        .select(roomSelect)
-        .single();
-
-      if (error) {
-        const message = getRoomErrorMessage(error);
-        setRoomerror(message);
-        return { error: message };
+      const cleaned = cleanRoomInput(input);
+      const { error } = await supabase.rpc('update_room', {
+        p_roomid: roomid,
+        p_name: cleaned.name,
+        p_description: cleaned.description,
+        p_allowmemberinvite: cleaned.allowmemberinvite,
+      });
+      const nextRooms = await loadRooms();
+      const nextRoom = nextRooms?.find((item) => item.room.id === roomid);
+      const wasApplied = nextRoom?.room.name === cleaned.name
+        && nextRoom.room.description === cleaned.description
+        && nextRoom.room.allowmemberinvite === cleaned.allowmemberinvite;
+      if (error && !wasApplied) {
+        return { error: getRoomErrorMessage(error) };
       }
-
-      const room = normalizeRoom(data as Partial<Room>);
-      setRooms((items) => items.map((item) => (item.room.id === roomid ? { ...item, room } : item)));
-      return { room: { ...current, room } };
+      return { room: nextRoom };
     },
-    [roomById, user],
+    [loadRooms, roomById, user],
   );
 
   const deleteRoom = useCallback(
     async (roomid: string) => {
       if (!user) {
-        return { error: '로그인이 필요합니다.' };
+        return { error: '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.' };
       }
 
       const current = roomById.get(roomid);
@@ -323,24 +304,20 @@ export function useRooms() {
         return { error: '방장만 방을 삭제할 수 있습니다.' };
       }
 
-      const { error } = await supabase.from('rooms').delete().eq('id', roomid).eq('ownerid', user.id);
-
-      if (error) {
-        const message = getRoomErrorMessage(error);
-        setRoomerror(message);
-        return { error: message };
+      const { error } = await supabase.rpc('delete_room', { p_roomid: roomid });
+      const nextRooms = await loadRooms();
+      if (error && nextRooms?.some((item) => item.room.id === roomid)) {
+        return { error: getRoomErrorMessage(error) };
       }
-
-      setRooms((items) => items.filter((item) => item.room.id !== roomid));
       return {};
     },
-    [roomById, user],
+    [loadRooms, roomById, user],
   );
 
   const leaveRoom = useCallback(
     async (roomid: string) => {
       if (!user) {
-        return { error: '로그인이 필요합니다.' };
+        return { error: '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.' };
       }
 
       const current = roomById.get(roomid);
@@ -349,32 +326,27 @@ export function useRooms() {
       }
 
       if (canOwnRoom(current.membership.role)) {
-        return { error: '방장은 방 나가기 대신 방 삭제를 사용해 주세요.' };
+        return {
+          error: current.members.length > 1
+            ? '다른 멤버가 있어 방을 나갈 수 없습니다. 먼저 방장을 위임해 주세요.'
+            : '방장 혼자 남은 방은 나갈 수 없습니다. 방 삭제를 이용해 주세요.',
+        };
       }
 
-      const { error } = await supabase
-        .from('roommembers')
-        .delete()
-        .eq('roomid', roomid)
-        .eq('userid', user.id)
-        .neq('role', 'owner');
-
-      if (error) {
-        const message = getRoomErrorMessage(error);
-        setRoomerror(message);
-        return { error: message };
+      const { error } = await supabase.rpc('leave_room', { p_roomid: roomid });
+      const nextRooms = await loadRooms();
+      if (error && nextRooms?.some((item) => item.room.id === roomid)) {
+        return { error: getRoomErrorMessage(error) };
       }
-
-      setRooms((items) => items.filter((item) => item.room.id !== roomid));
       return {};
     },
-    [roomById, user],
+    [loadRooms, roomById, user],
   );
 
   const joinRoomByCode = useCallback(
     async (rawCode: string) => {
       if (!user) {
-        return { error: '로그인이 필요합니다.' };
+        return { error: '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.' };
       }
 
       const code = rawCode.trim().toUpperCase();
@@ -382,101 +354,68 @@ export function useRooms() {
         return { error: '초대코드를 입력해 주세요.' };
       }
 
-      const { data: roomRow, error: roomError } = await supabase
-        .from('rooms')
-        .select(roomSelect)
-        .eq('invitecode', code)
-        .maybeSingle();
-
-      if (roomError) {
-        const message = getRoomErrorMessage(roomError);
-        setRoomerror(message);
-        return { error: message };
+      const { data, error } = await supabase.rpc('join_room_by_code', { p_code: code });
+      const nextRooms = await loadRooms();
+      const joined = nextRooms?.some(
+        (item) => item.room.id === data || item.room.invitecode === code,
+      );
+      if (error && !joined) {
+        return { error: getRoomErrorMessage(error) };
       }
-
-      if (!roomRow) {
-        return { error: '사용 가능한 초대코드를 찾을 수 없습니다.' };
-      }
-
-      const room = normalizeRoom(roomRow as Partial<Room>);
-
-      const { data: existingMember } = await supabase
-        .from('roommembers')
-        .select(memberSelect)
-        .eq('roomid', room.id)
-        .eq('userid', user.id)
-        .maybeSingle();
-
-      const now = new Date().toISOString();
-      if (!existingMember) {
-        const { error: memberError } = await supabase.from('roommembers').insert({
-          roomid: room.id,
-          userid: user.id,
-          role: 'member',
-          createdat: now,
-          updatedat: now,
-        });
-
-        if (memberError) {
-          const message = getRoomErrorMessage(memberError);
-          setRoomerror(message);
-          return { error: message };
-        }
-      }
-
-      await loadRooms();
       return {};
     },
     [loadRooms, user],
   );
 
-  const changeMemberRole = useCallback(
-    async (roomid: string, memberid: string, role: 'admin' | 'member') => {
+  const transferRoomOwnership = useCallback(
+    async (roomid: string, memberid: string) => {
       const current = roomById.get(roomid);
       if (!current || !canOwnRoom(current.membership.role)) {
-        return { error: '방장만 멤버 권한을 바꿀 수 있습니다.' };
+        return { error: '더 이상 방장이 아닙니다. 방 정보를 새로고침해 주세요.' };
+      }
+      const target = current.members.find((member) => member.id === memberid);
+      if (!target) {
+        return { error: '대상 사용자가 이미 방을 나갔거나 강퇴되었습니다.' };
       }
 
-      const { error } = await supabase
-        .from('roommembers')
-        .update({ role, updatedat: new Date().toISOString() })
-        .eq('id', memberid)
-        .eq('roomid', roomid)
-        .neq('role', 'owner');
-
-      if (error) {
-        const message = getRoomErrorMessage(error);
-        setRoomerror(message);
-        return { error: message };
+      const { error } = await supabase.rpc('transfer_room_ownership', {
+        p_roomid: roomid,
+        p_target_memberid: memberid,
+      });
+      const nextRooms = await loadRooms();
+      const wasApplied = nextRooms
+        ?.find((item) => item.room.id === roomid)
+        ?.room.ownerid === target.userid;
+      if (error && !wasApplied) {
+        return { error: getRoomErrorMessage(error) };
       }
-
-      await loadRooms();
       return {};
     },
     [loadRooms, roomById],
   );
 
-  const removeMember = useCallback(
+  const kickRoomMember = useCallback(
     async (roomid: string, memberid: string) => {
       const current = roomById.get(roomid);
       if (!current || !canOwnRoom(current.membership.role)) {
-        return { error: '방장만 멤버를 내보낼 수 있습니다.' };
+        return { error: '방장만 멤버를 강퇴할 수 있습니다.' };
+      }
+      const target = current.members.find((member) => member.id === memberid);
+      if (!target) {
+        return { error: '대상 사용자가 이미 방을 나갔거나 강퇴되었습니다.' };
       }
 
-      const { error } = await supabase
-        .from('roommembers')
-        .delete()
-        .eq('id', memberid)
-        .eq('roomid', roomid)
-        .neq('role', 'owner');
-
-      if (error) {
-        const message = getRoomErrorMessage(error);
-        setRoomerror(message);
-        return { error: message };
+      const { error } = await supabase.rpc('kick_room_member', {
+        p_roomid: roomid,
+        p_target_memberid: memberid,
+      });
+      const nextRooms = await loadRooms();
+      const memberGone = !nextRooms
+        ?.find((item) => item.room.id === roomid)
+        ?.members.some((member) => member.id === memberid);
+      if (error && !memberGone) {
+        return { error: getRoomErrorMessage(error) };
       }
-
-      await loadRooms();
       return {};
     },
     [loadRooms, roomById],
@@ -492,7 +431,7 @@ export function useRooms() {
     deleteRoom,
     leaveRoom,
     joinRoomByCode,
-    changeMemberRole,
-    removeMember,
+    transferRoomOwnership,
+    kickRoomMember,
   };
 }

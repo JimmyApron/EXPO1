@@ -27,7 +27,7 @@ export const NotificationKindLabels: Record<NotificationKind, string> = {
   finalselection: '최종 선택 필요',
   stalledidea: '진행 정체',
   feedback: '피드백 도착',
-  likesurge: '반응 증가',
+  likesurge: '공감 증가',
 };
 
 export type AppNotification = {

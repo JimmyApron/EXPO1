@@ -65,6 +65,13 @@ export type Idea = {
   x: number | null;
   y: number | null;
   side: MindMapSide | null;
+  sourceid: string | null;
+  summary: string;
+  problem: string;
+  targetusers: string[];
+  solution: string;
+  keywords: string[];
+  corefeatures: string[];
   createdat: string;
   updatedat: string;
 };
@@ -74,6 +81,13 @@ export type IdeaInput = {
   content: string;
   status: IdeaStatus;
   category: IdeaCategory;
+  sourceid?: string | null;
+  summary?: string;
+  problem?: string;
+  targetusers?: string[];
+  solution?: string;
+  keywords?: string[];
+  corefeatures?: string[];
 };
 
 export type IdeaMindMapInput = {

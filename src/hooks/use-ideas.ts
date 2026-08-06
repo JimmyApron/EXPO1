@@ -19,7 +19,11 @@ type IdeaMutationResult = {
 };
 
 const ideaSelect =
-  'id, projectid, userid, title, content, status, category, isfavorite, parentnodeid, x, y, side, createdat, updatedat';
+  'id, projectid, userid, title, content, status, category, isfavorite, parentnodeid, x, y, side, sourceid, summary, problem, targetusers, solution, keywords, corefeatures, createdat, updatedat';
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
 
 function normalizeIdea(row: Partial<Idea>): Idea {
   return {
@@ -35,17 +39,35 @@ function normalizeIdea(row: Partial<Idea>): Idea {
     x: typeof row.x === 'number' ? row.x : null,
     y: typeof row.y === 'number' ? row.y : null,
     side: normalizeMindMapSide(row.side),
+    sourceid: typeof row.sourceid === 'string' ? row.sourceid : null,
+    summary: typeof row.summary === 'string' ? row.summary : '',
+    problem: typeof row.problem === 'string' ? row.problem : '',
+    targetusers: normalizeStringArray(row.targetusers),
+    solution: typeof row.solution === 'string' ? row.solution : '',
+    keywords: normalizeStringArray(row.keywords),
+    corefeatures: normalizeStringArray(row.corefeatures),
     createdat: row.createdat ?? '',
     updatedat: row.updatedat ?? '',
   };
 }
 
 function cleanIdeaInput(input: IdeaInput) {
+  const structured = {
+    ...(input.sourceid !== undefined ? { sourceid: input.sourceid } : {}),
+    ...(input.summary !== undefined ? { summary: input.summary.trim() } : {}),
+    ...(input.problem !== undefined ? { problem: input.problem.trim() } : {}),
+    ...(input.targetusers !== undefined ? { targetusers: normalizeStringArray(input.targetusers) } : {}),
+    ...(input.solution !== undefined ? { solution: input.solution.trim() } : {}),
+    ...(input.keywords !== undefined ? { keywords: normalizeStringArray(input.keywords) } : {}),
+    ...(input.corefeatures !== undefined ? { corefeatures: normalizeStringArray(input.corefeatures) } : {}),
+  };
+
   return {
     title: input.title.trim(),
     content: input.content.trim(),
     status: input.status,
     category: normalizeIdeaCategory(input.category),
+    ...structured,
   };
 }
 

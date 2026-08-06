@@ -6,14 +6,14 @@ const sampleSlides = [
     type: 'title' as const,
     title: '프로젝트 발표',
     content: '서비스 소개와 핵심 기능을 한눈에 보여줍니다.',
-    accent: '#2868d8',
+    accent: '#4050D0',
   },
   {
     id: 'slide-2',
     type: 'bullet' as const,
     title: '핵심 포인트',
     content: '• 사용자 경험 개선\n• 빠른 기능 탐색\n• 간단한 발표 구성',
-    accent: '#5c7cfa',
+    accent: '#7380EE',
   },
 ];
 

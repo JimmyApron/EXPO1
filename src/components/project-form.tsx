@@ -3,7 +3,7 @@ import { ActivityIndicator, Modal, Pressable, StyleSheet, TextInput, View } from
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Project, ProjectInput } from '@/types/project';
 
@@ -82,8 +82,10 @@ function CalendarPicker({ visible, selectedDate, onSelect, onClear, onClose }: C
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <ThemedView style={[styles.calendarPanel, { backgroundColor: theme.background }]}>
+      <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+        <ThemedView
+          type="surfaceElevated"
+          style={[styles.calendarPanel, { borderColor: theme.border }, Shadows.floating]}>
           <View style={styles.calendarHeader}>
             <Pressable
               accessibilityRole="button"
@@ -124,7 +126,7 @@ function CalendarPicker({ visible, selectedDate, onSelect, onClear, onClose }: C
                       onPress={() => onSelect(dateValue)}
                       style={({ pressed }) => [
                         styles.dayButton,
-                        isSelected && styles.selectedDayButton,
+                        isSelected && { backgroundColor: theme.primary },
                         pressed && styles.pressed,
                       ]}>
                       <ThemedText type="smallBold" style={isSelected && styles.selectedDayButtonText}>
@@ -140,17 +142,17 @@ function CalendarPicker({ visible, selectedDate, onSelect, onClear, onClose }: C
           <View style={styles.calendarActions}>
             <Pressable
               onPress={onClear}
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+              style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, pressed && styles.pressed]}>
               <ThemedText type="smallBold">마감일 없음</ThemedText>
             </Pressable>
             <Pressable
               onPress={() => onSelect(formatDate(new Date()))}
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+              style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, pressed && styles.pressed]}>
               <ThemedText type="smallBold">오늘</ThemedText>
             </Pressable>
             <Pressable
               onPress={onClose}
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+              style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
               <ThemedText type="smallBold" style={styles.primaryButtonText}>
                 닫기
               </ThemedText>
@@ -290,6 +292,7 @@ export function ProjectForm({
             onPress={onCancel}
             style={({ pressed }) => [
               styles.secondaryButton,
+              { borderColor: theme.border },
               (pressed || isbusy) && styles.pressed,
             ]}>
             <ThemedText type="smallBold">취소</ThemedText>
@@ -298,7 +301,11 @@ export function ProjectForm({
         <Pressable
           disabled={isbusy}
           onPress={handleSubmit}
-          style={({ pressed }) => [styles.primaryButton, (pressed || isbusy) && styles.pressed]}>
+          style={({ pressed }) => [
+            styles.primaryButton,
+            { backgroundColor: theme.primary },
+            (pressed || isbusy) && styles.pressed,
+          ]}>
           {isbusy ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
@@ -314,19 +321,19 @@ export function ProjectForm({
 
 const styles = StyleSheet.create({
   form: {
-    gap: Spacing.three,
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
+    gap: Spacing.four,
+    borderRadius: Radius.large,
+    padding: Spacing.four,
   },
   field: {
     gap: Spacing.two,
   },
   input: {
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     fontSize: 16,
     lineHeight: 22,
-    minHeight: 46,
+    minHeight: ControlHeight.input,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
@@ -335,9 +342,9 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   dateSelectButton: {
-    minHeight: 46,
+    minHeight: ControlHeight.input,
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
@@ -346,13 +353,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
     padding: Spacing.three,
   },
   calendarPanel: {
     width: '100%',
     maxWidth: 380,
-    borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.large,
     gap: Spacing.three,
     padding: Spacing.three,
   },
@@ -367,9 +374,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Spacing.two,
+    width: ControlHeight.touch,
+    height: ControlHeight.touch,
+    borderRadius: Radius.medium,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -391,12 +398,9 @@ const styles = StyleSheet.create({
   },
   dayButton: {
     flex: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.small,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  selectedDayButton: {
-    backgroundColor: '#2563eb',
   },
   selectedDayButtonText: {
     color: '#ffffff',
@@ -414,9 +418,8 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   primaryButton: {
-    minHeight: 44,
-    borderRadius: Spacing.two,
-    backgroundColor: '#2563eb',
+    minHeight: ControlHeight.button,
+    borderRadius: Radius.medium,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
@@ -426,10 +429,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   secondaryButton: {
-    minHeight: 44,
-    borderRadius: Spacing.two,
+    minHeight: ControlHeight.touch,
+    borderRadius: Radius.medium,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,

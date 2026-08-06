@@ -2,7 +2,7 @@ import { Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { ControlHeight, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { CandidateIdeaImage } from '@/types/candidate-idea';
 
@@ -49,10 +49,11 @@ export function ExtractionSourceInput({
               onPress={() => onChangeMode(sourceMode)}
               style={({ pressed }) => [
                 styles.modeButton,
-                selected && styles.modeButtonSelected,
+                { borderColor: theme.border, backgroundColor: theme.background },
+                selected && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
                 (pressed || isBusy) && styles.pressed,
               ]}>
-              <ThemedText type="smallBold" style={selected ? styles.modeTextSelected : undefined}>
+              <ThemedText type="smallBold" style={selected ? { color: theme.primary } : undefined}>
                 {selected ? `✓ ${label}` : label}
               </ThemedText>
             </Pressable>
@@ -83,7 +84,7 @@ export function ExtractionSourceInput({
         </View>
       ) : (
         <View style={styles.field}>
-          <ThemedView type="backgroundElement" style={styles.privacyNotice}>
+          <ThemedView type="warningSoft" style={[styles.privacyNotice, { borderColor: theme.warning }]}>
             <ThemedText type="smallBold">개인정보를 먼저 확인해 주세요</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               카카오톡 캡처에 이름, 전화번호 등 불필요한 개인정보가 있다면 가린 뒤 선택해 주세요.
@@ -96,7 +97,11 @@ export function ExtractionSourceInput({
               accessibilityLabel="카카오톡 캡처 이미지 선택"
               disabled={isBusy}
               onPress={onPickImages}
-              style={({ pressed }) => [styles.primaryButton, (pressed || isBusy) && styles.pressed]}>
+              style={({ pressed }) => [
+                styles.primaryButton,
+                { backgroundColor: theme.primary },
+                (pressed || isBusy) && styles.pressed,
+              ]}>
               <ThemedText type="smallBold" style={styles.primaryButtonText}>
                 {images.length > 0 ? '이미지 다시 선택' : '캡처 이미지 선택'}
               </ThemedText>
@@ -107,7 +112,11 @@ export function ExtractionSourceInput({
                 accessibilityLabel="선택한 이미지 모두 제거"
                 disabled={isBusy}
                 onPress={onClearImages}
-                style={({ pressed }) => [styles.secondaryButton, (pressed || isBusy) && styles.pressed]}>
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  { borderColor: theme.border },
+                  (pressed || isBusy) && styles.pressed,
+                ]}>
                 <ThemedText type="smallBold">모두 제거</ThemedText>
               </Pressable>
             ) : null}
@@ -126,7 +135,9 @@ export function ExtractionSourceInput({
           {images.length > 0 ? (
             <View style={styles.previewGrid}>
               {images.map((image, index) => (
-                <View key={`${image.uri}:${index}`} style={styles.previewCard}>
+                <View
+                  key={`${image.uri}:${index}`}
+                  style={[styles.previewCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
                   <Image
                     accessibilityLabel={`선택한 캡처 ${index + 1}`}
                     source={{ uri: image.uri }}
@@ -150,51 +161,46 @@ const styles = StyleSheet.create({
   container: { gap: Spacing.three },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   modeButton: {
-    minHeight: 44,
+    minHeight: ControlHeight.touch,
     minWidth: 132,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     paddingHorizontal: Spacing.three,
   },
-  modeButtonSelected: { borderColor: '#2563eb', backgroundColor: '#eff6ff' },
-  modeTextSelected: { color: '#1d4ed8' },
   field: { gap: Spacing.two },
   textArea: {
     minHeight: 180,
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     padding: Spacing.three,
     fontSize: 16,
     lineHeight: 23,
     textAlignVertical: 'top',
   },
   counter: { alignSelf: 'flex-end' },
-  privacyNotice: { gap: Spacing.one, borderRadius: Spacing.two, padding: Spacing.three },
+  privacyNotice: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
   imageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   primaryButton: {
-    minHeight: 44,
+    minHeight: ControlHeight.touch,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: Spacing.two,
-    backgroundColor: '#2563eb',
+    borderRadius: Radius.medium,
     paddingHorizontal: Spacing.three,
   },
   primaryButtonText: { color: '#ffffff' },
   secondaryButton: {
-    minHeight: 44,
+    minHeight: ControlHeight.touch,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     paddingHorizontal: Spacing.three,
   },
   previewGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  previewCard: { width: 150, gap: Spacing.one },
-  previewImage: { width: 150, height: 190, borderRadius: Spacing.two, backgroundColor: '#f8fafc' },
+  previewCard: { width: 166, gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.two },
+  previewImage: { width: '100%', height: 190, borderRadius: Radius.small },
   errorText: { color: '#b91c1c' },
   pressed: { opacity: 0.6 },
 });

@@ -4,7 +4,7 @@ import Svg, { Line } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   IdeaStatusLabels,
@@ -369,7 +369,13 @@ function MindMapNodeCard({
     <ThemedView
       type="backgroundElement"
       onTouchStart={onActivate}
-      style={[styles.nodeCard, isActive && styles.activeNodeCard]}>
+      style={[
+        styles.nodeCard,
+        { borderColor: theme.border },
+        idea.side === 'center' && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+        isActive && { borderColor: theme.primary, borderWidth: 2 },
+        Shadows.card,
+      ]}>
       <View style={styles.nodeHeader}>
         <TextInput
           value={title}
@@ -489,6 +495,7 @@ export function IdeaMindMap({
   onPersistNodeLayout,
   onToggleLike,
 }: IdeaMindMapProps) {
+  const theme = useTheme();
   const [localError, setLocalError] = useState('');
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [mapZoom, setMapZoom] = useState(1);
@@ -600,12 +607,16 @@ export function IdeaMindMap({
 
   if (ideas.length === 0) {
     return (
-      <ThemedView type="backgroundElement" style={styles.emptyState}>
+      <ThemedView type="backgroundElement" style={[styles.emptyState, { borderColor: theme.border }]}>
         <ThemedText type="smallBold">마인드맵에 표시할 아이디어가 없습니다.</ThemedText>
         <Pressable
           disabled={isBusy}
           onPress={createCenterNode}
-          style={({ pressed }) => [styles.primaryButton, (pressed || isBusy) && styles.pressed]}>
+          style={({ pressed }) => [
+            styles.primaryButton,
+            { backgroundColor: theme.primary },
+            (pressed || isBusy) && styles.pressed,
+          ]}>
           <ThemedText type="smallBold" style={styles.primaryButtonText}>
             중심 아이디어 추가
           </ThemedText>
@@ -621,7 +632,7 @@ export function IdeaMindMap({
 
   return (
     <ThemedView style={styles.container}>
-      <View style={styles.mapToolbar}>
+      <View style={[styles.mapToolbar, { borderBottomColor: theme.divider }]}>
         <ThemedText type="small" themeColor="textSecondary" style={styles.mapHintText}>
         카드를 직접 수정하거나 + 버튼으로 연결 아이디어를 추가하세요.
         </ThemedText>
@@ -631,13 +642,17 @@ export function IdeaMindMap({
             accessibilityRole="button"
             accessibilityLabel="마인드맵 축소"
             onPress={() => updateMapZoom(-mapZoomStep)}
-            style={({ pressed }) => [styles.zoomButton, (!canZoomOut || pressed) && styles.pressed]}>
+            style={({ pressed }) => [
+              styles.zoomButton,
+              { backgroundColor: theme.primary },
+              (!canZoomOut || pressed) && styles.pressed,
+            ]}>
             <ThemedText type="smallBold" style={styles.zoomButtonText}>
               -
             </ThemedText>
           </Pressable>
-          <View style={styles.zoomPercentBadge}>
-            <ThemedText type="smallBold" style={styles.zoomPercentText}>
+          <View style={[styles.zoomPercentBadge, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <ThemedText type="smallBold" style={[styles.zoomPercentText, { color: theme.text }]}>
               {mapZoomPercent}%
             </ThemedText>
           </View>
@@ -646,7 +661,11 @@ export function IdeaMindMap({
             accessibilityRole="button"
             accessibilityLabel="마인드맵 확대"
             onPress={() => updateMapZoom(mapZoomStep)}
-            style={({ pressed }) => [styles.zoomButton, (!canZoomIn || pressed) && styles.pressed]}>
+            style={({ pressed }) => [
+              styles.zoomButton,
+              { backgroundColor: theme.primary },
+              (!canZoomIn || pressed) && styles.pressed,
+            ]}>
             <ThemedText type="smallBold" style={styles.zoomButtonText}>
               +
             </ThemedText>
@@ -656,7 +675,7 @@ export function IdeaMindMap({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator
-        style={styles.mapViewport}
+        style={[styles.mapViewport, { borderColor: theme.border, backgroundColor: theme.background }]}
         contentContainerStyle={styles.horizontalMapContent}>
         <ScrollView
           nestedScrollEnabled
@@ -668,6 +687,7 @@ export function IdeaMindMap({
               style={[
                 styles.mapSurface,
                 {
+                  backgroundColor: theme.background,
                   width: mapBounds.width,
                   height: mapBounds.height,
                   transform: [{ scale: mapZoom }],
@@ -689,7 +709,7 @@ export function IdeaMindMap({
                     y1={mapBounds.originY + parent.mapy}
                     x2={mapBounds.originX + idea.mapx}
                     y2={mapBounds.originY + idea.mapy}
-                    stroke="#94a3b8"
+                    stroke={theme.textTertiary}
                     strokeWidth={2}
                   />
                 );
@@ -725,6 +745,7 @@ export function IdeaMindMap({
                           onPress={() => createChildNode(idea, direction.side)}
                           style={({ pressed }) => [
                             styles.addNodeButton,
+                            { backgroundColor: theme.primary },
                             getAddButtonPosition(direction.side),
                             (pressed || isBusy) && styles.pressed,
                           ]}>
@@ -764,33 +785,35 @@ export function IdeaMindMap({
 
 const styles = StyleSheet.create({
   container: {
-    gap: Spacing.two,
+    gap: Spacing.three,
     alignSelf: 'stretch',
     width: '100%',
   },
   mapToolbar: {
+    minHeight: ControlHeight.touch,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
     flexWrap: 'wrap',
+    borderBottomWidth: 1,
+    paddingBottom: Spacing.two,
   },
   mapHintText: {
     flexShrink: 1,
   },
   zoomControls: {
-    minHeight: 36,
+    minHeight: ControlHeight.touch,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.one,
   },
   zoomButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: ControlHeight.touch,
+    height: ControlHeight.touch,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2563eb',
   },
   zoomButtonText: {
     color: '#ffffff',
@@ -799,14 +822,12 @@ const styles = StyleSheet.create({
   },
   zoomPercentBadge: {
     minWidth: 58,
-    height: 34,
+    height: ControlHeight.touch,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: Spacing.one,
+    borderRadius: Radius.medium,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.one,
-    backgroundColor: '#ffffff',
   },
   zoomPercentText: {
     color: '#0f172a',
@@ -818,9 +839,7 @@ const styles = StyleSheet.create({
     height: mapViewportHeight,
     alignSelf: 'stretch',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: Spacing.two,
-    backgroundColor: '#f8fafc',
+    borderRadius: Radius.large,
   },
   horizontalMapContent: {
     minHeight: mapViewportHeight,
@@ -837,7 +856,6 @@ const styles = StyleSheet.create({
   },
   mapSurface: {
     position: 'relative',
-    backgroundColor: '#f8fafc',
   },
   connectorLayer: {
     position: 'absolute',
@@ -863,20 +881,15 @@ const styles = StyleSheet.create({
     height: nodeHeight,
     gap: Spacing.one,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     padding: Spacing.two,
-  },
-  activeNodeCard: {
-    borderColor: '#2563eb',
-    borderWidth: 2,
   },
   nodeHeader: {
     gap: Spacing.half,
   },
   nodeInput: {
     borderWidth: 1,
-    borderRadius: Spacing.one,
+    borderRadius: Radius.small,
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.one,
   },
@@ -894,7 +907,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   statusText: {
-    color: '#2563eb',
+    color: '#4050D0',
   },
   nodeReactionRow: {
     minHeight: 26,
@@ -933,19 +946,19 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   nodePrimaryButton: {
-    minHeight: 28,
-    borderRadius: Spacing.one,
-    backgroundColor: '#2563eb',
+    minHeight: 32,
+    borderRadius: Radius.small,
+    backgroundColor: '#4050D0',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.half,
   },
   nodeSecondaryButton: {
-    minHeight: 28,
+    minHeight: 32,
     borderWidth: 1,
     borderColor: '#cbd5e1',
-    borderRadius: Spacing.one,
+    borderRadius: Radius.small,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
@@ -960,7 +973,6 @@ const styles = StyleSheet.create({
     borderRadius: addButtonSize / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2563eb',
   },
   addNodeButtonText: {
     color: '#ffffff',
@@ -970,15 +982,14 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     gap: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.large,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     padding: Spacing.four,
   },
   primaryButton: {
-    minHeight: 44,
-    borderRadius: Spacing.two,
-    backgroundColor: '#2563eb',
+    minHeight: ControlHeight.button,
+    borderRadius: Radius.medium,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
