@@ -36,7 +36,7 @@
     "@types/react": "~19.2.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~56.0.4",
-    "supabase": "^2.109.1",
+    "supabase": "^2.111.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
