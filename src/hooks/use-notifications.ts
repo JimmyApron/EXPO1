@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useNotificationToasts } from '@/components/notification/notification-toast-provider';
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import { normalizeIdeaStatus, type IdeaStatus } from '@/types/idea';
 import type { AppNotification, NotificationSettings } from '@/types/notification';
@@ -276,8 +277,20 @@ export function useNotifications(projects: Project[]) {
   const shownToastIdsRef = useRef<Set<string>>(new Set());
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
   const [notificationError, setNotificationError] = useState('');
+  const [realtimeRefreshTick, setRealtimeRefreshTick] = useState(0);
 
   const storageKey = user ? `notifications:${user.id}` : '';
+
+  useRealtimeRefresh({
+    channelName: `notifications:${user?.id ?? 'signed-out'}`,
+    enabled: Boolean(user),
+    onRefresh: () => setRealtimeRefreshTick((current) => current + 1),
+    tables: [
+      { table: 'ideas', filter: `userid=eq.${user?.id}` },
+      'feedbacks',
+      'idealikes',
+    ],
+  });
 
   useEffect(() => {
     let isActive = true;
@@ -300,7 +313,7 @@ export function useNotifications(projects: Project[]) {
 
       const [storedState, ideaResult] = await Promise.all([
         AsyncStorage.getItem(storageKey),
-        supabase.from('ideas').select('id, projectid, title, status, createdat, updatedat').eq('userid', user.id),
+        supabase.from('ideas').select('id, projectid, title, status, createdat, updatedat').eq('userid', user.id).eq('legacystructural', false),
       ]);
 
       if (!isActive) {
@@ -368,7 +381,7 @@ export function useNotifications(projects: Project[]) {
     return () => {
       isActive = false;
     };
-  }, [storageKey, user]);
+  }, [realtimeRefreshTick, storageKey, user]);
 
   const persistState = useCallback(
     async (nextReadIds: Set<string>, nextDeletedIds: Set<string>) => {

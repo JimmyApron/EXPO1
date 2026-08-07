@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import {
   DefaultIdeaCategory,
@@ -90,6 +91,13 @@ export function useIdeaCategories(projectid?: string, usedCategories: IdeaCatego
     };
   }, [loadCategories]);
 
+  useRealtimeRefresh({
+    channelName: `idea-categories:${projectid ?? 'none'}`,
+    enabled: Boolean(user && projectid),
+    onRefresh: loadCategories,
+    tables: [{ table: 'ideacategories', filter: `projectid=eq.${projectid}` }],
+  });
+
   const createCategory = useCallback(
     async (name: string): Promise<CategoryMutationResult> => {
       if (!user || !projectid) {
@@ -154,6 +162,7 @@ export function useIdeaCategories(projectid?: string, usedCategories: IdeaCatego
         .from('ideas')
         .update({ category: duplicate ?? toCategory, updatedat: now })
         .eq('projectid', projectid)
+        .eq('legacystructural', false)
         .eq('category', fromCategory);
 
       if (ideaError) {
@@ -216,6 +225,7 @@ export function useIdeaCategories(projectid?: string, usedCategories: IdeaCatego
         .from('ideas')
         .update({ category: DefaultIdeaCategory, updatedat: now })
         .eq('projectid', projectid)
+        .eq('legacystructural', false)
         .eq('category', category);
 
       if (ideaError) {

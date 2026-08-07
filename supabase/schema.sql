@@ -471,6 +471,74 @@ begin
 end
 $$;
 
+-- Project mind maps keep structural nodes separate from ideas.
+alter table public.ideas add column if not exists legacystructural boolean not null default false;
+
+update public.ideas
+set legacystructural = true
+where legacystructural = false and parentnodeid is null and side = 'center';
+
+create table if not exists public.mindmaps (
+  id uuid primary key default gen_random_uuid(),
+  projectid uuid not null unique references public.projects(id) on delete cascade,
+  userid uuid not null references auth.users(id) on delete cascade,
+  title text not null default '',
+  createdat timestamptz not null default now(),
+  updatedat timestamptz not null default now()
+);
+
+create table if not exists public.mind_map_nodes (
+  id uuid primary key default gen_random_uuid(),
+  mindmapid uuid not null references public.mindmaps(id) on delete cascade,
+  userid uuid not null references auth.users(id) on delete cascade,
+  parentnodeid uuid null references public.mind_map_nodes(id) on delete cascade,
+  ideaid uuid null references public.ideas(id) on delete cascade,
+  ideafield text null check (ideafield is null or ideafield in ('problem', 'targetusers', 'solution', 'corefeatures', 'keywords')),
+  branchfield text null check (branchfield is null or branchfield in ('problem', 'targetusers', 'solution', 'corefeatures', 'keywords')),
+  nodetype text not null check (nodetype in ('root', 'branch', 'idea', 'idea_field')),
+  title text not null default '',
+  summary text not null default '',
+  x integer not null default 0,
+  y integer not null default 0,
+  sortorder integer not null default 0,
+  createdat timestamptz not null default now(),
+  updatedat timestamptz not null default now(),
+  constraint mind_map_nodes_idea_type_check check (
+    (nodetype = 'root' and ideaid is null and ideafield is null and branchfield is null) or
+    (nodetype = 'branch' and ideaid is null and ideafield is null) or
+    (nodetype = 'idea' and ideaid is not null and ideafield is null and branchfield is null) or
+    (nodetype = 'idea_field' and ideaid is not null and ideafield is not null and branchfield is null)
+  )
+);
+
+create unique index if not exists mind_map_nodes_one_root_idx on public.mind_map_nodes (mindmapid) where nodetype = 'root';
+create unique index if not exists mind_map_nodes_one_field_branch_idx on public.mind_map_nodes (mindmapid, branchfield);
+create unique index if not exists mind_map_nodes_one_idea_field_idx on public.mind_map_nodes (mindmapid, ideaid, ideafield);
+create index if not exists mind_map_nodes_parent_idx on public.mind_map_nodes (mindmapid, parentnodeid, sortorder);
+
+alter table public.mindmaps enable row level security;
+alter table public.mind_map_nodes enable row level security;
+
+drop policy if exists mindmaps_select on public.mindmaps;
+create policy mindmaps_select on public.mindmaps for select to authenticated using (exists (select 1 from public.projects p where p.id = projectid and (p.userid = auth.uid() or exists (select 1 from public.roommembers rm where rm.roomid = p.roomid and rm.userid = auth.uid()))));
+drop policy if exists mindmaps_insert on public.mindmaps;
+create policy mindmaps_insert on public.mindmaps for insert to authenticated with check (userid = auth.uid() and exists (select 1 from public.projects p where p.id = projectid and (p.userid = auth.uid() or exists (select 1 from public.roommembers rm where rm.roomid = p.roomid and rm.userid = auth.uid()))));
+drop policy if exists mindmaps_update on public.mindmaps;
+create policy mindmaps_update on public.mindmaps for update to authenticated using (exists (select 1 from public.projects p where p.id = projectid and (p.userid = auth.uid() or exists (select 1 from public.roommembers rm where rm.roomid = p.roomid and rm.userid = auth.uid())))) with check (exists (select 1 from public.projects p where p.id = projectid and (p.userid = auth.uid() or exists (select 1 from public.roommembers rm where rm.roomid = p.roomid and rm.userid = auth.uid()))));
+drop policy if exists mindmaps_delete on public.mindmaps;
+create policy mindmaps_delete on public.mindmaps for delete to authenticated using (exists (select 1 from public.projects p where p.id = projectid and (p.userid = auth.uid() or exists (select 1 from public.roommembers rm where rm.roomid = p.roomid and rm.userid = auth.uid()))));
+
+drop policy if exists mind_map_nodes_select on public.mind_map_nodes;
+create policy mind_map_nodes_select on public.mind_map_nodes for select to authenticated using (exists (select 1 from public.mindmaps m where m.id = mindmapid));
+drop policy if exists mind_map_nodes_insert on public.mind_map_nodes;
+create policy mind_map_nodes_insert on public.mind_map_nodes for insert to authenticated with check (userid = auth.uid() and exists (select 1 from public.mindmaps m where m.id = mindmapid));
+drop policy if exists mind_map_nodes_update on public.mind_map_nodes;
+create policy mind_map_nodes_update on public.mind_map_nodes for update to authenticated using (exists (select 1 from public.mindmaps m where m.id = mindmapid)) with check (exists (select 1 from public.mindmaps m where m.id = mindmapid));
+drop policy if exists mind_map_nodes_delete on public.mind_map_nodes;
+create policy mind_map_nodes_delete on public.mind_map_nodes for delete to authenticated using (exists (select 1 from public.mindmaps m where m.id = mindmapid));
+
+grant select, insert, update, delete on public.mindmaps, public.mind_map_nodes to authenticated;
+
 alter table public.rooms alter column ownerid set not null;
 
 create unique index if not exists roommembers_one_owner_per_room_idx
@@ -1217,3 +1285,43 @@ revoke execute on function public.join_room_by_code(text) from public, anon;
 revoke execute on function public.kick_room_member(uuid, uuid) from public, anon;
 grant execute on function public.join_room_by_code(text) to authenticated;
 grant execute on function public.kick_room_member(uuid, uuid) to authenticated;
+-- Enable Supabase Postgres Changes for data displayed by the app.
+do $$
+declare
+  table_name text;
+begin
+  if not exists (
+    select 1
+    from pg_publication
+    where pubname = 'supabase_realtime'
+  ) then
+    create publication supabase_realtime;
+  end if;
+
+  foreach table_name in array array[
+    'profiles',
+    'projects',
+    'rooms',
+    'roommembers',
+    'ideas',
+    'ideacategories',
+    'idealikes',
+    'feedbacks',
+    'projectflows'
+  ]
+  loop
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = table_name
+    ) then
+      execute format(
+        'alter publication supabase_realtime add table public.%I',
+        table_name
+      );
+    end if;
+  end loop;
+end
+$$;

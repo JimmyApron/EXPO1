@@ -26,6 +26,8 @@ export interface SampleMvpPlan {
 }
 
 export interface PresentationData {
+  /** 새로 생성되는 발표자료가 어떤 최종 아이디어를 기준으로 했는지 기록합니다. */
+  ideaId?: string;
   presentationTitle: string;
   slides: {
     slideNumber: number;

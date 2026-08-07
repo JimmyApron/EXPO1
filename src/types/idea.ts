@@ -61,6 +61,7 @@ export type Idea = {
   status: IdeaStatus;
   category: IdeaCategory;
   isfavorite: boolean;
+  legacystructural: boolean;
   parentnodeid: string | null;
   x: number | null;
   y: number | null;

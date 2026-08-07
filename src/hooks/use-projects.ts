@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { Project, ProjectInput } from '@/types/project';
 
@@ -77,6 +78,18 @@ export function useProjects(roomid?: string) {
       globalThis.clearTimeout(timeout);
     };
   }, [loadProjects]);
+
+  useRealtimeRefresh({
+    channelName: `projects:${roomid ?? user?.id ?? 'signed-out'}`,
+    enabled: Boolean(user),
+    onRefresh: loadProjects,
+    tables: [{
+      table: 'projects',
+      filter: roomid
+        ? `roomid=eq.${roomid}`
+        : `userid=eq.${user?.id},roomid=is.null`,
+    }],
+  });
 
   const createProject = useCallback(
     async (input: ProjectInput): Promise<ProjectMutationResult> => {

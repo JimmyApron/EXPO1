@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { IdeaFeedback } from '@/types/feedback';
 
@@ -24,6 +25,7 @@ type IdeaIdRow = {
 };
 
 const feedbackSelect = 'id, userid, ideaid, comment, isresolved, createdat, updatedat';
+const feedbackRealtimeTables = ['ideas', 'feedbacks'] as const;
 
 function normalizeFeedback(row: FeedbackRow): IdeaFeedback {
   return {
@@ -56,6 +58,7 @@ export function useIdeaFeedbacks(projectId?: string) {
     const { data: ideaRows, error: ideaError } = await supabase
       .from('ideas')
       .select('id')
+      .eq('legacystructural', false)
       .eq('projectid', projectId);
 
     if (ideaError) {
@@ -100,6 +103,13 @@ export function useIdeaFeedbacks(projectId?: string) {
       globalThis.clearTimeout(timeout);
     };
   }, [loadFeedbacks]);
+
+  useRealtimeRefresh({
+    channelName: `idea-feedbacks:${projectId ?? 'none'}`,
+    enabled: Boolean(user && projectId),
+    onRefresh: loadFeedbacks,
+    tables: feedbackRealtimeTables,
+  });
 
   const feedbacksByIdeaId = useMemo(() => {
     const grouped = new Map<string, IdeaFeedback[]>();

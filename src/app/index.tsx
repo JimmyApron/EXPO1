@@ -145,7 +145,7 @@ export default function HomeScreen() {
 
             <View style={styles.heroIntro}>
               <View
-                accessibilityLabel={`내 작업 요약, 과제 ${projects.length}개, 아이디어 ${totals.totalIdeas}개, 최종안 ${totals.selectedIdeas}개`}
+                accessibilityLabel={`내 작업 요약, 과제 ${projects.length}개, 아이디어 ${totals.totalIdeas}개, 최종 선정 ${totals.selectedIdeas}개`}
                 style={[styles.compactSummary, { backgroundColor: theme.surface }]}>
                 <ThemedText type="captionStrong" themeColor="textSecondary">내 작업</ThemedText>
                 <View style={styles.compactMetric}>
@@ -157,7 +157,7 @@ export default function HomeScreen() {
                   <ThemedText type="captionStrong">{isLoadingStats ? '—' : totals.totalIdeas}</ThemedText>
                 </View>
                 <View style={styles.compactMetric}>
-                  <ThemedText type="caption" themeColor="textTertiary">최종안</ThemedText>
+                  <ThemedText type="caption" themeColor="textTertiary">최종 선정</ThemedText>
                   <ThemedText type="captionStrong">{isLoadingStats ? '—' : totals.selectedIdeas}</ThemedText>
                 </View>
               </View>

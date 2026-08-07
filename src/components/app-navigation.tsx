@@ -1,4 +1,4 @@
-import { router, Slot, type Href, usePathname } from 'expo-router';
+import { router, Slot, type Href, useGlobalSearchParams, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,6 +9,7 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
+import { resolveProjectWorkspaceLocation, type ProjectSection } from '@/lib/project-workspace';
 
 type NavigationItem = {
   label: string;
@@ -16,6 +17,12 @@ type NavigationItem = {
   icon: AppIconName;
   matches: (pathname: string) => boolean;
 };
+
+const projectSections: { id: ProjectSection; label: string; icon: AppIconName }[] = [
+  { id: 'home', label: '과제 홈', icon: 'home' },
+  { id: 'ideas', label: '아이디어 목록', icon: 'projects' },
+  { id: 'mindmap', label: '마인드맵', icon: 'idea' },
+];
 
 const items: NavigationItem[] = [
   { label: '홈', href: '/', icon: 'home', matches: (path) => path === '/' },
@@ -32,11 +39,30 @@ const items: NavigationItem[] = [
 
 export function AppNavigation() {
   const pathname = usePathname();
+  const params = useGlobalSearchParams<{
+    id?: string;
+    ideaTab?: string;
+    projectView?: string;
+    flowStep?: string;
+  }>();
   const { width } = useWindowDimensions();
   const theme = useTheme();
   const isWide = width >= 900;
   const { projects } = useProjects();
   const { unreadCount } = useNotifications(projects);
+  const isProjectDetail = /^\/projects\/[^/]+$/.test(pathname);
+  const routeProjectId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const fallbackProjectId = isProjectDetail ? pathname.slice('/projects/'.length) : '';
+  const projectId = routeProjectId || fallbackProjectId;
+  const projectLocation = resolveProjectWorkspaceLocation(params);
+  const navigationItems: NavigationItem[] = isProjectDetail && projectId
+    ? projectSections.map((section) => ({
+        label: section.label,
+        icon: section.icon,
+        href: `/projects/${encodeURIComponent(projectId)}?projectView=${section.id}&flowStep=${projectLocation.step}` as Href,
+        matches: () => projectLocation.section === section.id,
+      }))
+    : items;
 
   const navigation = (
     <SafeAreaView
@@ -53,7 +79,7 @@ export function AppNavigation() {
       ) : null}
 
       <View style={isWide ? styles.sideItems : styles.bottomItems}>
-        {items.map((item) => {
+        {navigationItems.map((item) => {
           const selected = item.matches(pathname);
           const badge = item.icon === 'notifications' ? unreadCount : 0;
 
@@ -90,7 +116,7 @@ export function AppNavigation() {
 
       {isWide ? (
         <ThemedText type="caption" themeColor="textTertiary" style={styles.sideFooter}>
-          아이디어에서 결과물까지
+          {isProjectDetail ? '과제 작업 공간' : '아이디어에서 결과물까지'}
         </ThemedText>
       ) : null}
     </SafeAreaView>

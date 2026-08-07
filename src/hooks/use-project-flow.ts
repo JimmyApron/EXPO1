@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { sampleProjectConditions } from '@/constants/sample-project';
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { FinalIdeaAnalysisResult } from '@/types/final-analysis';
 import type { MvpPlan } from '@/types/mvp-plan';
@@ -44,11 +45,13 @@ export function projectFlowConditions(flow: ProjectFlow | null): CompleteProject
 export function useProjectFlow(projectid?: string) {
   const { user } = useAuth();
   const [flow, setFlow] = useState<ProjectFlow | null>(null);
+  const flowRef = useRef<ProjectFlow | null>(null);
   const [isloadingflow, setIsloadingflow] = useState(true);
   const [flowerror, setFlowerror] = useState('');
 
   const loadFlow = useCallback(async () => {
     if (!user || !projectid) {
+      flowRef.current = null;
       setFlow(null);
       setIsloadingflow(false);
       return;
@@ -64,9 +67,13 @@ export function useProjectFlow(projectid?: string) {
 
     if (error) {
       setFlowerror(error.message);
-      setFlow(createLocalFlow(projectid, user.id));
+      const localFlow = createLocalFlow(projectid, user.id);
+      flowRef.current = localFlow;
+      setFlow(localFlow);
     } else {
-      setFlow((data as ProjectFlow | null) ?? createLocalFlow(projectid, user.id));
+      const loadedFlow = (data as ProjectFlow | null) ?? createLocalFlow(projectid, user.id);
+      flowRef.current = loadedFlow;
+      setFlow(loadedFlow);
     }
     setIsloadingflow(false);
   }, [projectid, user]);
@@ -76,12 +83,19 @@ export function useProjectFlow(projectid?: string) {
     return () => globalThis.clearTimeout(timeout);
   }, [loadFlow]);
 
+  useRealtimeRefresh({
+    channelName: `project-flow:${projectid ?? 'none'}`,
+    enabled: Boolean(user && projectid),
+    onRefresh: loadFlow,
+    tables: [{ table: 'projectflows', filter: `projectid=eq.${projectid}` }],
+  });
+
   const conditions = useMemo(() => projectFlowConditions(flow), [flow]);
 
   const savePatch = useCallback(
     async (patch: Partial<ProjectFlow>) => {
       if (!user || !projectid) return { error: '로그인이 필요합니다.' };
-      const current = flow ?? createLocalFlow(projectid, user.id);
+      const current = flowRef.current ?? createLocalFlow(projectid, user.id);
       const now = new Date().toISOString();
       const payload = {
         projectid,
@@ -110,11 +124,12 @@ export function useProjectFlow(projectid?: string) {
         return { error: error.message };
       }
       const saved = data as ProjectFlow;
+      flowRef.current = saved;
       setFlow(saved);
       setFlowerror('');
       return { flow: saved };
     },
-    [flow, projectid, user],
+    [projectid, user],
   );
 
   const saveConditions = useCallback(
@@ -125,7 +140,6 @@ export function useProjectFlow(projectid?: string) {
         skilllevel: conditions.skillLevel.trim(),
         budget: conditions.budget,
         evaluationcriteria: conditions.evaluationCriteria.map((item) => item.trim()).filter(Boolean),
-        coachresult: null,
       }),
     [savePatch],
   );
@@ -138,6 +152,7 @@ export function useProjectFlow(projectid?: string) {
         .from('ideas')
         .update({ status: 'approved', updatedat: new Date().toISOString() })
         .eq('projectid', projectid)
+        .eq('legacystructural', false)
         .eq('status', 'selected')
         .neq('id', ideaid);
       if (reseterror) return { error: reseterror.message };
@@ -146,10 +161,16 @@ export function useProjectFlow(projectid?: string) {
         .from('ideas')
         .update({ status: 'selected', updatedat: new Date().toISOString() })
         .eq('projectid', projectid)
+        .eq('legacystructural', false)
         .eq('id', ideaid);
       if (selecterror) return { error: selecterror.message };
 
-      return savePatch({ selectedideaid: ideaid, mvpplan: null, presentationdata: null });
+      // 예전 발표자료에도 변경 전 기준 아이디어를 보강한 뒤 보존한다.
+      const current = flowRef.current;
+      const presentationdata = current?.presentationdata && !current.presentationdata.ideaId
+        ? { ...current.presentationdata, ideaId: current.mvpplan?.ideaId ?? current.selectedideaid ?? undefined }
+        : current?.presentationdata;
+      return savePatch({ selectedideaid: ideaid, ...(presentationdata ? { presentationdata } : {}) });
     },
     [projectid, savePatch],
   );
@@ -159,7 +180,13 @@ export function useProjectFlow(projectid?: string) {
     [savePatch],
   );
   const saveMvpPlan = useCallback(
-    (mvpplan: MvpPlan) => savePatch({ mvpplan, presentationdata: null }),
+    (mvpplan: MvpPlan) => {
+      const current = flowRef.current;
+      const presentationdata = current?.presentationdata && !current.presentationdata.ideaId
+        ? { ...current.presentationdata, ideaId: current.mvpplan?.ideaId ?? current.selectedideaid ?? undefined }
+        : current?.presentationdata;
+      return savePatch({ mvpplan, ...(presentationdata ? { presentationdata } : {}) });
+    },
     [savePatch],
   );
   const savePresentationData = useCallback(

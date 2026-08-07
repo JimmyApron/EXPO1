@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import {
   IdeaStatuses,
@@ -19,7 +20,7 @@ type IdeaMutationResult = {
 };
 
 const ideaSelect =
-  'id, projectid, userid, title, content, status, category, isfavorite, parentnodeid, x, y, side, sourceid, summary, problem, targetusers, solution, keywords, corefeatures, createdat, updatedat';
+  'id, projectid, userid, title, content, status, category, isfavorite, legacystructural, parentnodeid, x, y, side, sourceid, summary, problem, targetusers, solution, keywords, corefeatures, createdat, updatedat';
 
 function normalizeStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
@@ -35,6 +36,7 @@ function normalizeIdea(row: Partial<Idea>): Idea {
     status: normalizeIdeaStatus(row.status),
     category: normalizeIdeaCategory(row.category),
     isfavorite: row.isfavorite === true,
+    legacystructural: row.legacystructural === true,
     parentnodeid: row.parentnodeid ?? null,
     x: typeof row.x === 'number' ? row.x : null,
     y: typeof row.y === 'number' ? row.y : null,
@@ -124,6 +126,7 @@ export function useIdeas(projectId?: string) {
       .from('ideas')
       .select(ideaSelect)
       .eq('projectid', projectId)
+      .eq('legacystructural', false)
       .order('createdat', { ascending: false });
 
     if (error) {
@@ -145,6 +148,13 @@ export function useIdeas(projectId?: string) {
       globalThis.clearTimeout(timeout);
     };
   }, [loadIdeas]);
+
+  useRealtimeRefresh({
+    channelName: `ideas:${projectId ?? 'none'}`,
+    enabled: Boolean(user && projectId),
+    onRefresh: loadIdeas,
+    tables: [{ table: 'ideas', filter: `projectid=eq.${projectId}` }],
+  });
 
   const createIdea = useCallback(
     async (input: IdeaInput, mindMapInput?: IdeaMindMapInput): Promise<IdeaMutationResult> => {

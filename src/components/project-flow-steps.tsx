@@ -1,58 +1,56 @@
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Spacing } from '@/constants/theme';
+import { ControlHeight, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import type { ProjectWorkflowStep } from '@/lib/project-workspace';
 
-export type ProjectFlowStep = 'final' | 'coach' | 'mvp' | 'presentation';
-
-const steps: { id: ProjectFlowStep; short: string; label: string }[] = [
-  { id: 'final', short: '최종안', label: '최종안 확정' },
-  { id: 'coach', short: 'A', label: 'AI 코치' },
-  { id: 'mvp', short: 'B', label: 'MVP 기획' },
-  { id: 'presentation', short: 'C', label: '발표자료' },
+const steps: { id: ProjectWorkflowStep; label: string }[] = [
+  { id: 'extraction', label: '아이디어 추출' },
+  { id: 'selection', label: 'AI 비교·선정' },
+  { id: 'mvp', label: 'MVP 기획' },
+  { id: 'presentation', label: '발표자료' },
 ];
 
-export function ProjectFlowSteps({ current }: { current: ProjectFlowStep }) {
+type ProjectFlowStepsProps = {
+  current: ProjectWorkflowStep;
+  completed?: Partial<Record<ProjectWorkflowStep, boolean>>;
+  onStepPress: (step: ProjectWorkflowStep) => void;
+};
+
+export function ProjectFlowSteps({ current, completed = {}, onStepPress }: ProjectFlowStepsProps) {
   const theme = useTheme();
-  const currentIndex = steps.findIndex((step) => step.id === current);
 
   return (
-    <View accessibilityLabel="과제 제작 단계" style={styles.container}>
+    <View
+      accessibilityRole="tablist"
+      accessibilityLabel="과제 작업 흐름"
+      style={[styles.container, { borderColor: theme.border }]}>
       {steps.map((step, index) => {
         const isCurrent = step.id === current;
-        const isComplete = index < currentIndex;
+        const isComplete = Boolean(completed[step.id]);
+        const stateLabel = isCurrent ? '현재 단계' : isComplete ? '완료' : '시작 전';
 
         return (
-          <View
+          <Pressable
             key={step.id}
-            style={[
+            accessibilityRole="tab"
+            accessibilityLabel={`${step.label}, ${stateLabel}`}
+            accessibilityState={{ selected: isCurrent }}
+            onPress={() => onStepPress(step.id)}
+            style={({ pressed }) => [
               styles.step,
-              { borderColor: theme.border, backgroundColor: theme.background },
-              isCurrent && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+              index > 0 && { borderLeftWidth: 1, borderLeftColor: theme.border },
+              isCurrent && { backgroundColor: theme.primary },
+              pressed && styles.pressed,
             ]}>
-            <View
-              style={[
-                styles.marker,
-                { backgroundColor: theme.backgroundSelected },
-                isComplete && { backgroundColor: theme.successSoft },
-                isCurrent && { backgroundColor: theme.primary },
-              ]}>
-              <ThemedText
-                type="smallBold"
-                style={{ color: isCurrent ? '#FFFFFF' : isComplete ? theme.success : theme.textSecondary }}>
-                {isComplete ? '✓' : step.short}
-              </ThemedText>
-            </View>
-            <View style={styles.copy}>
-              <ThemedText type="smallBold" style={isCurrent ? { color: theme.primary } : undefined}>
-                {step.label}
-              </ThemedText>
-              <ThemedText type="small" themeColor="textTertiary">
-                {isCurrent ? '현재 단계' : isComplete ? '이전 단계' : '다음 단계'}
-              </ThemedText>
-            </View>
-          </View>
+            <ThemedText
+              type="smallBold"
+              numberOfLines={2}
+              style={[styles.stepLabel, { color: isCurrent ? '#FFFFFF' : theme.textSecondary }]}>
+              {step.label}
+            </ThemedText>
+          </Pressable>
         );
       })}
     </View>
@@ -60,32 +58,16 @@ export function ProjectFlowSteps({ current }: { current: ProjectFlowStep }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
+  container: { width: '100%', flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderRadius: Radius.medium },
   step: {
-    minHeight: 62,
-    flexGrow: 1,
-    flexBasis: 180,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    borderWidth: 1,
-    borderRadius: Radius.medium,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  marker: {
-    minWidth: 32,
-    height: 32,
+    minWidth: 0,
+    minHeight: Math.max(ControlHeight.touch, 52),
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: Radius.pill,
     paddingHorizontal: Spacing.one,
+    paddingVertical: Spacing.two,
   },
-  copy: {
-    flex: 1,
-  },
+  stepLabel: { textAlign: 'center' },
+  pressed: { opacity: 0.65 },
 });

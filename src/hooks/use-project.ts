@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { Project, ProjectInput } from '@/types/project';
 
@@ -70,6 +71,13 @@ export function useProject(projectid?: string) {
       globalThis.clearTimeout(timeout);
     };
   }, [loadProject]);
+
+  useRealtimeRefresh({
+    channelName: `project:${projectid ?? 'none'}`,
+    enabled: Boolean(user && projectid),
+    onRefresh: loadProject,
+    tables: [{ table: 'projects', filter: `id=eq.${projectid}` }],
+  });
 
   const updateProject = useCallback(
     async (input: ProjectInput): Promise<ProjectMutationResult> => {

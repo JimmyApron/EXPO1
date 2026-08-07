@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import {
   canManageRoom,
@@ -25,6 +26,7 @@ type ProfileRow = {
 
 const roomSelect = 'id, ownerid, name, description, invitecode, allowmemberinvite, createdat, updatedat';
 const memberSelect = 'id, roomid, userid, role, createdat, updatedat';
+const roomRealtimeTables = ['rooms', 'roommembers'] as const;
 const missingSchemaMessage =
   '방 기능 DB 마이그레이션이 아직 Supabase에 적용되지 않았습니다. 프로젝트 루트에서 npx supabase db push를 실행해 주세요.';
 
@@ -229,6 +231,13 @@ export function useRooms() {
       globalThis.clearTimeout(timeout);
     };
   }, [loadRooms]);
+
+  useRealtimeRefresh({
+    channelName: `rooms:${user?.id ?? 'signed-out'}`,
+    enabled: Boolean(user),
+    onRefresh: loadRooms,
+    tables: roomRealtimeTables,
+  });
 
   const createRoom = useCallback(
     async (input: RoomInput): Promise<RoomMutationResult> => {

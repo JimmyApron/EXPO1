@@ -21,6 +21,7 @@ type FinalIdeaAnalysisResult = {
     title: string;
     summary: string;
     strengths: string[];
+    risks: string[];
     improvements: string[];
     feasibility: FinalAnalysisLevel;
     projectFit: FinalAnalysisLevel;
@@ -41,7 +42,7 @@ const corsHeaders = {
 };
 
 const maxIdeas = 10;
-const defaultClaudeModel = 'claude-sonnet-5';
+const defaultClaudeModel = 'claude-haiku-4-5-20251001';
 const anthropicVersion = '2023-06-01';
 const analysisToolName = 'record_final_idea_analysis';
 const defaultNotice = 'AI 분석 결과는 최종 결정을 돕기 위한 참고 자료입니다.';
@@ -54,9 +55,10 @@ const systemInstruction = `당신은 대학생의 과제 및 팀 프로젝트 �
 
 1. 핵심 내용 요약
 2. 주요 장점
-3. 구체적으로 보완해야 할 점
-4. 현재 개발 기간과 난이도를 고려한 실현 가능성
-5. 과제 또는 프로젝트 목적과의 적합성
+3. 예상 위험과 실패 가능성
+4. 구체적인 개선 제안
+5. 현재 개발 기간과 난이도를 고려한 실현 가능성
+6. 과제 또는 프로젝트 목적과의 적합성
 
 그다음 전체 아이디어를 비교하여 다음 내용을 작성하세요.
 
@@ -64,6 +66,8 @@ const systemInstruction = `당신은 대학생의 과제 및 팀 프로젝트 �
 2. 최종 후보로 추천할 아이디어
 3. 해당 아이디어를 추천한 이유
 4. 여러 아이디어를 결합할 수 있는 방법
+
+아이디어가 하나뿐이면 억지로 비교하지 말고 구체화, 위험 분석, 개선안을 중심으로 작성하세요.
 
 입력에 없는 사실이나 기능을 임의로 만들어내지 마세요.
 최종 결정은 사용자가 하므로 단정적으로 명령하지 말고
@@ -91,6 +95,11 @@ const responseSchema = {
             minItems: 1,
             items: { type: 'string' },
           },
+          risks: {
+            type: 'array',
+            minItems: 1,
+            items: { type: 'string' },
+          },
           improvements: {
             type: 'array',
             minItems: 1,
@@ -99,7 +108,7 @@ const responseSchema = {
           feasibility: { type: 'string', enum: ['높음', '보통', '낮음'] },
           projectFit: { type: 'string', enum: ['높음', '보통', '낮음'] },
         },
-        required: ['ideaId', 'title', 'summary', 'strengths', 'improvements', 'feasibility', 'projectFit'],
+        required: ['ideaId', 'title', 'summary', 'strengths', 'risks', 'improvements', 'feasibility', 'projectFit'],
       },
     },
     overall: {
@@ -228,6 +237,7 @@ function normalizeAnalysisResult(value: unknown, ideas: FinalIdeaInput[]): Final
         cleanString(source?.summary) ||
         `${title}의 핵심 방향은 확인되지만, 설명을 조금 더 구체화하면 비교가 쉬워집니다.`,
       strengths: normalizeStringArray(source?.strengths, ['아이디어의 기본 방향과 목적을 확인할 수 있습니다.']),
+      risks: normalizeStringArray(source?.risks, ['구현 범위와 사용자 검증이 충분하지 않을 수 있습니다.']),
       improvements: normalizeStringArray(source?.improvements, ['구현 범위와 핵심 기능을 더 구체화해 주세요.']),
       feasibility: normalizeAnalysisLevel(source?.feasibility),
       projectFit: normalizeAnalysisLevel(source?.projectFit),
@@ -273,6 +283,7 @@ function isAnalysisResult(value: unknown): value is FinalIdeaAnalysisResult {
         typeof analysis.title === 'string' &&
         typeof analysis.summary === 'string' &&
         isStringArray(analysis.strengths) &&
+        isStringArray(analysis.risks) &&
         isStringArray(analysis.improvements) &&
         isAnalysisLevel(analysis.feasibility) &&
         isAnalysisLevel(analysis.projectFit),
@@ -355,7 +366,7 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'missing_anthropic_key', message: 'AI 분석 설정을 확인해주세요.' }, 500);
   }
 
-  const claudeModel = defaultClaudeModel;
+  const claudeModel = Deno.env.get('ANTHROPIC_MODEL') ?? defaultClaudeModel;
   const claudeUrl = 'https://api.anthropic.com/v1/messages';
 
   const prompt = JSON.stringify({

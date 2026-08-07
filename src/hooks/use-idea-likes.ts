@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { IdeaLike } from '@/types/like';
 
@@ -21,6 +22,7 @@ type IdeaIdRow = {
 };
 
 const likeSelect = 'id, ideaid, userid, createdat, updatedat';
+const likeRealtimeTables = ['ideas', 'idealikes'] as const;
 
 function normalizeLike(row: LikeRow): IdeaLike {
   return {
@@ -51,6 +53,7 @@ export function useIdeaLikes(projectId?: string) {
     const { data: ideaRows, error: ideaError } = await supabase
       .from('ideas')
       .select('id')
+      .eq('legacystructural', false)
       .eq('projectid', projectId);
 
     if (ideaError) {
@@ -95,6 +98,13 @@ export function useIdeaLikes(projectId?: string) {
       globalThis.clearTimeout(timeout);
     };
   }, [loadLikes]);
+
+  useRealtimeRefresh({
+    channelName: `idea-likes:${projectId ?? 'none'}`,
+    enabled: Boolean(user && projectId),
+    onRefresh: loadLikes,
+    tables: likeRealtimeTables,
+  });
 
   const likeCountsByIdeaId = useMemo(() => {
     const grouped = new Map<string, number>();

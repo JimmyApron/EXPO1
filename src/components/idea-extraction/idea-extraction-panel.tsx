@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { CandidateIdeaCard } from '@/components/idea-extraction/candidate-idea-card';
 import {
@@ -16,7 +16,10 @@ import type { CandidateIdea, CandidateIdeaSaveResult, CandidateIdeasPayload } fr
 
 type IdeaExtractionPanelProps = {
   projectId: string;
-  onSave: (candidates: CandidateIdea[], extractionRunId: string) => Promise<CandidateIdeaSaveResult>;
+  defaultTopic: string;
+  hasMindMap: boolean;
+  onSave: (candidates: CandidateIdea[], extractionRunId: string, topic: string) => Promise<CandidateIdeaSaveResult>;
+  onGoToMindMap: () => void;
   onPayloadChange?: (payload: CandidateIdeasPayload) => void;
 };
 
@@ -24,7 +27,7 @@ function createRunId() {
   return `extraction-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: IdeaExtractionPanelProps) {
+export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSave, onGoToMindMap, onPayloadChange }: IdeaExtractionPanelProps) {
   const theme = useTheme();
   const [mode, setMode] = useState<ExtractionSourceMode>('text');
   const [sourceText, setSourceText] = useState('');
@@ -35,8 +38,10 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
   const [extractionRunId, setExtractionRunId] = useState('');
   const [hasExtractionResult, setHasExtractionResult] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [saveNotice, setSaveNotice] = useState('');
+  const [savedIdeaCount, setSavedIdeaCount] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [topic, setTopic] = useState(defaultTopic);
   const {
     images,
     isPickingImages,
@@ -65,7 +70,7 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
 
   const runExtraction = async (useEditedOcrText = false) => {
     setSaveError('');
-    setSaveNotice('');
+    setSavedIdeaCount(null);
     clearExtractionError();
 
     const response = await extract(
@@ -116,9 +121,9 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
 
     setIsSaving(true);
     setSaveError('');
-    setSaveNotice('');
+    setSavedIdeaCount(null);
     try {
-      const result = await onSave(normalized, extractionRunId || createRunId());
+      const result = await onSave(normalized, extractionRunId || createRunId(), topic.trim() || defaultTopic);
       if (result.savedCandidateIds.length > 0) {
         setSavedIds((current) => new Set([...current, ...result.savedCandidateIds]));
       }
@@ -129,7 +134,8 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
             .join(', ')}`,
         );
       } else {
-        setSaveNotice(`${result.savedCandidateIds.length}개 아이디어를 저장하고 마인드맵에 배치했습니다.`);
+        setIsConfigOpen(false);
+        setSavedIdeaCount(result.savedCandidateIds.length);
       }
     } catch {
       setSaveError('저장 중 예기치 못한 오류가 발생했습니다. 다시 시도해 주세요.');
@@ -284,19 +290,20 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
             </View>
 
             {saveError ? <ThemedText accessibilityRole="alert" type="small" style={styles.errorText}>{saveError}</ThemedText> : null}
-            {saveNotice ? <ThemedText accessibilityRole="alert" type="small" style={styles.successText}>{saveNotice}</ThemedText> : null}
-
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="선택한 아이디어 저장 및 마인드맵 생성"
+              accessibilityLabel={`선택한 ${unsavedCandidates.length}개로 마인드맵 구성`}
               disabled={isBusy || unsavedCandidates.length === 0}
-              onPress={() => void handleSave()}
+              onPress={() => {
+                setTopic(defaultTopic);
+                setIsConfigOpen(true);
+              }}
               style={({ pressed }) => [
                 styles.saveButton,
                 { backgroundColor: theme.success },
                 (pressed || isBusy || unsavedCandidates.length === 0) && styles.pressed,
               ]}>
-              {isSaving ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>선택한 {unsavedCandidates.length}개 저장하고 마인드맵 만들기</ThemedText>}
+              {isSaving ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>선택한 {unsavedCandidates.length}개로 마인드맵 구성</ThemedText>}
             </Pressable>
           </View>
         ) : hasExtractionResult && !isExtracting && !extractionError ? (
@@ -306,6 +313,104 @@ export function IdeaExtractionPanel({ projectId, onSave, onPayloadChange }: Idea
           </ThemedView>
         ) : null}
       </ThemedView>
+
+      <Modal
+        visible={isConfigOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsConfigOpen(false)}>
+        <View accessibilityViewIsModal style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+          <ThemedView type="surfaceElevated" style={[styles.configPanel, { borderColor: theme.border }, Shadows.floating]}>
+            <View style={styles.saveCompleteCopy}>
+              <ThemedText type="sectionTitle">마인드맵 구성</ThemedText>
+              <ThemedText themeColor="textSecondary">저장 전에 중심 주제와 예상 구조를 확인하세요.</ThemedText>
+            </View>
+            <View style={styles.configField}>
+              <ThemedText type="smallBold">중심 주제</ThemedText>
+              <TextInput
+                accessibilityLabel="마인드맵 중심 주제"
+                value={topic}
+                editable={!isSaving}
+                onChangeText={setTopic}
+                placeholder="중심 주제"
+                placeholderTextColor={theme.textSecondary}
+                style={[styles.configInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+              />
+            </View>
+            <View style={styles.configField}>
+              <ThemedText type="smallBold">추가 방식</ThemedText>
+              <View accessibilityRole="radio" accessibilityState={{ checked: true }} style={[styles.selectedOption, { backgroundColor: theme.primarySoft, borderColor: theme.primary }]}>
+                <ThemedText type="smallBold" style={{ color: theme.primary }}>{hasMindMap ? '기존 마인드맵에 추가' : '새 마인드맵 만들기'}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">기존 아이디어는 유지하며 중복 배치를 막습니다.</ThemedText>
+              </View>
+            </View>
+            <View style={styles.configField}>
+              <ThemedText type="smallBold">구성 방식</ThemedText>
+              <View accessibilityRole="radio" accessibilityState={{ checked: true }} style={[styles.selectedOption, { backgroundColor: theme.primarySoft, borderColor: theme.primary }]}>
+                <ThemedText type="smallBold" style={{ color: theme.primary }}>AI가 주제별로 자동 분류</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">구조화된 필드를 분석하고, 실패하면 키워드 기반 규칙으로 분류합니다.</ThemedText>
+              </View>
+            </View>
+            <ThemedView type="backgroundElement" style={[styles.preview, { borderColor: theme.border }]}>
+              <ThemedText type="smallBold">미리보기 · {topic.trim() || defaultTopic}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">해결할 문제 · 대상 사용자 · 해결 방법 · 핵심 기능</ThemedText>
+              <ThemedText type="caption" themeColor="textSecondary">선택한 {unsavedCandidates.length}개 아이디어가 관련 가지 아래에 배치됩니다.</ThemedText>
+            </ThemedView>
+            {saveError ? <ThemedText accessibilityRole="alert" type="small" style={styles.errorText}>{saveError}</ThemedText> : null}
+            <View style={styles.saveCompleteActions}>
+              <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 구성 취소" disabled={isSaving} onPress={() => setIsConfigOpen(false)} style={({ pressed }) => [styles.laterButton, { borderColor: theme.border }, (pressed || isSaving) && styles.pressed]}><ThemedText type="smallBold">취소</ThemedText></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 생성" disabled={isSaving || !topic.trim()} onPress={() => void handleSave()} style={({ pressed }) => [styles.goToMindMapButton, { backgroundColor: theme.primary }, (pressed || isSaving || !topic.trim()) && styles.pressed]}>{isSaving ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>마인드맵 생성</ThemedText>}</Pressable>
+            </View>
+          </ThemedView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={savedIdeaCount !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSavedIdeaCount(null)}>
+        <View
+          accessibilityViewIsModal
+          style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+          <ThemedView
+            type="surfaceElevated"
+            style={[styles.saveCompletePanel, { borderColor: theme.border }, Shadows.floating]}>
+            <View style={styles.saveCompleteCopy}>
+              <ThemedText type="sectionTitle">마인드맵이 완성됐어요</ThemedText>
+              <ThemedText themeColor="textSecondary">
+                {savedIdeaCount}개 아이디어를 저장하고 마인드맵에 배치했습니다.{`\n`}
+                지금 마인드맵으로 이동하시겠습니까?
+              </ThemedText>
+            </View>
+            <View style={styles.saveCompleteActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setSavedIdeaCount(null)}
+                style={({ pressed }) => [
+                  styles.laterButton,
+                  { borderColor: theme.border },
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold">나중에 하기</ThemedText>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setSavedIdeaCount(null);
+                  onGoToMindMap();
+                }}
+                style={({ pressed }) => [
+                  styles.goToMindMapButton,
+                  { backgroundColor: theme.primary },
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold" style={styles.primaryButtonText}>이동하기</ThemedText>
+              </Pressable>
+            </View>
+          </ThemedView>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -332,6 +437,16 @@ const styles = StyleSheet.create({
   candidateList: { gap: Spacing.three },
   emptyState: { gap: Spacing.one, borderRadius: Radius.medium, padding: Spacing.three },
   errorText: { color: '#b91c1c' },
-  successText: { color: '#168B51' },
+  modalOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.three },
+  configPanel: { width: '100%', maxWidth: 560, maxHeight: '92%', gap: Spacing.three, borderWidth: 1, borderRadius: Radius.xlarge, padding: Spacing.four },
+  configField: { gap: Spacing.one },
+  configInput: { minHeight: ControlHeight.input, borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  selectedOption: { gap: Spacing.half, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  preview: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  saveCompletePanel: { width: '100%', maxWidth: 420, gap: Spacing.four, borderWidth: 1, borderRadius: Radius.xlarge, padding: Spacing.four },
+  saveCompleteCopy: { gap: Spacing.two },
+  saveCompleteActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.two },
+  laterButton: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  goToMindMapButton: { minHeight: ControlHeight.touch, justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   pressed: { opacity: 0.55 },
 });

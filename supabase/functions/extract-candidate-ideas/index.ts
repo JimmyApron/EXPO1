@@ -31,16 +31,18 @@ const maxRequestCharacters = 29_000_000;
 const maxTextLength = 30_000;
 const maxImages = 3;
 const maxImageBytes = 8 * 1024 * 1024;
-const maxCandidates = 8;
+const candidateCount = 5;
 const anthropicVersion = '2023-06-01';
 const toolName = 'record_candidate_ideas';
 
 const systemInstruction = `당신은 한국어 회의록과 채팅에서 실행 가능한 프로젝트 아이디어를 추출하는 분석 도우미입니다.
 입력에 명시된 문제, 사용자 요구, 해결책, 기능만 근거로 사용하세요. 입력에 없는 수치, 시장 사실, 일정 또는 요구를 만들지 마세요.
-중복되거나 표현만 다른 아이디어는 하나로 통합하세요. 기본 출력 언어는 한국어입니다.
+입력에서 아이디어의 단서가 하나라도 발견되면, 그 주제를 서로 다른 문제, 대상 사용자, 사용 상황 또는 해결 방식으로 확장해 정확히 5개의 후보를 만드세요.
+5개 후보는 이름이나 일부 기능만 바꾼 변형이어서는 안 됩니다. 각 후보의 핵심 문제와 해결 방식을 서로 대조한 뒤, 내용이 겹치면 더 다른 실행 방향으로 교체하세요.
+원문에 없는 수치나 사실을 만들지 않는 범위에서 구체화하고, 기본 출력 언어는 한국어로 하세요.
 이미지가 제공되면 먼저 화면에 보이는 한국어 대화를 읽고 extractedText에 대화 순서대로 정리하세요.
 텍스트가 제공되면 의미를 바꾸지 말고 읽기 쉽게 정리한 원문을 extractedText에 반환하세요.
-추출할 만한 아이디어가 없으면 candidateIdeas를 빈 배열로 반환하세요.
+아이디어로 발전시킬 단서가 전혀 없을 때만 candidateIdeas를 빈 배열로 반환하세요. 단서가 있다면 1개만 직접 언급되었더라도 반드시 서로 다른 후보 5개를 반환하세요.
 각 후보의 id는 idea-001부터 순서대로 만들고 모든 필드를 채우세요. 없는 값은 빈 문자열 또는 빈 배열을 사용하세요.`;
 
 const candidateSchema = {
@@ -64,7 +66,11 @@ const responseSchema = {
   additionalProperties: false,
   properties: {
     extractedText: { type: 'string' },
-    candidateIdeas: { type: 'array', items: candidateSchema },
+    candidateIdeas: {
+      type: 'array',
+      description: '아이디어 단서가 없으면 빈 배열, 있으면 서로 중복되지 않는 후보 정확히 5개',
+      items: candidateSchema,
+    },
   },
   required: ['extractedText', 'candidateIdeas'],
 };
@@ -100,14 +106,19 @@ function cleanStringArray(value: unknown, maxItems = 12) {
     .slice(0, maxItems);
 }
 
+function duplicateKey(value: string) {
+  return value.toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+
 function normalizeCandidates(value: unknown): CandidateIdea[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  const seen = new Set<string>();
+  const seenTitles = new Set<string>();
+  const seenDetails = new Set<string>();
   const candidates: CandidateIdea[] = [];
-  value.slice(0, maxCandidates * 2).forEach((item) => {
+  value.slice(0, candidateCount * 2).forEach((item) => {
     if (!isRecord(item)) {
       return;
     }
@@ -118,11 +129,15 @@ function normalizeCandidates(value: unknown): CandidateIdea[] {
     }
 
     const summary = cleanString(item.summary);
-    const duplicateKey = `${title}\n${summary}`.toLocaleLowerCase();
-    if (seen.has(duplicateKey)) {
+    const titleKey = duplicateKey(title);
+    const detailKey = duplicateKey(`${summary}\n${cleanString(item.problem)}\n${cleanString(item.solution)}`);
+    if (seenTitles.has(titleKey) || (detailKey && seenDetails.has(detailKey))) {
       return;
     }
-    seen.add(duplicateKey);
+    seenTitles.add(titleKey);
+    if (detailKey) {
+      seenDetails.add(detailKey);
+    }
 
     candidates.push({
       id: `idea-${String(candidates.length + 1).padStart(3, '0')}`,
@@ -136,7 +151,7 @@ function normalizeCandidates(value: unknown): CandidateIdea[] {
     });
   });
 
-  return candidates.slice(0, maxCandidates);
+  return candidates.slice(0, candidateCount);
 }
 
 function estimatedBase64Bytes(data: string) {

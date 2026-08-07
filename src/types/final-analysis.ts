@@ -13,6 +13,7 @@ export type FinalIdeaAnalysis = {
   title: string;
   summary: string;
   strengths: string[];
+  risks?: string[];
   improvements: string[];
   feasibility: FinalAnalysisLevel;
   projectFit: FinalAnalysisLevel;
@@ -27,4 +28,6 @@ export type FinalIdeaAnalysisResult = {
     combinationSuggestion: string;
   };
   notice: string;
+  inputFingerprint?: string;
+  analyzedAt?: string;
 };

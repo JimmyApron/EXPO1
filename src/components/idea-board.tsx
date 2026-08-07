@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router, type Href } from 'expo-router';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,16 +9,19 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 
 import { AppIcon } from '@/components/app-icon';
 import { EmptyState } from '@/components/empty-state';
+import { IdeaCoachPanel } from '@/components/idea-coach-panel';
 import { IdeaExtractionPanel } from '@/components/idea-extraction/idea-extraction-panel';
 import { IdeaMindMap } from '@/components/idea-mind-map';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
+import { MvpWorkflowPanel } from '@/components/mvp-workflow-panel';
+import { PresentationWorkflowPanel } from '@/components/presentation-workflow-panel';
 import { ProjectFlowSteps } from '@/components/project-flow-steps';
+import { ProjectHomeSummary } from '@/components/project-home-summary';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
@@ -27,15 +29,19 @@ import { useIdeaFeedbacks } from '@/hooks/use-idea-feedbacks';
 import { useIdeaCategories } from '@/hooks/use-idea-categories';
 import { useIdeaDraftAnalysis } from '@/hooks/use-idea-draft-analysis';
 import { useIdeaLikes } from '@/hooks/use-idea-likes';
-import { useFinalIdeaAnalysis } from '@/hooks/use-final-idea-analysis';
 import { useIdeas } from '@/hooks/use-ideas';
+import { useMindMap } from '@/hooks/use-mind-map';
+import { useProjectFlow } from '@/hooks/use-project-flow';
 import { useTheme } from '@/hooks/use-theme';
 import { candidateIdeaToIdeaInput } from '@/lib/candidate-idea';
-import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
+import { validateMindMapIdeaField } from '@/lib/mind-map';
+import { isMvpPlanCurrent, isPresentationCurrent } from '@/lib/project-flow';
+import type { ProjectSection, ProjectWorkspaceLocation, ProjectWorkflowStep } from '@/lib/project-workspace';
 import type { CandidateIdea, CandidateIdeaSaveResult } from '@/types/candidate-idea';
 import type { IdeaFeedback } from '@/types/feedback';
-import type { FinalIdeaAnalysis, FinalIdeaAnalysisResult, FinalAnalysisLevel } from '@/types/final-analysis';
+import type { FinalAnalysisLevel } from '@/types/final-analysis';
 import type { IdeaDraftAnalysisResult } from '@/types/idea-draft-analysis';
+import type { MindMapIdeaDetailsInput, MindMapNode } from '@/types/mind-map';
 import {
   IdeaStatusLabels,
   IdeaStatuses,
@@ -46,13 +52,16 @@ import {
   type Idea,
   type IdeaCategory,
   type IdeaInput,
-  type IdeaMindMapInput,
   type IdeaStatus,
 } from '@/types/idea';
 
 type IdeaBoardProps = {
   projectId: string;
+  projectTitle: string;
   projectDeadline?: string | null;
+  initialSection?: ProjectSection;
+  initialStep?: ProjectWorkflowStep;
+  onLocationChange: (location: ProjectWorkspaceLocation) => void;
 };
 
 type IdeaFormProps = {
@@ -88,14 +97,8 @@ type IdeaCardProps = {
 
 const allCategoryFilter = 'all';
 const allStatusFilter = 'all';
-const listMode = 'list';
-const mindMapMode = 'mindmap';
-const finalMode = 'final';
-const extractionMode = 'extraction';
-
 type CategoryFilter = typeof allCategoryFilter | IdeaCategory;
 type StatusFilter = typeof allStatusFilter | IdeaStatus;
-type BoardMode = typeof listMode | typeof mindMapMode | typeof finalMode | typeof extractionMode;
 type SortMode = 'newest' | 'oldest' | 'likes' | 'favorite' | 'status';
 
 const statusFilters: StatusFilter[] = [allStatusFilter, ...IdeaStatuses];
@@ -128,13 +131,6 @@ const customCategoryPalette: CategoryPalette = {
   border: '#94a3b8',
   text: '#334155',
 };
-
-const boardTabs: { id: BoardMode; label: string; compactLabel: string }[] = [
-  { id: extractionMode, label: '아이디어 추출', compactLabel: '추출' },
-  { id: listMode, label: '목록', compactLabel: '목록' },
-  { id: mindMapMode, label: '마인드맵', compactLabel: '마인드맵' },
-  { id: finalMode, label: '최종안', compactLabel: '최종안' },
-];
 
 function getCategoryLabel(filter: CategoryFilter) {
   return filter === allCategoryFilter ? '전체' : getIdeaCategoryLabel(filter);
@@ -174,47 +170,6 @@ function confirmDelete(onConfirm: () => void) {
   ]);
 }
 
-function ProjectProgressSummary({
-  ideas,
-  projectDeadline,
-}: {
-  ideas: Idea[];
-  projectDeadline?: string | null;
-}) {
-  const theme = useTheme();
-  const selectedCount = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'selected').length;
-  const approvedCount = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'approved').length;
-
-  return (
-    <View style={styles.progressSummary}>
-      <View style={styles.progressSummaryHeading}>
-        <ThemedText type="cardTitle">진행 요약</ThemedText>
-        <ThemedText type="caption" themeColor="textSecondary">
-          {getDDayLabel(projectDeadline ?? null)} · {formatDeadlineLabel(projectDeadline ?? null)}
-        </ThemedText>
-      </View>
-      <View
-        accessibilityLabel={`진행 요약, 전체 ${ideas.length}개, 검토 완료 ${approvedCount}개, 최종안 ${selectedCount}개`}
-        style={[styles.progressMetrics, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <View style={styles.progressMetric}>
-          <ThemedText type="caption" themeColor="textSecondary">전체</ThemedText>
-          <ThemedText type="cardTitle">{ideas.length}</ThemedText>
-        </View>
-        <View style={[styles.progressMetricDivider, { backgroundColor: theme.divider }]} />
-        <View style={styles.progressMetric}>
-          <ThemedText type="caption" themeColor="textSecondary">검토 완료</ThemedText>
-          <ThemedText type="cardTitle">{approvedCount}</ThemedText>
-        </View>
-        <View style={[styles.progressMetricDivider, { backgroundColor: theme.divider }]} />
-        <View style={styles.progressMetric}>
-          <ThemedText type="caption" themeColor="textSecondary">최종안</ThemedText>
-          <ThemedText type="cardTitle">{selectedCount}</ThemedText>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 function StatusSelector({
   selectedStatus,
   onSelect,
@@ -224,7 +179,7 @@ function StatusSelector({
 }) {
   return (
     <View style={styles.chipRow}>
-      {IdeaStatuses.map((status) => {
+      {IdeaStatuses.filter((status) => status !== 'selected').map((status) => {
         const palette = statusColors[status];
         const isSelected = selectedStatus === status;
 
@@ -246,6 +201,9 @@ function StatusSelector({
           </Pressable>
         );
       })}
+      {selectedStatus === 'selected' ? (
+        <ThemedText type="small" themeColor="textSecondary">최종 선정 변경은 AI 비교·선정 단계에서 할 수 있습니다.</ThemedText>
+      ) : null}
     </View>
   );
 }
@@ -868,6 +826,15 @@ function CategoryTag({ category }: { category: IdeaCategory }) {
   );
 }
 
+function IdeaDetailSection({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.ideaDetailSection}>
+      <ThemedText type="smallBold">{label}</ThemedText>
+      <ThemedText themeColor="textSecondary">{value}</ThemedText>
+    </View>
+  );
+}
+
 function IdeaCard({
   idea,
   feedbacks,
@@ -887,10 +854,16 @@ function IdeaCard({
 }: IdeaCardProps) {
   const theme = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const status = normalizeIdeaStatus(idea.status);
   const category = normalizeIdeaCategory(idea.category);
   const currentStatusIndex = IdeaStatuses.indexOf(status);
-  const nextStatus = IdeaStatuses[currentStatusIndex + 1];
+  const statusAfterCurrent = IdeaStatuses[currentStatusIndex + 1];
+  const nextStatus = statusAfterCurrent === 'selected' ? undefined : statusAfterCurrent;
+  const hasStructuredDetails = Boolean(
+    idea.summary || idea.problem || idea.targetusers.length || idea.solution || idea.corefeatures.length || idea.keywords.length,
+  );
+  const summary = idea.summary || (!hasStructuredDetails ? idea.content : idea.problem || idea.solution);
 
   return (
     <ThemedView
@@ -942,9 +915,38 @@ function IdeaCard({
       <ThemedText type="smallBold" style={styles.ideaTitle}>
         {idea.title}
       </ThemedText>
-      <ThemedText themeColor="textSecondary" style={styles.ideaContent}>
-        {idea.content}
-      </ThemedText>
+      {summary ? <ThemedText numberOfLines={2} themeColor="textSecondary" style={styles.ideaContent}>{summary}</ThemedText> : null}
+      {idea.keywords.length > 0 ? (
+        <View style={styles.keywordRow}>
+          {idea.keywords.slice(0, 3).map((keyword) => (
+            <View key={keyword} style={[styles.keywordChip, { backgroundColor: theme.backgroundSelected }]}>
+              <ThemedText type="caption">#{keyword}</ThemedText>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${idea.title} ${isExpanded ? '상세 접기' : '자세히 보기'}`}
+        accessibilityState={{ expanded: isExpanded }}
+        onPress={() => setIsExpanded((current) => !current)}
+        style={({ pressed }) => [styles.detailToggle, pressed && styles.pressed]}>
+        <ThemedText type="smallBold" style={{ color: theme.primary }}>{isExpanded ? '접기' : '자세히 보기'}</ThemedText>
+      </Pressable>
+      {isExpanded ? (
+        <View style={[styles.structuredDetails, { borderTopColor: theme.divider }]}>
+          {hasStructuredDetails ? (
+            <>
+              {idea.summary ? <IdeaDetailSection label="요약" value={idea.summary} /> : null}
+              {idea.problem ? <IdeaDetailSection label="해결하려는 문제" value={idea.problem} /> : null}
+              {idea.targetusers.length ? <IdeaDetailSection label="대상 사용자" value={idea.targetusers.join(' · ')} /> : null}
+              {idea.solution ? <IdeaDetailSection label="해결 방법" value={idea.solution} /> : null}
+              {idea.corefeatures.length ? <IdeaDetailSection label="핵심 기능" value={idea.corefeatures.join(' · ')} /> : null}
+              {idea.keywords.length ? <IdeaDetailSection label="키워드" value={idea.keywords.join(' · ')} /> : null}
+            </>
+          ) : <IdeaDetailSection label="내용" value={idea.content} />}
+        </View>
+      ) : null}
       <View style={styles.reactionRow}>
         <Pressable
           disabled={isBusy || isLoadingLikes}
@@ -980,7 +982,7 @@ function IdeaCard({
           </ThemedText>
         </Pressable>
       ) : null}
-      {!compact ? (
+      {!compact && isExpanded ? (
         <FeedbackSection
           idea={idea}
           feedbacks={feedbacks}
@@ -1311,12 +1313,6 @@ function FilterBlock({
   );
 }
 
-function buildFinalDraftText(ideas: Idea[]) {
-  return ideas
-    .map((idea, index) => `${index + 1}. ${idea.title}\n${idea.content}`)
-    .join('\n\n');
-}
-
 function AnalysisLevelBadge({ value }: { value: FinalAnalysisLevel }) {
   const palette =
     value === '높음'
@@ -1352,298 +1348,18 @@ function AnalysisBulletList({ items }: { items: string[] }) {
 }
 
 function AnalysisTextBlock({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <View style={styles.analysisTextBlock}>
-      <ThemedText type="smallBold">{label}</ThemedText>
-      {children}
-    </View>
-  );
+  return <View style={styles.analysisTextBlock}><ThemedText type="smallBold">{label}</ThemedText>{children}</View>;
 }
 
-function IdeaAnalysisCard({ analysis }: { analysis: FinalIdeaAnalysis }) {
-  return (
-    <ThemedView type="backgroundElement" style={styles.analysisCard}>
-      <ThemedText type="smallBold" style={styles.analysisCardTitle}>
-        {analysis.title || '제목 없는 아이디어'}
-      </ThemedText>
-
-      <AnalysisTextBlock label="핵심 요약">
-        <ThemedText type="small" themeColor="textSecondary">
-          {analysis.summary}
-        </ThemedText>
-      </AnalysisTextBlock>
-
-      <AnalysisTextBlock label="장점">
-        <AnalysisBulletList items={analysis.strengths} />
-      </AnalysisTextBlock>
-
-      <AnalysisTextBlock label="보완점">
-        <AnalysisBulletList items={analysis.improvements} />
-      </AnalysisTextBlock>
-
-      <View style={styles.analysisLevelRow}>
-        <View style={styles.analysisLevelItem}>
-          <ThemedText type="smallBold">실현 가능성</ThemedText>
-          <AnalysisLevelBadge value={analysis.feasibility} />
-        </View>
-        <View style={styles.analysisLevelItem}>
-          <ThemedText type="smallBold">과제 적합성</ThemedText>
-          <AnalysisLevelBadge value={analysis.projectFit} />
-        </View>
-      </View>
-    </ThemedView>
-  );
-}
-
-function OverallAnalysisCard({ result, ideas }: { result: FinalIdeaAnalysisResult; ideas: Idea[] }) {
-  const ideaTitleById = useMemo(() => {
-    const titles = new Map<string, string>();
-    ideas.forEach((idea) => {
-      titles.set(idea.id, idea.title.trim() || '제목 없는 아이디어');
-    });
-    return titles;
-  }, [ideas]);
-  const recommendedTitles = result.overall.recommendedIdeaIds
-    .map((ideaId) => ideaTitleById.get(ideaId))
-    .filter((title): title is string => Boolean(title));
-
-  return (
-    <ThemedView type="backgroundElement" style={styles.analysisCard}>
-      <ThemedText type="smallBold" style={styles.analysisCardTitle}>
-        전체 종합 의견
-      </ThemedText>
-
-      <AnalysisTextBlock label="전체 비교 의견">
-        <ThemedText type="small" themeColor="textSecondary">
-          {result.overall.comparison}
-        </ThemedText>
-      </AnalysisTextBlock>
-
-      <AnalysisTextBlock label="추천 아이디어">
-        <ThemedText type="small" themeColor="textSecondary">
-          {recommendedTitles.length > 0 ? recommendedTitles.join(', ') : '추천 후보를 확인할 수 없습니다.'}
-        </ThemedText>
-      </AnalysisTextBlock>
-
-      <AnalysisTextBlock label="추천 이유">
-        <ThemedText type="small" themeColor="textSecondary">
-          {result.overall.recommendationReason}
-        </ThemedText>
-      </AnalysisTextBlock>
-
-      <AnalysisTextBlock label="아이디어 결합 제안">
-        <ThemedText type="small" themeColor="textSecondary">
-          {result.overall.combinationSuggestion}
-        </ThemedText>
-      </AnalysisTextBlock>
-
-      <ThemedText type="small" themeColor="textSecondary" style={styles.analysisNotice}>
-        {result.notice}
-      </ThemedText>
-    </ThemedView>
-  );
-}
-
-function FinalDraftView({ ideas, projectId }: { ideas: Idea[]; projectId: string }) {
+export function IdeaBoard({
+  projectId,
+  projectTitle,
+  projectDeadline,
+  initialSection = 'home',
+  initialStep = 'extraction',
+  onLocationChange,
+}: IdeaBoardProps) {
   const theme = useTheme();
-  const selectedIdeas = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'selected');
-  const approvedIdeas = ideas.filter((idea) => normalizeIdeaStatus(idea.status) === 'approved');
-  const sourceIdeas = selectedIdeas.length > 0 ? selectedIdeas : approvedIdeas;
-  const [copyMessage, setCopyMessage] = useState('');
-  const {
-    analysis,
-    analysisError,
-    analyzeIdeas,
-    canAnalyze,
-    emptyFinalIdeaMessage,
-    isAnalyzing,
-    isLimited,
-    maxAnalysisIdeas,
-    requestIdeas,
-    skippedBlankCount,
-  } = useFinalIdeaAnalysis(projectId, selectedIdeas);
-
-  if (sourceIdeas.length === 0) {
-    return (
-      <View style={styles.finalBlock}>
-        <ProjectFlowSteps current="final" />
-        <ThemedView type="backgroundElement" style={styles.emptyState}>
-          <ThemedText type="smallBold">최종안에 넣을 아이디어가 없습니다.</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-            목록에서 좋은 아이디어를 쓸 만함 또는 최종 사용 상태로 올려 보세요.
-          </ThemedText>
-        </ThemedView>
-        <View style={styles.finalAnalysisBlock}>
-          <Pressable disabled style={[styles.finalAnalysisButton, styles.disabledButton]}>
-            <ThemedText type="smallBold" style={styles.primaryButtonText}>
-              AI 비교 분석
-            </ThemedText>
-          </Pressable>
-          <ThemedText type="small" themeColor="textSecondary">
-            {emptyFinalIdeaMessage}
-          </ThemedText>
-        </View>
-      </View>
-    );
-  }
-
-  const finalDraftText = buildFinalDraftText(sourceIdeas);
-
-  const copyFinalDraft = async () => {
-    setCopyMessage('');
-
-    if (Platform.OS === 'web' && globalThis.navigator?.clipboard) {
-      await globalThis.navigator.clipboard.writeText(finalDraftText);
-      setCopyMessage('Copied');
-      return;
-    }
-
-    setCopyMessage('Select the text below to copy');
-  };
-
-  return (
-    <View style={styles.finalBlock}>
-      <ProjectFlowSteps current="final" />
-      <ThemedView type="backgroundElement" style={[styles.finalPanel, { borderColor: theme.border }, Shadows.card]}>
-        <ThemedText type="smallBold" style={styles.finalTitle}>
-          발표/보고서 구성안
-        </ThemedText>
-        <View style={styles.outlineList}>
-          {sourceIdeas.map((idea, index) => (
-            <View key={idea.id} style={styles.outlineItem}>
-              <View style={styles.outlineNumber}>
-                <ThemedText type="smallBold" style={styles.outlineNumberText}>
-                  {index + 1}
-                </ThemedText>
-              </View>
-              <View style={styles.outlineBody}>
-                <ThemedText type="smallBold">{idea.title}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {idea.content}
-                </ThemedText>
-              </View>
-            </View>
-          ))}
-        </View>
-        <View style={styles.finalAnalysisBlock}>
-          <Pressable
-            onPress={() => router.push(`/coach?projectId=${projectId}` as Href)}
-            style={({ pressed }) => [styles.finalAnalysisButton, pressed && styles.pressed]}>
-            <ThemedText type="smallBold" style={styles.primaryButtonText}>
-              A. 조건별 추천·최종 선정으로 이동
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            disabled={!canAnalyze || isAnalyzing}
-            onPress={analyzeIdeas}
-            style={({ pressed }) => [
-              styles.finalAnalysisButton,
-              (!canAnalyze || isAnalyzing) && styles.disabledButton,
-              pressed && canAnalyze && !isAnalyzing && styles.pressed,
-            ]}>
-            {isAnalyzing ? (
-              <ActivityIndicator color="#ffffff" size="small" />
-            ) : (
-              <ThemedText type="smallBold" style={styles.primaryButtonText}>
-                AI 비교 분석
-              </ThemedText>
-            )}
-          </Pressable>
-          {!canAnalyze ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              {emptyFinalIdeaMessage}
-            </ThemedText>
-          ) : null}
-          {isLimited ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              최대 {maxAnalysisIdeas}개까지 분석할 수 있어 {requestIdeas.length}개 후보만 보냅니다.
-            </ThemedText>
-          ) : null}
-          {skippedBlankCount > 0 ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              제목과 내용이 모두 없는 아이디어 {skippedBlankCount}개는 제외했습니다.
-            </ThemedText>
-          ) : null}
-          {isAnalyzing ? (
-            <ThemedView type="backgroundElement" style={styles.analysisLoadingPanel}>
-              <ActivityIndicator />
-              <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-                AI가 최종 후보 아이디어를 비교하고 있습니다.
-              </ThemedText>
-            </ThemedView>
-          ) : null}
-          {analysisError ? (
-            <ThemedView type="backgroundElement" style={styles.analysisErrorPanel}>
-              <ThemedText type="small" style={styles.errorText}>
-                {analysisError}
-              </ThemedText>
-              {canAnalyze ? (
-                <Pressable
-                  disabled={isAnalyzing}
-                  onPress={analyzeIdeas}
-                  style={({ pressed }) => [styles.secondaryButton, (pressed || isAnalyzing) && styles.pressed]}>
-                  <ThemedText type="smallBold">다시 시도</ThemedText>
-                </Pressable>
-              ) : null}
-            </ThemedView>
-          ) : null}
-          {analysis ? (
-            <View style={styles.analysisResultBlock}>
-              {analysis.analyses.map((item) => (
-                <IdeaAnalysisCard key={item.ideaId} analysis={item} />
-              ))}
-              <OverallAnalysisCard result={analysis} ideas={selectedIdeas} />
-              <Pressable
-                disabled={isAnalyzing}
-                onPress={analyzeIdeas}
-                style={({ pressed }) => [styles.secondaryButton, (pressed || isAnalyzing) && styles.pressed]}>
-                <ThemedText type="smallBold">다시 분석하기</ThemedText>
-              </Pressable>
-            </View>
-          ) : null}
-        </View>
-        <View style={styles.finalExportActions}>
-          <Pressable onPress={copyFinalDraft} style={({ pressed }) => [styles.compactButton, pressed && styles.pressed]}>
-            <ThemedText type="smallBold">Copy outline</ThemedText>
-          </Pressable>
-          {copyMessage ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              {copyMessage}
-            </ThemedText>
-          ) : null}
-        </View>
-        <TextInput
-          value={finalDraftText}
-          editable={false}
-          multiline
-          selectTextOnFocus
-          style={[
-            styles.finalExportInput,
-            { color: theme.text, backgroundColor: theme.background, borderColor: theme.border },
-          ]}
-        />
-      </ThemedView>
-
-      <ThemedView type="backgroundElement" style={[styles.finalPanel, { borderColor: theme.border }]}>
-        <ThemedText type="smallBold">최종 사용 체크리스트</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          1. 각 아이디어의 근거 자료를 확인하기
-        </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          2. 발표 흐름에 맞게 순서 조정하기
-        </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          3. 중복되는 아이디어는 하나로 합치기
-        </ThemedText>
-      </ThemedView>
-    </View>
-  );
-}
-
-export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
-  const theme = useTheme();
-  const { width: viewportWidth } = useWindowDimensions();
-  const useCompactTabLabels = viewportWidth < 420;
   const {
     ideas,
     isLoadingIdeas,
@@ -1651,10 +1367,24 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     createIdea,
     updateIdea,
     toggleIdeaFavorite,
-    updateIdeaMindMap,
     deleteIdea,
     loadIdeas,
   } = useIdeas(projectId);
+  const flowController = useProjectFlow(projectId);
+  const {
+    mindMap,
+    nodes: mindMapNodes,
+    isLoadingMindMap,
+    mindMapError,
+    loadMindMap,
+    composeIdeas,
+    updateTopic,
+    moveIdeaNode,
+    createBranch,
+    placeIdeaUnderBranch,
+    updateBranch,
+    deleteBranch,
+  } = useMindMap(projectId, projectTitle);
   const usedCategories = useMemo(
     () => ideas.map((idea) => normalizeIdeaCategory(idea.category)),
     [ideas],
@@ -1683,7 +1413,8 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     likeError,
     toggleLike,
   } = useIdeaLikes(projectId);
-  const [boardMode, setBoardMode] = useState<BoardMode>(listMode);
+  const section = initialSection;
+  const workflowStep = initialStep;
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(allCategoryFilter);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(allStatusFilter);
   const [searchDraft, setSearchDraft] = useState('');
@@ -1694,7 +1425,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
   const [editingIdeaId, setEditingIdeaId] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [mutationError, setMutationError] = useState('');
-  const extractionRoots = useRef(new Map<string, { id: string; x: number; y: number }>());
+  const [highlightedIdeaIds, setHighlightedIdeaIds] = useState<Set<string>>(new Set());
 
   const favoriteCount = useMemo(() => ideas.filter((idea) => idea.isfavorite).length, [ideas]);
   const ideaIds = useMemo(() => new Set(ideas.map((idea) => idea.id)), [ideas]);
@@ -1752,7 +1483,35 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     [categoryFilter, favoriteOnly, feedbacksByIdeaId, ideas, likeCountsByIdeaId, searchQuery, sortMode, statusFilter],
   );
   const editingIdea = editingIdeaId ? ideas.find((idea) => idea.id === editingIdeaId) : undefined;
-  const currentError = ideaError || mutationError || categoryerror || feedbackError || likeError;
+  const currentError = ideaError || mindMapError || mutationError || categoryerror || feedbackError || likeError;
+  const selectedIdeaId = flowController.flow?.selectedideaid
+    ?? ideas.find((idea) => normalizeIdeaStatus(idea.status) === 'selected')?.id
+    ?? null;
+  const selectedIdea = ideas.find((idea) => idea.id === selectedIdeaId) ?? null;
+  const currentSelectedIdeaId = selectedIdea?.id ?? null;
+  const workflowIdeas = ideas.filter(
+    (idea) => !idea.legacystructural && Boolean(idea.title.trim() || idea.content.trim()),
+  );
+  const hasCurrentMvp = isMvpPlanCurrent(flowController.flow?.mvpplan, currentSelectedIdeaId);
+  const hasCurrentPresentation = isPresentationCurrent(
+    flowController.flow?.presentationdata,
+    currentSelectedIdeaId,
+    flowController.flow?.mvpplan,
+  );
+  const completedSteps = {
+    extraction: workflowIdeas.length > 0,
+    selection: Boolean(selectedIdea),
+    mvp: hasCurrentMvp,
+    presentation: hasCurrentPresentation,
+  };
+
+  const navigateTo = (nextSection: ProjectSection, nextStep = workflowStep) => {
+    onLocationChange({ section: nextSection, step: nextStep });
+  };
+
+  const handleFlowStepPress = (step: ProjectWorkflowStep) => {
+    navigateTo('home', step);
+  };
 
   const handleCreate = async (input: IdeaInput) => {
     setIsMutating(true);
@@ -1761,6 +1520,10 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     const result = await createIdea(input);
     if (result.error) {
       setMutationError(result.error);
+    } else if (result.idea && mindMap) {
+      const composed = await composeIdeas([result.idea], mindMap.title);
+      if (composed.error) setMutationError(composed.error);
+      else setIsCreateIdeaOpen(false);
     } else {
       setIsCreateIdeaOpen(false);
     }
@@ -1768,44 +1531,92 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     setIsMutating(false);
   };
 
-  const handleCreateMindMapNode = async (input: IdeaInput, mindMapInput: IdeaMindMapInput) => {
-    setIsMutating(true);
-    setMutationError('');
-
-    const result = await createIdea(input, mindMapInput);
-    if (result.error) {
-      setMutationError(result.error);
-      setIsMutating(false);
-      return { error: result.error };
-    }
-
-    setIsMutating(false);
-    return {};
-  };
-
-  const handlePersistMindMapLayout = async (ideaId: string, mindMapInput: IdeaMindMapInput) => {
-    const result = await updateIdeaMindMap(ideaId, mindMapInput);
-    if (result.error) {
-      setMutationError(result.error);
-      return { error: result.error };
-    }
-
-    return {};
-  };
-
   const handleUpdateMindMapNode = async (ideaId: string, input: IdeaInput) => {
     setIsMutating(true);
     setMutationError('');
 
     const result = await updateIdea(ideaId, input);
-    if (result.error) {
-      setMutationError(result.error);
+    if (result.error || !result.idea) {
+      const error = result.error || '아이디어를 수정하지 못했습니다.';
+      setMutationError(error);
       setIsMutating(false);
-      return { error: result.error };
+      return { error };
+    }
+    if (mindMap) {
+      const composed = await composeIdeas([result.idea], mindMap.title);
+      if (composed.error) {
+        setMutationError(composed.error);
+        setIsMutating(false);
+        return { error: composed.error };
+      }
     }
 
     setIsMutating(false);
     return {};
+  };
+
+  const handleCreateMindMapChild = async (node: MindMapNode, input: MindMapIdeaDetailsInput) => {
+    setIsMutating(true);
+    setMutationError('');
+
+    if (node.nodetype === 'root') {
+      const result = await createBranch(input.title, input.summary);
+      if (result.error) setMutationError(result.error);
+      setIsMutating(false);
+      return result;
+    }
+
+    const branchId = node.nodetype === 'branch' ? node.id : node.parentnodeid;
+    if (!branchId) {
+      const error = '아이디어를 추가할 가지를 찾을 수 없습니다.';
+      setMutationError(error);
+      setIsMutating(false);
+      return { error };
+    }
+
+    const branch = mindMapNodes.find((candidate) => candidate.id === branchId && candidate.nodetype === 'branch');
+    if (!branch) {
+      const error = '아이디어를 추가할 가지를 찾을 수 없습니다.';
+      setMutationError(error);
+      setIsMutating(false);
+      return { error };
+    }
+    if (branch.branchfield) {
+      const validationError = validateMindMapIdeaField(input, branch.branchfield);
+      if (validationError) {
+        setMutationError(validationError);
+        setIsMutating(false);
+        return { error: validationError };
+      }
+    }
+
+    const created = await createIdea({
+      title: input.title,
+      content: [input.summary, input.problem, input.solution, ...input.corefeatures].filter(Boolean).join('\n\n') || '마인드맵에서 추가한 아이디어입니다.',
+      status: 'thought',
+      category: 'planning',
+      summary: input.summary,
+      problem: input.problem,
+      targetusers: input.targetusers,
+      solution: input.solution,
+      keywords: input.keywords,
+      corefeatures: input.corefeatures,
+    });
+    if (created.error || !created.idea) {
+      const error = created.error || '아이디어를 만들지 못했습니다.';
+      setMutationError(error);
+      setIsMutating(false);
+      return { error };
+    }
+
+    const placed = await placeIdeaUnderBranch(created.idea, branchId);
+    if (placed.error) setMutationError(placed.error);
+    else {
+      setHighlightedIdeaIds(new Set([created.idea.id]));
+      globalThis.setTimeout(() => setHighlightedIdeaIds(new Set()), 4000);
+    }
+    setIsMutating(false);
+    return placed;
   };
 
   const handleUpdate = async (input: IdeaInput) => {
@@ -1819,6 +1630,10 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     const result = await updateIdea(editingIdeaId, input);
     if (result.error) {
       setMutationError(result.error);
+    } else if (result.idea && mindMap) {
+      const composed = await composeIdeas([result.idea], mindMap.title);
+      if (composed.error) setMutationError(composed.error);
+      else setEditingIdeaId(null);
     } else {
       setEditingIdeaId(null);
     }
@@ -1928,6 +1743,8 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
       const result = await deleteIdea(ideaId);
       if (result.error) {
         setMutationError(result.error);
+      } else {
+        await loadMindMap();
       }
 
       if (editingIdeaId === ideaId) {
@@ -1938,9 +1755,24 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     });
   };
 
+  const handleDeleteMindMapIdea = async (ideaId: string) => {
+    setIsMutating(true);
+    setMutationError('');
+    const result = await deleteIdea(ideaId);
+    if (result.error) {
+      setMutationError(result.error);
+      setIsMutating(false);
+      return { error: result.error };
+    }
+    await loadMindMap();
+    setIsMutating(false);
+    return {};
+  };
+
   const handleSaveExtractedCandidates = async (
     candidates: CandidateIdea[],
-    extractionRunId: string,
+    _extractionRunId: string,
+    topic: string,
   ): Promise<CandidateIdeaSaveResult> => {
     if (candidates.length === 0) {
       return { savedCandidateIds: [], failures: [] };
@@ -1951,73 +1783,22 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
 
     const failures: CandidateIdeaSaveResult['failures'] = [];
     const savedCandidateIds: string[] = [];
-    let root = extractionRoots.current.get(extractionRunId);
-
-    if (!root) {
-      const centerIdea = ideas.find((idea) => idea.side === 'center') ?? ideas[ideas.length - 1];
-      const rootX = centerIdea
-        ? Math.max(...ideas.map((idea) => idea.x ?? 0), centerIdea.x ?? 0) + 360
-        : 0;
-      const rootY = centerIdea?.y ?? 0;
-      const rootResult = await createIdea(
-        {
-          title: '회의 아이디어',
-          content: `회의록 또는 채팅에서 추출한 후보 ${candidates.length}개의 묶음입니다.`,
-          status: 'thought',
-          category: 'planning',
-        },
-        centerIdea
-          ? { parentnodeid: centerIdea.id, x: rootX, y: rootY, side: 'right' }
-          : { parentnodeid: null, x: 0, y: 0, side: 'center' },
-      );
-
-      if (rootResult.error || !rootResult.idea) {
-        const message = rootResult.error || '마인드맵 루트 노드를 만들지 못했습니다.';
-        setMutationError(message);
-        setIsMutating(false);
-        return {
-          savedCandidateIds,
-          failures: candidates.map((candidate) => ({ candidateId: candidate.id, title: candidate.title, message })),
-        };
-      }
-
-      root = { id: rootResult.idea.id, x: rootResult.idea.x ?? rootX, y: rootResult.idea.y ?? rootY };
-      extractionRoots.current.set(extractionRunId, root);
-    }
-
-    const offsets = [
-      { side: 'right' as const, x: 360, y: 0 },
-      { side: 'bottom' as const, x: 0, y: 240 },
-      { side: 'left' as const, x: -360, y: 0 },
-      { side: 'top' as const, x: 0, y: -240 },
-      { side: 'bottomright' as const, x: 360, y: 240 },
-      { side: 'bottomleft' as const, x: -360, y: 240 },
-      { side: 'topright' as const, x: 360, y: -240 },
-      { side: 'topleft' as const, x: -360, y: -240 },
-    ];
-    const existingKeys = new Set(
-      ideas
-        .filter((idea) => idea.parentnodeid === root.id)
-        .map((idea) => `${idea.title.trim()}\n${idea.content.trim()}`),
+    const placedIdeas: Idea[] = [];
+    const existingByKey = new Map(
+      ideas.map((idea) => [`${idea.title.trim()}\n${idea.summary.trim() || idea.content.trim()}`.toLocaleLowerCase(), idea]),
     );
 
-    for (const [index, candidate] of candidates.entries()) {
+    for (const candidate of candidates) {
       try {
         const input = candidateIdeaToIdeaInput(candidate);
-        const duplicateKey = `${input.title}\n${input.content}`;
-        if (existingKeys.has(duplicateKey)) {
+        const duplicateKey = `${input.title.trim()}\n${input.summary?.trim() || input.content.trim()}`.toLocaleLowerCase();
+        const existing = existingByKey.get(duplicateKey);
+        if (existing) {
+          placedIdeas.push(existing);
           savedCandidateIds.push(candidate.id);
           continue;
         }
-
-        const offset = offsets[index % offsets.length];
-        const ring = Math.floor(index / offsets.length) + 1;
-        const result = await createIdea(input, {
-          parentnodeid: root.id,
-          x: root.x + offset.x * ring,
-          y: root.y + offset.y * ring,
-          side: offset.side,
-        });
+        const result = await createIdea(input);
 
         if (result.error || !result.idea) {
           failures.push({
@@ -2026,7 +1807,8 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
             message: result.error || '아이디어를 저장하지 못했습니다.',
           });
         } else {
-          existingKeys.add(duplicateKey);
+          existingByKey.set(duplicateKey, result.idea);
+          placedIdeas.push(result.idea);
           savedCandidateIds.push(candidate.id);
         }
       } catch (error) {
@@ -2035,6 +1817,17 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
           title: candidate.title,
           message: error instanceof Error ? error.message : '후보 아이디어 형식이 올바르지 않습니다.',
         });
+      }
+    }
+
+    if (placedIdeas.length > 0) {
+      const composeResult = await composeIdeas(placedIdeas, topic);
+      if (composeResult.error) {
+        setMutationError(composeResult.error);
+        failures.push({ candidateId: 'mind-map', title: '마인드맵 구성', message: composeResult.error });
+      } else {
+        setHighlightedIdeaIds(new Set(placedIdeas.map((idea) => idea.id)));
+        globalThis.setTimeout(() => setHighlightedIdeaIds(new Set()), 4000);
       }
     }
 
@@ -2050,43 +1843,94 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
     <ThemedView style={styles.board}>
       <View style={styles.boardHeader}>
         <View style={styles.boardTitleBlock}>
-          <ThemedText type="sectionTitle">아이디어 보드</ThemedText>
+          <ThemedText type="sectionTitle">
+            {section === 'home' ? '과제 홈' : section === 'ideas' ? '아이디어 목록' : '마인드맵'}
+          </ThemedText>
           <ThemedText type="caption" themeColor="textSecondary">
             전체 {ideas.length}개 · 공감 {likeCount}개 · 즐겨찾기 {favoriteCount}개 · 피드백 {feedbacks.length}개
           </ThemedText>
         </View>
       </View>
 
-      <ProjectProgressSummary ideas={ideas} projectDeadline={projectDeadline} />
+      {section === 'home' ? (
+        <>
+          <View style={styles.homeOverview}>
+            <ProjectHomeSummary
+              deadline={projectDeadline}
+              ideaCount={workflowIdeas.length}
+              selectedIdeaTitle={selectedIdea?.title}
+              workflowState={{
+                hasIdeas: completedSteps.extraction,
+                hasSelectedIdea: completedSteps.selection,
+                hasCurrentMvp,
+                hasCurrentPresentation,
+              }}
+            />
+            <ProjectFlowSteps
+              current={workflowStep}
+              completed={completedSteps}
+              onStepPress={handleFlowStepPress}
+            />
+          </View>
 
-      <View style={[styles.modeToggle, { borderColor: theme.border }]}>
-        {boardTabs.map((tab, index) => (
-          <Pressable
-            key={tab.id}
-            accessibilityRole="tab"
-            accessibilityLabel={`${index + 1}. ${tab.label}`}
-            accessibilityState={{ selected: boardMode === tab.id }}
-            onPress={() => setBoardMode(tab.id)}
-            style={({ pressed }) => [
-              styles.modeButton,
-              boardMode === tab.id && { backgroundColor: theme.primary },
-              pressed && styles.pressed,
-            ]}>
-            <ThemedText
-              type="smallBold"
-              numberOfLines={1}
-              style={boardMode === tab.id ? styles.activeModeButtonText : { color: theme.textSecondary }}>
-              {index + 1}. {useCompactTabLabels ? tab.compactLabel : tab.label}
-            </ThemedText>
-          </Pressable>
-        ))}
-      </View>
+          {workflowStep === 'extraction' ? (
+            <IdeaExtractionPanel
+              projectId={projectId}
+              defaultTopic={mindMap?.title || projectTitle}
+              hasMindMap={mindMapNodes.some((node) => node.nodetype === 'idea' || node.nodetype === 'idea_field')}
+              onSave={handleSaveExtractedCandidates}
+              onGoToMindMap={() => navigateTo('mindmap')}
+            />
+          ) : null}
 
-      {boardMode === extractionMode ? (
-        <IdeaExtractionPanel projectId={projectId} onSave={handleSaveExtractedCandidates} />
+          {workflowStep === 'selection' ? (
+            <IdeaCoachPanel
+              projectId={projectId}
+              projectTitle={projectTitle}
+              ideas={ideas}
+              isLoadingIdeas={isLoadingIdeas}
+              loadIdeas={loadIdeas}
+              flowController={flowController}
+              onGoToExtraction={() => handleFlowStepPress('extraction')}
+              onGoToList={() => {
+                navigateTo('ideas');
+                setIsCreateIdeaOpen(true);
+              }}
+              onGoToMvp={() => handleFlowStepPress('mvp')}
+            />
+          ) : null}
+
+          {workflowStep === 'mvp' ? (
+            selectedIdea ? (
+              <MvpWorkflowPanel
+                idea={selectedIdea}
+                flowController={flowController}
+                onGoToPresentation={() => handleFlowStepPress('presentation')}
+              />
+            ) : (
+              <ThemedView type="backgroundElement" style={[styles.prerequisiteCard, { borderColor: theme.border }]}>
+                <ThemedText type="cardTitle">먼저 최종 아이디어를 선정해 주세요.</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">MVP 계획은 최종 선정 아이디어를 기준으로 생성됩니다.</ThemedText>
+                <Pressable onPress={() => handleFlowStepPress('selection')} style={[styles.prerequisiteButton, { borderColor: theme.primary }]}>
+                  <ThemedText type="button" style={{ color: theme.primary }}>AI 비교·선정으로 이동</ThemedText>
+                </Pressable>
+              </ThemedView>
+            )
+          ) : null}
+
+          {workflowStep === 'presentation' ? (
+            <PresentationWorkflowPanel
+              projectId={projectId}
+              idea={selectedIdea}
+              flowController={flowController}
+              onGoToSelection={() => handleFlowStepPress('selection')}
+              onGoToMvp={() => handleFlowStepPress('mvp')}
+            />
+          ) : null}
+        </>
       ) : null}
 
-      {boardMode === listMode ? (
+      {section === 'ideas' ? (
         <>
           <View style={styles.listToolbar}>
             <ThemedText type="body" themeColor="textSecondary">아이디어를 모으고 공감으로 우선순위를 정하세요.</ThemedText>
@@ -2110,7 +1954,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
                 <View style={styles.ideaModalHeader}>
                   <View style={styles.boardTitleBlock}>
                     <ThemedText type="sectionTitle">{editingIdea ? '아이디어 수정' : '아이디어 추가'}</ThemedText>
-                    <ThemedText type="caption" themeColor="textSecondary">핵심을 짧게 적고 필요하면 AI 코치로 다듬어 보세요.</ThemedText>
+                    <ThemedText type="caption" themeColor="textSecondary">핵심을 짧게 적고 필요하면 AI 도움으로 다듬어 보세요.</ThemedText>
                   </View>
                   <Pressable
                     accessibilityRole="button"
@@ -2202,7 +2046,7 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
         </>
       ) : null}
 
-      {boardMode === mindMapMode ? (
+      {section === 'mindmap' ? (
         <>
           {currentError ? (
             <ThemedText type="small" style={styles.errorText}>
@@ -2216,21 +2060,26 @@ export function IdeaBoard({ projectId, projectDeadline }: IdeaBoardProps) {
             </ThemedView>
           ) : (
             <IdeaMindMap
+              mindMap={mindMap}
+              nodes={mindMapNodes}
               ideas={ideas}
               isBusy={isMutating}
-              likeCountsByIdeaId={likeCountsByIdeaId}
-              likedIdeaIds={likedIdeaIds}
-              isLoadingLikes={isLoadingLikes}
-              onCreateNode={handleCreateMindMapNode}
-              onUpdateNode={handleUpdateMindMapNode}
-              onPersistNodeLayout={handlePersistMindMapLayout}
-              onToggleLike={handleToggleLike}
+              isLoading={isLoadingMindMap}
+              highlightedIdeaIds={highlightedIdeaIds}
+              onCreateDefault={() => composeIdeas(ideas, projectTitle)}
+              onUpdateTopic={updateTopic}
+              onUpdateIdea={handleUpdateMindMapNode}
+              onReorganize={() => composeIdeas(ideas, mindMap?.title || projectTitle, true)}
+              onMoveNode={moveIdeaNode}
+              onCreateChild={handleCreateMindMapChild}
+              onUpdateBranch={updateBranch}
+              onDeleteBranch={deleteBranch}
+              onDeleteIdea={handleDeleteMindMapIdea}
             />
           )}
         </>
       ) : null}
 
-      {boardMode === finalMode ? <FinalDraftView ideas={ideas} projectId={projectId} /> : null}
     </ThemedView>
   );
 }
@@ -2239,6 +2088,9 @@ const styles = StyleSheet.create({
   board: {
     gap: Spacing.four,
   },
+  homeOverview: { gap: Spacing.three },
+  prerequisiteCard: { gap: Spacing.two, borderWidth: 1, borderRadius: Radius.large, padding: Spacing.four },
+  prerequisiteButton: { alignSelf: 'flex-start', minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   boardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2447,6 +2299,9 @@ const styles = StyleSheet.create({
   activeModeButtonText: {
     color: '#ffffff',
   },
+  modeButtonLabel: {
+    textAlign: 'center',
+  },
   filterHeader: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2586,6 +2441,29 @@ const styles = StyleSheet.create({
   ideaContent: {
     fontSize: 15,
     lineHeight: 22,
+  },
+  keywordRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+  },
+  keywordChip: {
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.half,
+  },
+  detailToggle: {
+    minHeight: ControlHeight.touch,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
+  },
+  structuredDetails: {
+    gap: Spacing.three,
+    borderTopWidth: 1,
+    paddingTop: Spacing.three,
+  },
+  ideaDetailSection: {
+    gap: Spacing.half,
   },
   reactionRow: {
     flexDirection: 'row',

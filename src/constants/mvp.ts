@@ -35,7 +35,7 @@ export function createSampleMvpPlan(idea: MvpIdea = selectedIdea): MvpPlan {
     teamRoles: [
       { role: '기획·통합', responsibilities: ['공통 데이터 규격 관리', '기능 연결 및 발표 흐름 점검'] },
       { role: '아이디어·마인드맵', responsibilities: ['대화 입력과 OCR', '아이디어 추출·저장·시각화'] },
-      { role: 'AI 코치·MVP', responsibilities: ['후보 비교와 최종 선정', 'MVP 계획 생성'] },
+      { role: 'AI 비교·선정·MVP', responsibilities: ['후보 비교와 최종 선정', 'MVP 계획 생성'] },
       { role: '발표·QA', responsibilities: ['발표 자료와 보고서 생성', '통합 테스트와 문서화'] },
     ],
     apis: sampleSimpleMvpPlan.requiredApis.map((name) => ({ name, purpose: `${name} 연동`, method: 'POST' })),

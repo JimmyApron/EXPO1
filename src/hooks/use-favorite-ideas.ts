@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import { normalizeIdeaCategory, type IdeaCategory } from '@/types/idea';
 
@@ -44,6 +45,7 @@ export function useFavoriteIdeas() {
       .from('ideas')
       .select('id, projectid, title, content, category, updatedat')
       .eq('userid', user.id)
+      .eq('legacystructural', false)
       .eq('isfavorite', true)
       .order('updatedat', { ascending: false });
 
@@ -66,6 +68,13 @@ export function useFavoriteIdeas() {
       globalThis.clearTimeout(timeout);
     };
   }, [loadFavoriteIdeas]);
+
+  useRealtimeRefresh({
+    channelName: `favorite-ideas:${user?.id ?? 'signed-out'}`,
+    enabled: Boolean(user),
+    onRefresh: loadFavoriteIdeas,
+    tables: [{ table: 'ideas', filter: `userid=eq.${user?.id}` }],
+  });
 
   return {
     favoriteIdeas,

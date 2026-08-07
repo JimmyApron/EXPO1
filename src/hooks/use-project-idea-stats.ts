@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import { normalizeIdeaStatus, type IdeaStatus } from '@/types/idea';
 
@@ -47,6 +48,7 @@ export function useProjectIdeaStats() {
     const { data, error } = await supabase
       .from('ideas')
       .select('projectid, status, isfavorite')
+      .eq('legacystructural', false)
       .eq('userid', user.id);
 
     if (error) {
@@ -95,6 +97,13 @@ export function useProjectIdeaStats() {
       globalThis.clearTimeout(timeout);
     };
   }, [loadStats]);
+
+  useRealtimeRefresh({
+    channelName: `idea-stats:${user?.id ?? 'signed-out'}`,
+    enabled: Boolean(user),
+    onRefresh: loadStats,
+    tables: [{ table: 'ideas', filter: `userid=eq.${user?.id}` }],
+  });
 
   const totals = useMemo(() => {
     let totalIdeas = 0;

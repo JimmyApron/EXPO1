@@ -131,7 +131,10 @@ export default function NotificationsScreen() {
                 </Pressable>
               </View>
             </View>
-            <View style={styles.settingsGrid}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.settingsGrid}>
               {notificationSettingOptions.map(([key, label]) => {
                 const settingKey = key as keyof typeof notificationSettings;
                 const isEnabled = Boolean(notificationSettings[settingKey]);
@@ -154,7 +157,7 @@ export default function NotificationsScreen() {
                   </Pressable>
                 );
               })}
-            </View>
+            </ScrollView>
             <View style={styles.settingStepperRow}>
               <ThemedText type="small" themeColor="textSecondary">
                 마감 {notificationSettings.deadlinedays}일 전부터 알림
@@ -351,10 +354,10 @@ const styles = StyleSheet.create({
   },
   settingsGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
+    gap: Spacing.one,
   },
   settingToggle: {
+    flexShrink: 0,
     minHeight: ControlHeight.touch,
     borderWidth: 1,
     borderColor: '#cbd5e1',

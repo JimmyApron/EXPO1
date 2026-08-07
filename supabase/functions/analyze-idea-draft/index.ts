@@ -31,7 +31,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const defaultClaudeModel = 'claude-sonnet-5';
+const defaultClaudeModel = 'claude-haiku-4-5-20251001';
 const anthropicVersion = '2023-06-01';
 const analysisToolName = 'record_idea_draft_analysis';
 const parseErrorMessage = '진단 결과를 불러오지 못했습니다. 다시 시도해주세요.';
@@ -225,7 +225,7 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'missing_anthropic_key', message: 'AI 진단 설정을 확인해주세요.' }, 500);
   }
 
-  const claudeModel = defaultClaudeModel;
+  const claudeModel = Deno.env.get('ANTHROPIC_MODEL') ?? defaultClaudeModel;
   const claudeUrl = 'https://api.anthropic.com/v1/messages';
   const prompt = JSON.stringify({
     projectId: cleanString(requestBody.projectId, 120),

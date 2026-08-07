@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
@@ -96,6 +96,7 @@ export function useFinalIdeaAnalysis(projectId: string, selectedIdeas: Idea[], p
   const [analysis, setAnalysis] = useState<FinalIdeaAnalysisResult | null>(null);
   const [analysisError, setAnalysisError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const analysisRequestRef = useRef(false);
   const accessToken = session?.access_token ?? '';
   const userId = user?.id ?? '';
 
@@ -104,21 +105,22 @@ export function useFinalIdeaAnalysis(projectId: string, selectedIdeas: Idea[], p
   const skippedBlankCount = selectedIdeas.length - eligibleIdeas.length;
   const isLimited = eligibleIdeas.length > maxAnalysisIdeas;
 
-  const analyzeIdeas = useCallback(async () => {
-    if (isAnalyzing) {
-      return;
+  const analyzeIdeas = useCallback(async (inputFingerprint?: string) => {
+    if (analysisRequestRef.current) {
+      return null;
     }
 
     if (!userId || !accessToken) {
       setAnalysisError('로그인이 필요합니다.');
-      return;
+      return null;
     }
 
     if (requestIdeas.length === 0) {
       setAnalysisError(emptyFinalIdeaMessage);
-      return;
+      return null;
     }
 
+    analysisRequestRef.current = true;
     setIsAnalyzing(true);
     setAnalysisError('');
 
@@ -135,25 +137,30 @@ export function useFinalIdeaAnalysis(projectId: string, selectedIdeas: Idea[], p
       });
 
       if (error) {
-        setAnalysis(null);
         setAnalysisError(await getInvokeErrorMessage(error));
-        return;
+        return null;
       }
 
       if (!isAnalysisResult(data)) {
-        setAnalysis(null);
         setAnalysisError(analysisLoadError);
-        return;
+        return null;
       }
 
-      setAnalysis(data);
+      const savedAnalysis: FinalIdeaAnalysisResult = {
+        ...data,
+        inputFingerprint,
+        analyzedAt: new Date().toISOString(),
+      };
+      setAnalysis(savedAnalysis);
+      return savedAnalysis;
     } catch {
-      setAnalysis(null);
       setAnalysisError(analysisLoadError);
+      return null;
     } finally {
+      analysisRequestRef.current = false;
       setIsAnalyzing(false);
     }
-  }, [accessToken, isAnalyzing, projectConditions, projectId, requestIdeas, userId]);
+  }, [accessToken, projectConditions, projectId, requestIdeas, userId]);
 
   return {
     analysis,

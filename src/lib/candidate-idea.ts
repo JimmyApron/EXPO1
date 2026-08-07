@@ -12,6 +12,10 @@ function cleanString(value: unknown, maxLength = 4_000) {
   return typeof value === 'string' ? value.trim().replace(/\r\n/g, '\n').slice(0, maxLength) : '';
 }
 
+function duplicateKey(value: string) {
+  return value.toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+
 export function normalizeStringArray(value: unknown, maxItems = 12) {
   const source = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[\n,]/) : [];
   const seen = new Set<string>();
@@ -59,7 +63,8 @@ export function normalizeCandidateIdeas(value: unknown): CandidateIdea[] {
     return [];
   }
 
-  const seen = new Set<string>();
+  const seenTitles = new Set<string>();
+  const seenDetails = new Set<string>();
   const usedIds = new Set<string>();
   const normalized: CandidateIdea[] = [];
 
@@ -69,12 +74,16 @@ export function normalizeCandidateIdeas(value: unknown): CandidateIdea[] {
       return;
     }
 
-    const key = `${candidate.title}\n${candidate.summary}`.toLocaleLowerCase();
-    if (seen.has(key)) {
+    const titleKey = duplicateKey(candidate.title);
+    const detailKey = duplicateKey(`${candidate.summary}\n${candidate.problem}\n${candidate.solution}`);
+    if (seenTitles.has(titleKey) || (detailKey && seenDetails.has(detailKey))) {
       return;
     }
 
-    seen.add(key);
+    seenTitles.add(titleKey);
+    if (detailKey) {
+      seenDetails.add(detailKey);
+    }
     let id = candidate.id;
     if (usedIds.has(id)) {
       let nextIdNumber = normalized.length + 1;

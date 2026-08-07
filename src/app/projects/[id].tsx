@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -13,6 +13,7 @@ import { ControlHeight, MaxContentWidth, Radius, Spacing } from '@/constants/the
 import { useProject } from '@/hooks/use-project';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
+import { resolveProjectWorkspaceLocation, type ProjectWorkspaceLocation } from '@/lib/project-workspace';
 import type { ProjectInput } from '@/types/project';
 
 function confirmDelete(onConfirm: () => void) {
@@ -28,8 +29,14 @@ function confirmDelete(onConfirm: () => void) {
 }
 
 export default function ProjectDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, ideaTab, projectView, flowStep } = useLocalSearchParams<{
+    id: string;
+    ideaTab?: string;
+    projectView?: string;
+    flowStep?: string;
+  }>();
   const projectId = Array.isArray(id) ? id[0] : id;
+  const initialLocation = resolveProjectWorkspaceLocation({ ideaTab, projectView, flowStep });
   const { project, isloadingproject, projecterror, updateProject, deleteProject } = useProject(projectId);
   const [isEditing, setIsEditing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
@@ -37,6 +44,9 @@ export default function ProjectDetailScreen() {
   const theme = useTheme();
 
   const goToList = () => router.replace('/projects' as Href);
+  const handleLocationChange = useCallback((location: ProjectWorkspaceLocation) => {
+    router.setParams({ projectView: location.section, flowStep: location.step });
+  }, []);
 
   const handleSave = async (input: ProjectInput) => {
     if (!projectId) return;
@@ -118,7 +128,14 @@ export default function ProjectDetailScreen() {
           )}
 
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-          <IdeaBoard projectId={project.id} projectDeadline={project.deadline} />
+          <IdeaBoard
+            projectId={project.id}
+            projectTitle={project.title}
+            projectDeadline={project.deadline}
+            initialSection={initialLocation.section}
+            initialStep={initialLocation.step}
+            onLocationChange={handleLocationChange}
+          />
         </ThemedView>
       </SafeAreaView>
     </ScrollView>

@@ -44,7 +44,7 @@ export const sampleCandidateIdeas: CandidateIdea[] = [
     problem: '공모전 주제와 평가 기준에 적합한 아이디어를 선정하기 어렵다.',
     targetUsers: ['공모전 참가자', '대학생', '예비 창업자'],
     solution: '공모전 주제, 기간, 인원, 평가 기준을 분석해 적합한 아이디어를 추천한다.',
-    keywords: ['공모전', '아이디어 추천', '적합도 평가', 'AI 코치'],
+    keywords: ['공모전', '아이디어 추천', '적합도 평가', 'AI 비교·선정'],
     coreFeatures: ['공모전 조건 입력', '추천 키워드 생성', '아이디어 조합', '아이디어 적합도 비교'],
   },
 ];
