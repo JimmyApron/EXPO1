@@ -1,3 +1,10 @@
+import {
+  anthropicApiVersion,
+  deepSeekMessagesUrl,
+  resolveDeepSeekModel,
+  withDeepSeekToolInstruction,
+} from '../_shared/deepseek.ts';
+
 declare const Deno: {
   env: { get(name: string): string | undefined };
   serve(handler: (request: Request) => Response | Promise<Response>): void;
@@ -32,7 +39,8 @@ const maxTextLength = 30_000;
 const maxImages = 3;
 const maxImageBytes = 8 * 1024 * 1024;
 const candidateCount = 5;
-const anthropicVersion = '2023-06-01';
+const defaultClaudeVisionModel = 'claude-haiku-4-5-20251001';
+const claudeMessagesUrl = 'https://api.anthropic.com/v1/messages';
 const toolName = 'record_candidate_ideas';
 
 const systemInstruction = `당신은 한국어 회의록과 채팅에서 실행 가능한 프로젝트 아이디어를 추출하는 분석 도우미입니다.
@@ -369,27 +377,52 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'invalid_source', message: source.error }, source.status);
   }
 
-  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? Deno.env.get('CLAUDE_API_KEY') ?? '';
-  if (!anthropicApiKey) {
-    return jsonResponse({ error: 'missing_anthropic_key', message: 'AI 분석 환경변수를 확인해 주세요.' }, 500);
+  const usesClaudeVision = source.type === 'image';
+  const aiApiKey = usesClaudeVision
+    ? Deno.env.get('ANTHROPIC_API_KEY') ?? Deno.env.get('CLAUDE_API_KEY') ?? ''
+    : Deno.env.get('DEEPSEEK_API_KEY') ?? '';
+  if (!aiApiKey) {
+    return jsonResponse(
+      {
+        error: usesClaudeVision ? 'missing_anthropic_key' : 'missing_deepseek_key',
+        message: usesClaudeVision ? 'Claude 이미지 분석 API 설정을 확인해 주세요.' : 'DeepSeek API 설정을 확인해 주세요.',
+      },
+      500,
+    );
   }
+
+  const deepSeekModel = usesClaudeVision ? null : resolveDeepSeekModel(Deno.env.get('DEEPSEEK_MODEL'));
+  if (!usesClaudeVision && !deepSeekModel) {
+    return jsonResponse(
+      { error: 'invalid_deepseek_model', message: 'DeepSeek V4 Flash 또는 DeepSeek V4 Pro 모델만 사용할 수 있습니다.' },
+      500,
+    );
+  }
+
+  const aiModel = usesClaudeVision
+    ? Deno.env.get('ANTHROPIC_MODEL') ?? defaultClaudeVisionModel
+    : deepSeekModel;
+  const aiUrl = usesClaudeVision ? claudeMessagesUrl : deepSeekMessagesUrl;
+  const providerName = usesClaudeVision ? 'Claude' : 'DeepSeek';
 
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), 45_000);
-  let anthropicResponse: Response;
+  let aiResponse: Response;
   try {
-    anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    aiResponse = await fetch(aiUrl, {
       method: 'POST',
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': anthropicApiKey,
-        'anthropic-version': anthropicVersion,
+        'x-api-key': aiApiKey,
+        'anthropic-version': anthropicApiVersion,
       },
       body: JSON.stringify({
-        model: Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-haiku-4-5-20251001',
+        model: aiModel,
         max_tokens: 5_000,
-        system: systemInstruction,
+        system: usesClaudeVision
+          ? systemInstruction
+          : withDeepSeekToolInstruction(systemInstruction, toolName),
         messages: [
           {
             role: 'user',
@@ -399,17 +432,17 @@ Deno.serve(async (request) => {
         tools: [
           {
             name: toolName,
-            description: 'Return the OCR text and normalized candidate ideas to the application.',
-            strict: true,
+            description: 'Return the extracted source text and normalized candidate ideas to the application.',
+            ...(usesClaudeVision ? { strict: true } : {}),
             input_schema: responseSchema,
           },
         ],
-        tool_choice: { type: 'tool', name: toolName },
+        ...(usesClaudeVision ? { tool_choice: { type: 'tool', name: toolName } } : {}),
       }),
     });
   } catch (error) {
     const timedOut = error instanceof DOMException && error.name === 'AbortError';
-    console.error(timedOut ? 'Anthropic request timed out.' : 'Anthropic request failed before response.');
+    console.error(timedOut ? `${providerName} request timed out.` : `${providerName} request failed before response.`);
     return jsonResponse(
       { error: timedOut ? 'ai_timeout' : 'network_error', message: timedOut ? 'AI 요청 시간이 초과되었습니다. 다시 시도해 주세요.' : 'AI 서버에 연결하지 못했습니다.' },
       502,
@@ -418,43 +451,73 @@ Deno.serve(async (request) => {
     globalThis.clearTimeout(timeout);
   }
 
-  if (!anthropicResponse.ok) {
+  if (!aiResponse.ok) {
     let errorBody = '';
     try {
-      errorBody = await anthropicResponse.text();
+      errorBody = await aiResponse.text();
     } catch {
       errorBody = '';
     }
-    console.error('Anthropic API returned an error status.', {
-      status: anthropicResponse.status,
+    console.error(`${providerName} API returned an error status.`, {
+      status: aiResponse.status,
       body: errorBody.slice(0, 500),
     });
-    if (anthropicResponse.status === 401) {
-      return jsonResponse({ error: 'anthropic_unauthorized', message: 'AI API 키를 확인해 주세요.' }, 500);
+    if (aiResponse.status === 401) {
+      return jsonResponse(
+        {
+          error: usesClaudeVision ? 'anthropic_unauthorized' : 'deepseek_unauthorized',
+          message: `${providerName} API 키를 확인해 주세요.`,
+        },
+        500,
+      );
     }
-    if (anthropicResponse.status === 403) {
-      return jsonResponse({ error: 'anthropic_forbidden', message: '현재 API 키로 선택한 AI 모델을 사용할 수 없습니다.' }, 502);
+    if (aiResponse.status === 403) {
+      return jsonResponse(
+        {
+          error: usesClaudeVision ? 'anthropic_forbidden' : 'deepseek_forbidden',
+          message: `현재 API 키로 선택한 ${providerName} 모델을 사용할 수 없습니다.`,
+        },
+        502,
+      );
     }
-    if (anthropicResponse.status === 404) {
-      return jsonResponse({ error: 'anthropic_model_not_found', message: '설정된 AI 모델을 찾을 수 없습니다.' }, 502);
+    if (aiResponse.status === 404) {
+      return jsonResponse(
+        {
+          error: usesClaudeVision ? 'anthropic_model_not_found' : 'deepseek_model_not_found',
+          message: `설정된 ${providerName} 모델을 찾을 수 없습니다.`,
+        },
+        502,
+      );
     }
-    if (anthropicResponse.status === 429) {
-      return jsonResponse({ error: 'anthropic_rate_limited', message: 'AI 사용량이 많습니다. 잠시 후 다시 시도해 주세요.' }, 503);
+    if (aiResponse.status === 429) {
+      return jsonResponse(
+        { error: usesClaudeVision ? 'anthropic_rate_limited' : 'deepseek_rate_limited', message: 'AI 사용량이 많습니다. 잠시 후 다시 시도해 주세요.' },
+        503,
+      );
     }
-    if (anthropicResponse.status === 400) {
-      return jsonResponse({ error: 'anthropic_invalid_request', message: 'AI 이미지 분석 요청 형식이 올바르지 않습니다.' }, 502);
+    if (aiResponse.status === 400) {
+      return jsonResponse(
+        {
+          error: usesClaudeVision ? 'anthropic_invalid_request' : 'deepseek_invalid_request',
+          message: `${providerName} 요청 형식이 올바르지 않습니다.`,
+        },
+        502,
+      );
     }
-    return jsonResponse({ error: 'anthropic_error', message: 'AI 추출에 실패했습니다. 다시 시도해 주세요.' }, 502);
+    return jsonResponse(
+      { error: usesClaudeVision ? 'anthropic_error' : 'deepseek_error', message: 'AI 추출에 실패했습니다. 다시 시도해 주세요.' },
+      502,
+    );
   }
 
-  let anthropicBody: unknown;
+  let aiBody: unknown;
   try {
-    anthropicBody = await anthropicResponse.json();
+    aiBody = await aiResponse.json();
   } catch {
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답을 해석하지 못했습니다.' }, 502);
   }
 
-  const toolInput = getToolInput(anthropicBody);
+  const toolInput = getToolInput(aiBody);
   if (!toolInput || !Array.isArray(toolInput.candidateIdeas)) {
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답 형식이 올바르지 않습니다.' }, 502);
   }

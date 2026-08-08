@@ -1,3 +1,10 @@
+import {
+  anthropicApiVersion,
+  deepSeekMessagesUrl,
+  resolveDeepSeekModel,
+  withDeepSeekToolInstruction,
+} from '../_shared/deepseek.ts';
+
 declare const Deno: {
   env: { get(name: string): string | undefined };
   serve(handler: (request: Request) => Response | Promise<Response>): void;
@@ -22,8 +29,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const defaultClaudeModel = 'claude-haiku-4-5-20251001';
-const anthropicVersion = '2023-06-01';
 const mvpToolName = 'record_mvp_plan';
 
 const systemInstruction = `당신은 대학생 팀 프로젝트의 B 역할인 AI MVP 생성기입니다.
@@ -310,7 +315,7 @@ async function validateUser(authorization: string) {
   }
 }
 
-function getClaudeToolInput(responseBody: unknown) {
+function getDeepSeekToolInput(responseBody: unknown) {
   if (!isRecord(responseBody) || !Array.isArray(responseBody.content)) {
     return null;
   }
@@ -353,12 +358,18 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'invalid_idea', message: '선정 아이디어가 올바르지 않습니다.' }, 400);
   }
 
-  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? Deno.env.get('CLAUDE_API_KEY');
-  if (!anthropicApiKey) {
-    return jsonResponse({ error: 'missing_anthropic_key', message: 'AI 생성 설정을 확인해주세요.' }, 500);
+  const deepSeekApiKey = Deno.env.get('DEEPSEEK_API_KEY');
+  if (!deepSeekApiKey) {
+    return jsonResponse({ error: 'missing_deepseek_key', message: 'DeepSeek API 설정을 확인해주세요.' }, 500);
   }
 
-  const claudeModel = Deno.env.get('ANTHROPIC_MODEL') ?? defaultClaudeModel;
+  const deepSeekModel = resolveDeepSeekModel(Deno.env.get('DEEPSEEK_MODEL'));
+  if (!deepSeekModel) {
+    return jsonResponse(
+      { error: 'invalid_deepseek_model', message: 'DeepSeek V4 Flash 또는 DeepSeek V4 Pro 모델만 사용할 수 있습니다.' },
+      500,
+    );
+  }
   const prompt = JSON.stringify({
     selectedIdeaId,
     idea,
@@ -373,30 +384,28 @@ Deno.serve(async (request) => {
 
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), 50_000);
-  let anthropicResponse: Response;
+  let deepSeekResponse: Response;
 
   try {
-    anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    deepSeekResponse = await fetch(deepSeekMessagesUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': anthropicApiKey,
-        'anthropic-version': anthropicVersion,
+        'x-api-key': deepSeekApiKey,
+        'anthropic-version': anthropicApiVersion,
       },
       body: JSON.stringify({
-        model: claudeModel,
+        model: deepSeekModel,
         max_tokens: 5000,
-        system: systemInstruction,
+        system: withDeepSeekToolInstruction(systemInstruction, mvpToolName),
         messages: [{ role: 'user', content: prompt }],
         tools: [
           {
             name: mvpToolName,
             description: '앱에서 사용할 실행 가능한 MVP 계획을 기록합니다.',
-            strict: true,
             input_schema: responseSchema,
           },
         ],
-        tool_choice: { type: 'tool', name: mvpToolName },
       }),
       signal: controller.signal,
     });
@@ -415,44 +424,44 @@ Deno.serve(async (request) => {
     globalThis.clearTimeout(timeout);
   }
 
-  if (!anthropicResponse.ok) {
+  if (!deepSeekResponse.ok) {
     let errorBody = '';
     try {
-      errorBody = await anthropicResponse.text();
+      errorBody = await deepSeekResponse.text();
     } catch {
       // Ignore response parsing failures while logging the status.
     }
-    console.error('Anthropic API returned an error status.', {
-      status: anthropicResponse.status,
+    console.error('DeepSeek API returned an error status.', {
+      status: deepSeekResponse.status,
       body: errorBody.slice(0, 500),
     });
 
-    if (anthropicResponse.status === 401) {
-      return jsonResponse({ error: 'anthropic_unauthorized', message: 'AI API 키를 확인해주세요.' }, 500);
+    if (deepSeekResponse.status === 401) {
+      return jsonResponse({ error: 'deepseek_unauthorized', message: 'DeepSeek API 키를 확인해주세요.' }, 500);
     }
-    if (anthropicResponse.status === 403) {
-      return jsonResponse({ error: 'anthropic_forbidden', message: '현재 AI 모델을 사용할 수 없습니다.' }, 502);
+    if (deepSeekResponse.status === 403) {
+      return jsonResponse({ error: 'deepseek_forbidden', message: '현재 DeepSeek 모델을 사용할 수 없습니다.' }, 502);
     }
-    if (anthropicResponse.status === 404) {
-      return jsonResponse({ error: 'anthropic_model_not_found', message: '설정된 AI 모델을 찾을 수 없습니다.' }, 502);
+    if (deepSeekResponse.status === 404) {
+      return jsonResponse({ error: 'deepseek_model_not_found', message: '설정된 DeepSeek 모델을 찾을 수 없습니다.' }, 502);
     }
-    if (anthropicResponse.status === 429) {
-      return jsonResponse({ error: 'anthropic_rate_limited', message: 'AI 사용량이 많습니다. 잠시 후 다시 시도해주세요.' }, 503);
+    if (deepSeekResponse.status === 429) {
+      return jsonResponse({ error: 'deepseek_rate_limited', message: 'AI 사용량이 많습니다. 잠시 후 다시 시도해주세요.' }, 503);
     }
-    if (anthropicResponse.status === 400) {
-      return jsonResponse({ error: 'anthropic_bad_request', message: 'AI 요청 형식을 처리하지 못했습니다.' }, 502);
+    if (deepSeekResponse.status === 400) {
+      return jsonResponse({ error: 'deepseek_bad_request', message: 'AI 요청 형식을 처리하지 못했습니다.' }, 502);
     }
-    return jsonResponse({ error: 'anthropic_error', message: 'AI MVP 계획 생성에 실패했습니다.' }, 502);
+    return jsonResponse({ error: 'deepseek_error', message: 'AI MVP 계획 생성에 실패했습니다.' }, 502);
   }
 
-  let anthropicBody: unknown;
+  let deepSeekBody: unknown;
   try {
-    anthropicBody = await anthropicResponse.json();
+    deepSeekBody = await deepSeekResponse.json();
   } catch {
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답을 해석하지 못했습니다.' }, 502);
   }
 
-  const mvpPlan = getClaudeToolInput(anthropicBody);
+  const mvpPlan = getDeepSeekToolInput(deepSeekBody);
   if (!isMvpPlan(mvpPlan, selectedIdeaId)) {
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI MVP 계획 형식이 올바르지 않습니다.' }, 502);
   }

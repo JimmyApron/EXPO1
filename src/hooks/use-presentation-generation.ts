@@ -17,6 +17,8 @@ type GeneratePresentationInput = {
 };
 
 const generationErrorMessage = '발표 자료를 생성하지 못했습니다. 다시 시도해주세요.';
+const resourceLimitErrorMessage =
+  '발표 자료 생성이 서버 리소스 제한을 초과했습니다. 잠시 후 다시 시도해주세요.';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -57,6 +59,12 @@ async function getInvokeErrorMessage(error: unknown) {
   if (context && typeof context === 'object' && 'json' in context && typeof context.json === 'function') {
     try {
       const body = await context.json();
+      if (
+        isRecord(body) &&
+        (body.code === 'WORKER_RESOURCE_LIMIT' || body.code === 'WORKER_LIMIT')
+      ) {
+        return resourceLimitErrorMessage;
+      }
       if (isRecord(body) && typeof body.message === 'string' && body.message.trim()) {
         return body.message;
       }

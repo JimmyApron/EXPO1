@@ -1,3 +1,10 @@
+import {
+  anthropicApiVersion,
+  deepSeekMessagesUrl,
+  resolveDeepSeekModel,
+  withDeepSeekToolInstruction,
+} from '../_shared/deepseek.ts';
+
 declare const Deno: {
   env: {
     get(name: string): string | undefined;
@@ -31,8 +38,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const defaultClaudeModel = 'claude-haiku-4-5-20251001';
-const anthropicVersion = '2023-06-01';
 const analysisToolName = 'record_idea_draft_analysis';
 const parseErrorMessage = '진단 결과를 불러오지 못했습니다. 다시 시도해주세요.';
 
@@ -59,20 +64,14 @@ const responseSchema = {
     contentFeedback: { type: 'string', description: '내용에 대한 진단과 개선 방향' },
     strengths: {
       type: 'array',
-      minItems: 1,
-      maxItems: 3,
       items: { type: 'string' },
     },
     improvements: {
       type: 'array',
-      minItems: 1,
-      maxItems: 3,
       items: { type: 'string' },
     },
     nextQuestions: {
       type: 'array',
-      minItems: 1,
-      maxItems: 3,
       items: { type: 'string' },
     },
     readiness: { type: 'string', enum: ['높음', '보통', '낮음'] },
@@ -178,7 +177,7 @@ async function validateUser(authorization: string) {
   }
 }
 
-function getClaudeToolInput(responseBody: unknown) {
+function getDeepSeekToolInput(responseBody: unknown) {
   if (!isRecord(responseBody) || !Array.isArray(responseBody.content)) {
     return null;
   }
@@ -220,32 +219,37 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'invalid_idea', message: idea.error }, idea.status);
   }
 
-  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? Deno.env.get('CLAUDE_API_KEY');
-  if (!anthropicApiKey) {
-    return jsonResponse({ error: 'missing_anthropic_key', message: 'AI 진단 설정을 확인해주세요.' }, 500);
+  const deepSeekApiKey = Deno.env.get('DEEPSEEK_API_KEY');
+  if (!deepSeekApiKey) {
+    return jsonResponse({ error: 'missing_deepseek_key', message: 'DeepSeek API 설정을 확인해주세요.' }, 500);
   }
 
-  const claudeModel = Deno.env.get('ANTHROPIC_MODEL') ?? defaultClaudeModel;
-  const claudeUrl = 'https://api.anthropic.com/v1/messages';
+  const deepSeekModel = resolveDeepSeekModel(Deno.env.get('DEEPSEEK_MODEL'));
+  if (!deepSeekModel) {
+    return jsonResponse(
+      { error: 'invalid_deepseek_model', message: 'DeepSeek V4 Flash 또는 DeepSeek V4 Pro 모델만 사용할 수 있습니다.' },
+      500,
+    );
+  }
   const prompt = JSON.stringify({
     projectId: cleanString(requestBody.projectId, 120),
     idea,
     outputNotice: 'AI 진단 결과는 아이디어 등록 전 보완을 돕기 위한 참고 자료입니다.',
   });
 
-  let claudeResponse: Response;
+  let deepSeekResponse: Response;
   try {
-    claudeResponse = await fetch(claudeUrl, {
+    deepSeekResponse = await fetch(deepSeekMessagesUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': anthropicApiKey,
-        'anthropic-version': anthropicVersion,
+        'x-api-key': deepSeekApiKey,
+        'anthropic-version': anthropicApiVersion,
       },
       body: JSON.stringify({
-        model: claudeModel,
+        model: deepSeekModel,
         max_tokens: 2048,
-        system: systemInstruction,
+        system: withDeepSeekToolInstruction(systemInstruction, analysisToolName),
         messages: [
           {
             role: 'user',
@@ -259,58 +263,54 @@ Deno.serve(async (request) => {
             input_schema: responseSchema,
           },
         ],
-        tool_choice: {
-          type: 'tool',
-          name: analysisToolName,
-        },
       }),
     });
   } catch {
-    console.error('Claude request failed before response.');
+    console.error('DeepSeek request failed before response.');
     return jsonResponse({ error: 'network_error', message: 'AI 진단 요청에 실패했습니다. 다시 시도해주세요.' }, 502);
   }
 
-  if (!claudeResponse.ok) {
+  if (!deepSeekResponse.ok) {
     let errorBody = '';
     try {
-      errorBody = await claudeResponse.text();
+      errorBody = await deepSeekResponse.text();
     } catch {
       errorBody = '';
     }
 
-    console.error('Claude API returned an error status.', {
-      status: claudeResponse.status,
+    console.error('DeepSeek API returned an error status.', {
+      status: deepSeekResponse.status,
       body: errorBody.slice(0, 500),
     });
 
-    if (claudeResponse.status === 401) {
+    if (deepSeekResponse.status === 401) {
       return jsonResponse(
-        { error: 'anthropic_unauthorized', message: 'Claude API 키가 유효하지 않습니다. Supabase ANTHROPIC_API_KEY를 확인해주세요.' },
+        { error: 'deepseek_unauthorized', message: 'DeepSeek API 키가 유효하지 않습니다. Supabase DEEPSEEK_API_KEY를 확인해주세요.' },
         500,
       );
     }
 
-    if (claudeResponse.status === 429) {
+    if (deepSeekResponse.status === 429) {
       return jsonResponse(
-        { error: 'anthropic_rate_limited', message: 'Claude API 사용량 또는 결제 한도를 확인해주세요.' },
+        { error: 'deepseek_rate_limited', message: 'DeepSeek API 사용량 또는 결제 한도를 확인해주세요.' },
         502,
       );
     }
 
-    return jsonResponse({ error: 'anthropic_error', message: 'AI 진단 요청에 실패했습니다. 다시 시도해주세요.' }, 502);
+    return jsonResponse({ error: 'deepseek_error', message: 'AI 진단 요청에 실패했습니다. 다시 시도해주세요.' }, 502);
   }
 
-  let claudeBody: unknown;
+  let deepSeekBody: unknown;
   try {
-    claudeBody = await claudeResponse.json();
+    deepSeekBody = await deepSeekResponse.json();
   } catch {
-    console.error('Claude response was not JSON.');
-    return jsonResponse({ error: 'invalid_anthropic_response', message: parseErrorMessage }, 502);
+    console.error('DeepSeek response was not JSON.');
+    return jsonResponse({ error: 'invalid_deepseek_response', message: parseErrorMessage }, 502);
   }
 
-  const analysis = getClaudeToolInput(claudeBody);
+  const analysis = getDeepSeekToolInput(deepSeekBody);
   if (!isAnalysisResult(analysis)) {
-    console.error('Claude tool input did not match draft analysis schema.');
+    console.error('DeepSeek tool input did not match draft analysis schema.');
     return jsonResponse({ error: 'invalid_analysis_shape', message: parseErrorMessage }, 502);
   }
 

@@ -1,3 +1,10 @@
+import {
+  anthropicApiVersion,
+  deepSeekMessagesUrl,
+  resolveDeepSeekModel,
+  withDeepSeekToolInstruction,
+} from '../_shared/deepseek.ts';
+
 declare const Deno: {
   env: { get(name: string): string | undefined };
   serve(handler: (request: Request) => Response | Promise<Response>): void;
@@ -22,10 +29,10 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const defaultClaudeModel = 'claude-haiku-4-5-20251001';
-const anthropicVersion = '2023-06-01';
 const presentationToolName = 'record_presentation_materials';
-const anthropicTimeoutMs = 135_000;
+// Keep enough headroom below Supabase's 150-second request idle timeout.
+const deepSeekTimeoutMs = 120_000;
+const presentationMaxTokens = 16_000;
 
 const systemInstruction = `당신은 대학생 팀 프로젝트의 최종 발표 자료를 작성하는 AI 코치입니다.
 제공된 아이디어, 프로젝트 조건, MVP 계획만 근거로 사용하세요.
@@ -214,7 +221,7 @@ async function validateUser(authorization: string) {
   }
 }
 
-function getClaudeToolInput(responseBody: unknown) {
+function getDeepSeekToolInput(responseBody: unknown) {
   if (!isRecord(responseBody) || !Array.isArray(responseBody.content)) {
     return null;
   }
@@ -226,7 +233,7 @@ function getClaudeToolInput(responseBody: unknown) {
   return isRecord(toolUse) && isRecord(toolUse.input) ? toolUse.input : null;
 }
 
-function getClaudeStopReason(responseBody: unknown) {
+function getDeepSeekStopReason(responseBody: unknown) {
   return isRecord(responseBody) && typeof responseBody.stop_reason === 'string'
     ? responseBody.stop_reason
     : '';
@@ -266,12 +273,18 @@ Deno.serve(async (request) => {
     );
   }
 
-  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? Deno.env.get('CLAUDE_API_KEY');
-  if (!anthropicApiKey) {
-    return jsonResponse({ error: 'missing_anthropic_key', message: 'AI 생성 설정을 확인해주세요.' }, 500);
+  const deepSeekApiKey = Deno.env.get('DEEPSEEK_API_KEY');
+  if (!deepSeekApiKey) {
+    return jsonResponse({ error: 'missing_deepseek_key', message: 'DeepSeek API 설정을 확인해주세요.' }, 500);
   }
 
-  const claudeModel = Deno.env.get('ANTHROPIC_MODEL') ?? defaultClaudeModel;
+  const deepSeekModel = resolveDeepSeekModel(Deno.env.get('DEEPSEEK_MODEL'));
+  if (!deepSeekModel) {
+    return jsonResponse(
+      { error: 'invalid_deepseek_model', message: 'DeepSeek V4 Flash 또는 DeepSeek V4 Pro 모델만 사용할 수 있습니다.' },
+      500,
+    );
+  }
   const prompt = JSON.stringify({
     projectId: cleanString(requestBody.projectId, 120),
     projectConditions,
@@ -281,31 +294,33 @@ Deno.serve(async (request) => {
   });
 
   const controller = new AbortController();
-  const timeout = globalThis.setTimeout(() => controller.abort(), anthropicTimeoutMs);
-  let anthropicResponse: Response;
+  const timeout = globalThis.setTimeout(() => controller.abort(), deepSeekTimeoutMs);
+  let deepSeekResponse: Response;
 
   try {
-    anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    deepSeekResponse = await fetch(deepSeekMessagesUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': anthropicApiKey,
-        'anthropic-version': anthropicVersion,
+        'x-api-key': deepSeekApiKey,
+        'anthropic-version': anthropicApiVersion,
       },
       body: JSON.stringify({
-        model: claudeModel,
-        max_tokens: 7500,
-        system: systemInstruction,
+        model: deepSeekModel,
+        max_tokens: presentationMaxTokens,
+        // Presentation generation is already tightly constrained by a schema.
+        // Disabling V4's default thinking mode avoids spending the Edge Function
+        // lifetime and output budget on reasoning that is not returned to users.
+        thinking: { type: 'disabled' },
+        system: withDeepSeekToolInstruction(systemInstruction, presentationToolName),
         messages: [{ role: 'user', content: prompt }],
         tools: [
           {
             name: presentationToolName,
             description: '완성된 발표 자료, 예상 질문, 사업계획서, 결과 보고서를 기록합니다.',
-            strict: true,
             input_schema: responseSchema,
           },
         ],
-        tool_choice: { type: 'tool', name: presentationToolName },
       }),
       signal: controller.signal,
     });
@@ -324,46 +339,46 @@ Deno.serve(async (request) => {
     globalThis.clearTimeout(timeout);
   }
 
-  if (!anthropicResponse.ok) {
+  if (!deepSeekResponse.ok) {
     let errorBody = '';
     try {
-      errorBody = await anthropicResponse.text();
+      errorBody = await deepSeekResponse.text();
     } catch {
       // Ignore response parsing failures while logging the status.
     }
-    console.error('Anthropic API returned an error status.', {
-      status: anthropicResponse.status,
+    console.error('DeepSeek API returned an error status.', {
+      status: deepSeekResponse.status,
       body: errorBody.slice(0, 500),
     });
 
-    if (anthropicResponse.status === 401) {
-      return jsonResponse({ error: 'anthropic_unauthorized', message: 'AI API 키를 확인해주세요.' }, 500);
+    if (deepSeekResponse.status === 401) {
+      return jsonResponse({ error: 'deepseek_unauthorized', message: 'DeepSeek API 키를 확인해주세요.' }, 500);
     }
-    if (anthropicResponse.status === 403) {
-      return jsonResponse({ error: 'anthropic_forbidden', message: '현재 AI 모델을 사용할 수 없습니다.' }, 502);
+    if (deepSeekResponse.status === 403) {
+      return jsonResponse({ error: 'deepseek_forbidden', message: '현재 DeepSeek 모델을 사용할 수 없습니다.' }, 502);
     }
-    if (anthropicResponse.status === 404) {
-      return jsonResponse({ error: 'anthropic_model_not_found', message: '설정된 AI 모델을 찾을 수 없습니다.' }, 502);
+    if (deepSeekResponse.status === 404) {
+      return jsonResponse({ error: 'deepseek_model_not_found', message: '설정된 DeepSeek 모델을 찾을 수 없습니다.' }, 502);
     }
-    if (anthropicResponse.status === 429) {
-      return jsonResponse({ error: 'anthropic_rate_limited', message: 'AI 사용량이 많습니다. 잠시 후 다시 시도해주세요.' }, 503);
+    if (deepSeekResponse.status === 429) {
+      return jsonResponse({ error: 'deepseek_rate_limited', message: 'AI 사용량이 많습니다. 잠시 후 다시 시도해주세요.' }, 503);
     }
-    if (anthropicResponse.status === 400) {
-      return jsonResponse({ error: 'anthropic_bad_request', message: 'AI 요청 형식을 처리하지 못했습니다.' }, 502);
+    if (deepSeekResponse.status === 400) {
+      return jsonResponse({ error: 'deepseek_bad_request', message: 'AI 요청 형식을 처리하지 못했습니다.' }, 502);
     }
-    return jsonResponse({ error: 'anthropic_error', message: 'AI 발표 자료 생성에 실패했습니다.' }, 502);
+    return jsonResponse({ error: 'deepseek_error', message: 'AI 발표 자료 생성에 실패했습니다.' }, 502);
   }
 
-  let anthropicBody: unknown;
+  let deepSeekBody: unknown;
   try {
-    anthropicBody = await anthropicResponse.json();
+    deepSeekBody = await deepSeekResponse.json();
   } catch {
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답을 해석하지 못했습니다.' }, 502);
   }
 
-  const presentationData = getClaudeToolInput(anthropicBody);
+  const presentationData = getDeepSeekToolInput(deepSeekBody);
   if (!isPresentationData(presentationData)) {
-    const stopReason = getClaudeStopReason(anthropicBody);
+    const stopReason = getDeepSeekStopReason(deepSeekBody);
     if (stopReason === 'max_tokens') {
       return jsonResponse({ error: 'ai_response_too_long', message: '발표자료가 너무 길어 생성이 중단되었습니다. 다시 시도해주세요.' }, 502);
     }
