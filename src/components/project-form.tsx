@@ -141,7 +141,7 @@ function CalendarPicker({ visible, selectedDate, onSelect, onClear, onClose }: C
             <Pressable
               onPress={onClear}
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-              <ThemedText type="smallBold">마감 없음</ThemedText>
+              <ThemedText type="smallBold">마감일 없음</ThemedText>
             </Pressable>
             <Pressable
               onPress={() => onSelect(formatDate(new Date()))}
@@ -174,6 +174,7 @@ export function ProjectForm({
   const [title, setTitle] = useState(project?.title ?? '');
   const [description, setDescription] = useState(project?.description ?? '');
   const [deadline, setDeadline] = useState(project?.deadline ?? '');
+  const [isDeadlineCleared, setIsDeadlineCleared] = useState(false);
   const [titleError, setTitleError] = useState('');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
@@ -198,9 +199,12 @@ export function ProjectForm({
       setTitle('');
       setDescription('');
       setDeadline('');
+      setIsDeadlineCleared(false);
     }
     setTitleError('');
   };
+
+  const deadlineLabel = deadline || (isDeadlineCleared ? '마감일 없음' : '마감일 선택');
 
   return (
     <ThemedView type="backgroundElement" style={styles.form}>
@@ -249,8 +253,8 @@ export function ProjectForm({
             },
             pressed && styles.pressed,
           ]}>
-          <ThemedText themeColor={deadline ? 'text' : 'textSecondary'}>
-            {deadline || '마감일 선택'}
+          <ThemedText themeColor={deadline || isDeadlineCleared ? 'text' : 'textSecondary'}>
+            {deadlineLabel}
           </ThemedText>
         </Pressable>
       </View>
@@ -261,10 +265,12 @@ export function ProjectForm({
           selectedDate={deadline}
           onSelect={(date) => {
             setDeadline(date);
+            setIsDeadlineCleared(false);
             setIsCalendarOpen(false);
           }}
           onClear={() => {
             setDeadline('');
+            setIsDeadlineCleared(true);
             setIsCalendarOpen(false);
           }}
           onClose={() => setIsCalendarOpen(false)}
