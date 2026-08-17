@@ -27,7 +27,9 @@ const analysisToolName = 'record_final_idea_analysis';
 const defaultNotice = 'AI 분석 결과는 최종 결정을 돕기 위한 참고 자료입니다.';
 const parseErrorMessage = '분석 결과를 불러오지 못했습니다. 다시 시도해주세요.';
 
-const systemInstruction = `당신은 대학생의 과제 및 팀 프로젝트 아이디어를 분석하는 보조 AI입니다.
+const systemInstruction = `IMPORTANT: Use ideaId values only in the structured analyses.ideaId and overall.recommendedIdeaIds fields. Never expose, quote, abbreviate, or reference an ideaId in any user-visible narrative field (summary, strengths, risks, improvements, comparison, recommendationReason, or combinationSuggestion). Refer to ideas by their title only.
+
+당신은 대학생의 과제 및 팀 프로젝트 아이디어를 분석하는 보조 AI입니다.
 입력된 각 아이디어를 독립적으로 분석한 뒤, 전체 아이디어를 서로 비교하세요.
 
 각 아이디어에 대해 다음 내용을 작성하세요.

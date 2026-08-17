@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { normalizeFinalIdeaAnalysis } from '../supabase/functions/_shared/final-idea-analysis.ts';
+
+test('final idea analysis instructions keep internal IDs out of narrative text', async () => {
+  const source = await readFile(new URL('../supabase/functions/analyze-final-ideas/index.ts', import.meta.url), 'utf8');
+  assert.match(source, /Use ideaId values only in the structured analyses\.ideaId and overall\.recommendedIdeaIds fields/);
+  assert.match(source, /Refer to ideas by their title only/);
+});
 
 const ideas = [
   { ideaId: 'idea-1', title: '첫 번째', content: '내용 1', category: '기획', status: 'approved' },
@@ -35,6 +42,39 @@ test('complete AI analysis is normalized without replacing its content', () => {
   assert.deepEqual(result?.analyses[1].risks, ['위험 2']);
   assert.deepEqual(result?.overall.recommendedIdeaIds, ['idea-1']);
   assert.equal(result?.notice, '고정 안내');
+});
+
+test('internal idea IDs are replaced with titles in visible analysis text', () => {
+  const ideasWithIds = [
+    { ideaId: 'cbedfb52-0000-0000-0000-000000000000', title: '메뉴 사전 예약 시스템', content: '내용 1', category: '기획', status: 'approved' },
+    { ideaId: '62d6487e-0000-0000-0000-000000000000', title: '부스 운영 대시보드', content: '내용 2', category: '개발', status: 'approved' },
+  ];
+  const result = normalizeFinalIdeaAnalysis({
+    ...completeResult,
+    analyses: ideasWithIds.map((idea) => ({
+      ...completeResult.analyses[0],
+      ideaId: idea.ideaId,
+      title: idea.title,
+      summary: `${idea.ideaId.slice(0, 8)}(${idea.title})는 구현하기 쉽습니다.`,
+    })),
+    overall: {
+      ...completeResult.overall,
+      recommendedIdeaIds: [ideasWithIds[0].ideaId],
+      recommendationReason: 'cbedfb52는 사용자 편의성이 높습니다.',
+      comparison: '62d6487e와 cbedfb52를 비교했습니다.',
+      combinationSuggestion: 'cbedfb52(예약)와 62d6487e를 결합합니다.',
+    },
+  }, ideasWithIds, '고정 안내');
+
+  const visibleText = [
+    result?.analyses[0].summary,
+    result?.overall.recommendationReason,
+    result?.overall.comparison,
+    result?.overall.combinationSuggestion,
+  ].join(' ');
+  assert.doesNotMatch(visibleText, /cbedfb52|62d6487e/i);
+  assert.match(visibleText, /메뉴 사전 예약 시스템/);
+  assert.match(visibleText, /부스 운영 대시보드/);
 });
 
 test('empty tool input is rejected instead of becoming generic analysis', () => {

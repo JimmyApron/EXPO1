@@ -36,6 +36,31 @@ function cleanString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function replaceIdeaReferencesWithTitles(value: unknown, ideas: FinalIdeaInput[]) {
+  let text = cleanString(value);
+
+  for (const idea of ideas) {
+    const title = cleanString(idea.title);
+    const ideaId = cleanString(idea.ideaId);
+    if (!title || !ideaId) continue;
+
+    const identifiers = [ideaId, ideaId.slice(0, 8)]
+      .filter((identifier, index, values) => identifier && values.indexOf(identifier) === index)
+      .sort((left, right) => right.length - left.length)
+      .map(escapeRegExp)
+      .join('|');
+
+    const referencePattern = new RegExp(`\\b(?:${identifiers})(?:\\s*\\([^\\n)]*\\))?`, 'gi');
+    text = text.replace(referencePattern, title);
+  }
+
+  return text;
+}
+
 function normalizeNonEmptyStringArray(value: unknown) {
   if (!Array.isArray(value)) {
     return null;
@@ -96,7 +121,7 @@ export function normalizeFinalIdeaAnalysis(
       return null;
     }
 
-    const summary = cleanString(source.summary);
+    const summary = replaceIdeaReferencesWithTitles(source.summary, ideas);
     const strengths = normalizeNonEmptyStringArray(source.strengths);
     const risks = normalizeNonEmptyStringArray(source.risks);
     const improvements = normalizeNonEmptyStringArray(source.improvements);
@@ -111,18 +136,18 @@ export function normalizeFinalIdeaAnalysis(
       ideaId: idea.ideaId,
       title: idea.title || cleanString(source.title) || '제목 없음',
       summary,
-      strengths,
-      risks,
-      improvements,
+      strengths: strengths.map((item) => replaceIdeaReferencesWithTitles(item, ideas)),
+      risks: risks.map((item) => replaceIdeaReferencesWithTitles(item, ideas)),
+      improvements: improvements.map((item) => replaceIdeaReferencesWithTitles(item, ideas)),
       feasibility,
       projectFit,
     });
   }
 
   const overall = value.overall;
-  const comparison = cleanString(overall.comparison);
-  const recommendationReason = cleanString(overall.recommendationReason);
-  const combinationSuggestion = cleanString(overall.combinationSuggestion);
+  const comparison = replaceIdeaReferencesWithTitles(overall.comparison, ideas);
+  const recommendationReason = replaceIdeaReferencesWithTitles(overall.recommendationReason, ideas);
+  const combinationSuggestion = replaceIdeaReferencesWithTitles(overall.combinationSuggestion, ideas);
   const recommendedIdeaIds = normalizeNonEmptyStringArray(overall.recommendedIdeaIds);
   const validIdeaIds = new Set(ideas.map((idea) => idea.ideaId));
 
