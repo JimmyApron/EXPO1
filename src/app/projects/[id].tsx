@@ -8,7 +8,7 @@ import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useProjects } from '@/hooks/use-projects';
+import { useProject } from '@/hooks/use-project';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import type { ProjectInput } from '@/types/project';
@@ -32,13 +32,11 @@ function confirmDelete(onConfirm: () => void) {
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const projectId = Array.isArray(id) ? id[0] : id;
-  const { projects, isloadingprojects, projecterror, updateProject, deleteProject } = useProjects();
+  const { project, isloadingproject, projecterror, updateProject, deleteProject } = useProject(projectId);
   const [isEditing, setIsEditing] = useState(false);
   const [isbusy, setIsbusy] = useState(false);
   const [mutationerror, setMutationerror] = useState('');
   const theme = useTheme();
-
-  const project = projectId ? projects.find((item) => item.id === projectId) : undefined;
 
   const goToList = () => {
     router.replace('/');
@@ -52,7 +50,7 @@ export default function ProjectDetailScreen() {
     setIsbusy(true);
     setMutationerror('');
 
-    const result = await updateProject(projectId, input);
+    const result = await updateProject(input);
 
     if (result.error) {
       setMutationerror(result.error);
@@ -72,7 +70,7 @@ export default function ProjectDetailScreen() {
       setIsbusy(true);
       setMutationerror('');
 
-      const result = await deleteProject(projectId);
+      const result = await deleteProject();
 
       if (result.error) {
         setMutationerror(result.error);
@@ -84,7 +82,7 @@ export default function ProjectDetailScreen() {
     });
   };
 
-  if (isloadingprojects) {
+  if (isloadingproject) {
     return (
       <ThemedView style={[styles.centerContainer, { backgroundColor: theme.background }]}>
         <ActivityIndicator />
