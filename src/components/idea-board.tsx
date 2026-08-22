@@ -14,7 +14,7 @@ import {
 
 import { AppIcon } from '@/components/app-icon';
 import { EmptyState } from '@/components/empty-state';
-import { IdeaCoachPanel } from '@/components/idea-coach-panel';
+import { BlindSwipeEvaluation } from '@/components/blind-swipe-evaluation';
 import { IdeaExtractionPanel } from '@/components/idea-extraction/idea-extraction-panel';
 import { IdeaMindMap } from '@/components/idea-mind-map';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
@@ -1884,9 +1884,8 @@ export function IdeaBoard({
           ) : null}
 
           {workflowStep === 'selection' ? (
-            <IdeaCoachPanel
+            <BlindSwipeEvaluation
               projectId={projectId}
-              projectTitle={projectTitle}
               ideas={ideas}
               isLoadingIdeas={isLoadingIdeas}
               loadIdeas={loadIdeas}
