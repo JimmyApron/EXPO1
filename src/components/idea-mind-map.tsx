@@ -1,11 +1,20 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Radius, Shadows, Spacing } from '@/constants/theme';
 import {
   applyIdeaFieldDraft,
   getIdeaFieldDraftValue,
@@ -16,8 +25,32 @@ import {
   parseIdeaFieldLines,
   validateMindMapIdeaField,
 } from '@/lib/mind-map';
-import { IdeaStatusLabels, normalizeIdeaCategory, normalizeIdeaStatus, type Idea, type IdeaInput } from '@/types/idea';
+import {
+  IdeaStatusLabels,
+  normalizeIdeaCategory,
+  normalizeIdeaStatus,
+  type Idea,
+  type IdeaInput,
+} from '@/types/idea';
 import type { IdeaField, MindMap, MindMapIdeaDetailsInput, MindMapNode } from '@/types/mind-map';
+
+// 🎨 디자인 가이드 팔레트
+const PALETTE = {
+  primary: '#F59E0B',        // 메인 옐로우/오렌지
+  primaryLight: '#FEF3C7',   // 연노랑 (브랜치 노드, 하이라이트)
+  primaryDark: '#D97706',    // 딥 오렌지
+  background: '#FAF7F2',     // 마인드맵 캔버스 크림색
+  card: '#FFFFFF',           // 아이디어 노드 흰색 카드
+  cardBorder: '#F3E8D6',     // 연한 크림 테두리
+  inputBg: '#FAF7F2',        // 입력창 배경
+  inputBorder: '#E2E8F0',    // 인풋 테두리
+  text: '#1E293B',           // 짙은 네이비 본문/제목
+  textSecondary: '#64748B',  // 보조 텍스트
+  lineStroke: '#CBD5E1',     // 노드 연결선
+  success: '#10B981',        // 완료/강조 초록
+  danger: '#EF4444',         // 위험/삭제 빨강
+  overlay: 'rgba(15, 23, 42, 0.45)', // 모달 배경
+};
 
 type MutationResult = Promise<{ error?: string }>;
 
@@ -86,19 +119,28 @@ function ideaDetailsDraftToInput(draft: IdeaDetailsDraft): MindMapIdeaDetailsInp
   };
 }
 
-function DetailField({ label, value, multiline = true, onChangeText }: { label: string; value: string; multiline?: boolean; onChangeText: (value: string) => void }) {
-  const theme = useTheme();
+function DetailField({
+  label,
+  value,
+  multiline = true,
+  onChangeText,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+  onChangeText: (value: string) => void;
+}) {
   return (
     <View style={styles.field}>
-      <ThemedText type="smallBold">{label}</ThemedText>
+      <ThemedText style={styles.fieldLabel}>{label}</ThemedText>
       <TextInput
         accessibilityLabel={label}
         value={value}
         multiline={multiline}
         onChangeText={onChangeText}
         placeholder={`${label} 입력`}
-        placeholderTextColor={theme.textSecondary}
-        style={[styles.input, multiline && styles.multilineInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+        placeholderTextColor={PALETTE.textSecondary}
+        style={[styles.input, multiline && styles.multilineInput]}
       />
     </View>
   );
@@ -123,9 +165,8 @@ function AdvancedIdeaFields({
   title?: string;
   description?: string;
 }) {
-  const theme = useTheme();
   return (
-    <View style={[styles.advancedSection, { borderColor: theme.border }]}>
+    <View style={styles.advancedSection}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${title} ${expanded ? '접기' : '펼치기'}`}
@@ -133,14 +174,16 @@ function AdvancedIdeaFields({
         onPress={onToggle}
         style={({ pressed }) => [styles.advancedToggle, pressed && styles.pressed]}>
         <View style={styles.advancedToggleCopy}>
-          <ThemedText type="smallBold">{title}</ThemedText>
-          <ThemedText type="caption" themeColor="textSecondary">{description}</ThemedText>
+          <ThemedText style={styles.fieldLabel}>{title}</ThemedText>
+          <ThemedText style={styles.advancedDescription}>{description}</ThemedText>
         </View>
-        <ThemedText type="button" style={{ color: theme.primary }}>{expanded ? '접기' : '펼치기'}</ThemedText>
+        <ThemedText style={styles.advancedToggleBtn}>{expanded ? '접기' : '펼치기'}</ThemedText>
       </Pressable>
       {expanded ? (
-        <View style={[styles.advancedFields, { borderTopColor: theme.divider }]}>
-          {includeSummary ? <DetailField label="요약" value={draft.summary} onChangeText={(value) => onChange('summary', value)} /> : null}
+        <View style={styles.advancedFields}>
+          {includeSummary ? (
+            <DetailField label="요약" value={draft.summary} onChangeText={(value) => onChange('summary', value)} />
+          ) : null}
           <StructuredIdeaFields draft={draft} excludedField={excludedField} onChange={onChange} />
         </View>
       ) : null}
@@ -186,7 +229,6 @@ export function IdeaMindMap({
   onDeleteBranch,
   onDeleteIdea,
 }: IdeaMindMapProps) {
-  const theme = useTheme();
   const { width } = useWindowDimensions();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [topicDraft, setTopicDraft] = useState('');
@@ -201,6 +243,7 @@ export function IdeaMindMap({
   const [isAddAdvancedOpen, setIsAddAdvancedOpen] = useState(false);
   const [addError, setAddError] = useState('');
   const [isAddingNode, setIsAddingNode] = useState(false);
+
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const ideaById = useMemo(() => new Map(ideas.map((idea) => [idea.id, idea])), [ideas]);
   const selectedNode = selectedNodeId ? nodeById.get(selectedNodeId) ?? null : null;
@@ -353,115 +396,234 @@ export function IdeaMindMap({
   };
 
   if (isLoading) {
-    return <ThemedView type="backgroundElement" style={styles.empty}><ActivityIndicator /></ThemedView>;
+    return (
+      <View style={[styles.empty, { backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder }]}>
+        <ActivityIndicator color={PALETTE.primary} />
+      </View>
+    );
   }
 
   if (!mindMap || nodes.length === 0) {
     return (
-      <ThemedView type="backgroundElement" style={[styles.empty, { borderColor: theme.border }]}>
-        <ThemedText type="sectionTitle">프로젝트 마인드맵을 시작해 보세요</ThemedText>
-        <ThemedText themeColor="textSecondary">과제명이 중심 주제가 되고, 아이디어는 의미 있는 가지 아래에 배치됩니다.</ThemedText>
-        <Pressable accessibilityRole="button" accessibilityLabel="기본 마인드맵 만들기" disabled={isBusy} onPress={() => void onCreateDefault()} style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, (pressed || isBusy) && styles.pressed]}>
-          <ThemedText type="smallBold" style={styles.whiteText}>기본 마인드맵 만들기</ThemedText>
+      <View style={[styles.empty, { backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder }]}>
+        <ThemedText style={styles.emptyTitle}>💡 프로젝트 마인드맵을 시작해 보세요</ThemedText>
+        <ThemedText style={styles.emptySubtitle}>
+          과제명이 중심 주제가 되고, 아이디어는 의미 있는 가지 아래에 배치됩니다.
+        </ThemedText>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="기본 마인드맵 만들기"
+          disabled={isBusy}
+          onPress={() => void onCreateDefault()}
+          style={({ pressed }) => [styles.primaryButton, (pressed || isBusy) && styles.pressed]}>
+          <ThemedText style={styles.whiteText}>기본 마인드맵 만들기</ThemedText>
         </Pressable>
-      </ThemedView>
+      </View>
     );
   }
 
   return (
-    <ThemedView style={styles.container}>
+    <View style={styles.container}>
+      {/* 툴바 */}
       <View style={styles.toolbar}>
         <View style={styles.toolbarCopy}>
-          <ThemedText type="subtitle">{mindMap.title}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">노드를 선택하면 전체 내용을 보고 수정할 수 있습니다.</ThemedText>
+          <ThemedText style={styles.mapHeaderTitle}>{mindMap.title}</ThemedText>
+          <ThemedText style={styles.mapHeaderSub}>노드를 선택하면 전체 내용을 보고 수정할 수 있습니다.</ThemedText>
         </View>
         <View style={styles.toolbarActions}>
-          <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 재정렬" disabled={isBusy} onPress={() => void onReorganize()} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, (pressed || isBusy) && styles.pressed]}><ThemedText type="smallBold">재정렬</ThemedText></Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="마인드맵 재정렬"
+            disabled={isBusy}
+            onPress={() => void onReorganize()}
+            style={({ pressed }) => [styles.secondaryButton, (pressed || isBusy) && styles.pressed]}>
+            <ThemedText style={styles.secondaryButtonText}>재정렬</ThemedText>
+          </Pressable>
         </View>
       </View>
 
+      {/* 맵 프레임 */}
       <View style={styles.mapFrame}>
-        <ScrollView horizontal style={[styles.viewport, { borderColor: theme.border, backgroundColor: theme.background }]} contentContainerStyle={{ minWidth: scaledMapWidth }}>
+        <ScrollView
+          horizontal
+          style={styles.viewport}
+          contentContainerStyle={{ minWidth: scaledMapWidth }}>
           <ScrollView nestedScrollEnabled contentContainerStyle={{ width: scaledMapWidth, height: scaledMapHeight }}>
             <View style={{ width: scaledMapWidth, height: scaledMapHeight, overflow: 'hidden' }}>
-              <View style={{ width: bounds.width, height: bounds.height, transform: [{ scale: mapZoom }], transformOrigin: 'top left' }}>
-            <Svg width={bounds.width} height={bounds.height} style={StyleSheet.absoluteFill}>
-              {nodes.map((node) => {
-                const parent = node.parentnodeid ? nodeById.get(node.parentnodeid) : null;
-                if (!parent) return null;
-                return <Line key={`${parent.id}-${node.id}`} x1={bounds.originX + parent.x} y1={bounds.originY + parent.y} x2={bounds.originX + node.x} y2={bounds.originY + node.y} stroke={theme.textTertiary} strokeWidth={2} />;
-              })}
-            </Svg>
-            {nodes.map((node) => {
-              const idea = node.ideaid ? ideaById.get(node.ideaid) : null;
-              const displayTitle = idea?.title || node.title;
-              const nodeLabel = node.nodetype === 'idea_field' && node.ideafield
-                ? getIdeaFieldLabel(node.ideafield)
-                : node.nodetype === 'root'
-                  ? '중심 주제'
-                  : node.nodetype === 'branch'
-                    ? node.branchfield ? '고정 필드' : '사용자 분류'
-                    : IdeaStatusLabels[normalizeIdeaStatus(idea?.status)];
-              const isHighlighted = Boolean(node.ideaid && highlightedIdeaIds?.has(node.ideaid));
-              const palette = node.nodetype === 'root'
-                ? { backgroundColor: theme.primary, borderColor: theme.primary, text: '#ffffff' }
-                : node.nodetype === 'branch'
-                  ? { backgroundColor: theme.primarySoft, borderColor: theme.primary, text: theme.primary }
-                  : { backgroundColor: theme.surface, borderColor: isHighlighted ? theme.success : theme.border, text: theme.text };
-              return (
-                <View key={node.id} style={[styles.nodeWrap, { left: bounds.originX + node.x - nodeWidth / 2, top: bounds.originY + node.y - nodeHeight / 2 }]}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${node.nodetype === 'root' ? '중심 주제' : node.nodetype === 'branch' ? '분류 가지' : '아이디어'} ${displayTitle} 상세 보기`}
-                    onPress={() => openNode(node)}
-                    style={({ pressed }) => [styles.node, { backgroundColor: palette.backgroundColor, borderColor: palette.borderColor }, isHighlighted && styles.highlightedNode, pressed && styles.pressed, Shadows.card]}>
-                    <ThemedText type="captionStrong" style={{ color: palette.text }}>{nodeLabel}</ThemedText>
-                    <ThemedText type="smallBold" numberOfLines={2} style={{ color: palette.text }}>{displayTitle}</ThemedText>
-                    <ThemedText type="caption" numberOfLines={2} style={{ color: node.nodetype === 'root' ? '#EEF0FF' : theme.textSecondary }}>{node.nodetype === 'idea_field' ? node.summary : idea?.summary || node.summary}</ThemedText>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${displayTitle}에 ${node.nodetype === 'root' ? '새 분류 가지' : '새 아이디어'} 추가`}
-                    disabled={isBusy}
-                    onPress={() => {
-                      setAddTargetNodeId(node.id);
-                      setAddForm(emptyIdeaDetailsDraft());
-                      setIsAddAdvancedOpen(false);
-                      setAddError('');
-                    }}
-                    style={({ pressed }) => [styles.addNodeButton, { backgroundColor: theme.surfaceElevated, borderColor: theme.primary }, Shadows.card, (pressed || isBusy) && styles.pressed]}>
-                    <ThemedText type="button" style={{ color: theme.primary }}>+</ThemedText>
-                  </Pressable>
-                </View>
-              );
-            })}
+              <View
+                style={{
+                  width: bounds.width,
+                  height: bounds.height,
+                  transform: [{ scale: mapZoom }],
+                  transformOrigin: 'top left',
+                }}>
+                <Svg width={bounds.width} height={bounds.height} style={StyleSheet.absoluteFill}>
+                  {nodes.map((node) => {
+                    const parent = node.parentnodeid ? nodeById.get(node.parentnodeid) : null;
+                    if (!parent) return null;
+                    return (
+                      <Line
+                        key={`${parent.id}-${node.id}`}
+                        x1={bounds.originX + parent.x}
+                        y1={bounds.originY + parent.y}
+                        x2={bounds.originX + node.x}
+                        y2={bounds.originY + node.y}
+                        stroke={PALETTE.lineStroke}
+                        strokeWidth={2}
+                      />
+                    );
+                  })}
+                </Svg>
+                {nodes.map((node) => {
+                  const idea = node.ideaid ? ideaById.get(node.ideaid) : null;
+                  const displayTitle = idea?.title || node.title;
+                  const nodeLabel =
+                    node.nodetype === 'idea_field' && node.ideafield
+                      ? getIdeaFieldLabel(node.ideafield)
+                      : node.nodetype === 'root'
+                      ? '중심 주제'
+                      : node.nodetype === 'branch'
+                      ? node.branchfield
+                        ? '고정 필드'
+                        : '분류 가지'
+                      : IdeaStatusLabels[normalizeIdeaStatus(idea?.status)];
+                  const isHighlighted = Boolean(node.ideaid && highlightedIdeaIds?.has(node.ideaid));
+
+                  // 노드별 스타일링
+                  const isRoot = node.nodetype === 'root';
+                  const isBranch = node.nodetype === 'branch';
+
+                  return (
+                    <View
+                      key={node.id}
+                      style={[
+                        styles.nodeWrap,
+                        {
+                          left: bounds.originX + node.x - nodeWidth / 2,
+                          top: bounds.originY + node.y - nodeHeight / 2,
+                        },
+                      ]}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${displayTitle} 상세 보기`}
+                        onPress={() => openNode(node)}
+                        style={({ pressed }) => [
+                          styles.node,
+                          isRoot && styles.rootNode,
+                          isBranch && styles.branchNode,
+                          !isRoot && !isBranch && styles.ideaNode,
+                          isHighlighted && styles.highlightedNode,
+                          Shadows.card,
+                          pressed && styles.pressed,
+                        ]}>
+                        <ThemedText
+                          style={[
+                            styles.nodeBadge,
+                            isRoot && styles.rootBadge,
+                            isBranch && styles.branchBadge,
+                          ]}>
+                          {nodeLabel}
+                        </ThemedText>
+                        <ThemedText
+                          style={[
+                            styles.nodeTitle,
+                            isRoot && styles.rootTitle,
+                            isBranch && styles.branchTitle,
+                          ]}
+                          numberOfLines={2}>
+                          {displayTitle}
+                        </ThemedText>
+                        <ThemedText
+                          style={[
+                            styles.nodeSummary,
+                            isRoot && styles.rootSummary,
+                          ]}
+                          numberOfLines={2}>
+                          {node.nodetype === 'idea_field' ? node.summary : idea?.summary || node.summary}
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${displayTitle}에 추가`}
+                        disabled={isBusy}
+                        onPress={() => {
+                          setAddTargetNodeId(node.id);
+                          setAddForm(emptyIdeaDetailsDraft());
+                          setIsAddAdvancedOpen(false);
+                          setAddError('');
+                        }}
+                        style={({ pressed }) => [
+                          styles.addNodeButton,
+                          Shadows.card,
+                          (pressed || isBusy) && styles.pressed,
+                        ]}>
+                        <ThemedText style={styles.addNodeButtonText}>+</ThemedText>
+                      </Pressable>
+                    </View>
+                  );
+                })}
               </View>
             </View>
           </ScrollView>
         </ScrollView>
-        <View style={[styles.zoomControls, styles.fixedZoomControls, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }, Shadows.card]} accessibilityLabel={`마인드맵 확대 배율 ${mapZoomPercent}%`}>
-          <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 축소" accessibilityState={{ disabled: !canZoomOut }} disabled={!canZoomOut} onPress={() => updateMapZoom(-mapZoomStep)} style={({ pressed }) => [styles.zoomButton, { borderColor: theme.border }, (!canZoomOut || pressed) && styles.pressed]}><ThemedText type="button">−</ThemedText></Pressable>
-          <View style={[styles.zoomBadge, { borderColor: theme.border, backgroundColor: theme.surface }]}><ThemedText type="smallBold">{mapZoomPercent}%</ThemedText></View>
-          <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 확대" accessibilityState={{ disabled: !canZoomIn }} disabled={!canZoomIn} onPress={() => updateMapZoom(mapZoomStep)} style={({ pressed }) => [styles.zoomButton, { borderColor: theme.border }, (!canZoomIn || pressed) && styles.pressed]}><ThemedText type="button">+</ThemedText></Pressable>
+
+        {/* 줌 컨트롤 */}
+        <View
+          style={[styles.zoomControls, styles.fixedZoomControls, Shadows.card]}
+          accessibilityLabel={`마인드맵 확대 배율 ${mapZoomPercent}%`}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="마인드맵 축소"
+            disabled={!canZoomOut}
+            onPress={() => updateMapZoom(-mapZoomStep)}
+            style={({ pressed }) => [styles.zoomButton, (!canZoomOut || pressed) && styles.pressed]}>
+            <ThemedText style={styles.zoomButtonText}>−</ThemedText>
+          </Pressable>
+          <View style={styles.zoomBadge}>
+            <ThemedText style={styles.zoomBadgeText}>{mapZoomPercent}%</ThemedText>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="마인드맵 확대"
+            disabled={!canZoomIn}
+            onPress={() => updateMapZoom(mapZoomStep)}
+            style={({ pressed }) => [styles.zoomButton, (!canZoomIn || pressed) && styles.pressed]}>
+            <ThemedText style={styles.zoomButtonText}>+</ThemedText>
+          </Pressable>
         </View>
       </View>
 
+      {/* 노드 추가 모달 */}
       <Modal visible={Boolean(addTargetNode)} transparent animationType="fade" onRequestClose={() => setAddTargetNodeId(null)}>
-        <View accessibilityViewIsModal style={[styles.overlay, { backgroundColor: theme.overlay }]}>
-          <Pressable accessibilityRole="button" accessibilityLabel="노드 추가 취소" onPress={() => setAddTargetNodeId(null)} style={StyleSheet.absoluteFill} />
-          <ThemedView type="surfaceElevated" style={[styles.addNodePanel, { borderColor: theme.border }, Shadows.floating]}>
+        <View accessibilityViewIsModal style={styles.overlay}>
+          <Pressable accessibilityRole="button" onPress={() => setAddTargetNodeId(null)} style={StyleSheet.absoluteFill} />
+          <View style={[styles.addNodePanel, Shadows.floating]}>
             <ScrollView contentContainerStyle={styles.addNodeContent} keyboardShouldPersistTaps="handled">
               <View style={styles.addNodeCopy}>
-                <ThemedText type="sectionTitle">{addTargetNode?.nodetype === 'root' ? '새 분류 가지' : '새 아이디어'}</ThemedText>
-                <ThemedText themeColor="textSecondary">
+                <ThemedText style={styles.modalHeadingTitle}>
+                  {addTargetNode?.nodetype === 'root' ? '새 분류 가지' : '새 아이디어'}
+                </ThemedText>
+                <ThemedText style={styles.modalHeadingSub}>
                   {addTargetNode?.nodetype === 'root'
                     ? `${addTargetNode.title} 아래에 새 주제 가지를 추가합니다.`
                     : `${addTargetNode?.nodetype === 'branch' ? addTargetNode.title : nodeById.get(addTargetNode?.parentnodeid ?? '')?.title ?? '선택한 가지'} 아래에 아이디어를 추가합니다.`}
                 </ThemedText>
               </View>
-              <DetailField label={addTargetNode?.nodetype === 'root' ? '분류 이름' : '아이디어 제목'} value={addForm.title} multiline={false} onChangeText={(value) => { setAddForm((current) => ({ ...current, title: value })); if (addError) setAddError(''); }} />
+              <DetailField
+                label={addTargetNode?.nodetype === 'root' ? '분류 이름' : '아이디어 제목'}
+                value={addForm.title}
+                multiline={false}
+                onChangeText={(value) => {
+                  setAddForm((current) => ({ ...current, title: value }));
+                  if (addError) setAddError('');
+                }}
+              />
               {addTargetNode?.nodetype === 'root' ? (
-                <DetailField label="분류 설명" value={addForm.summary} onChangeText={(value) => setAddForm((current) => ({ ...current, summary: value }))} />
+                <DetailField
+                  label="분류 설명"
+                  value={addForm.summary}
+                  onChangeText={(value) => setAddForm((current) => ({ ...current, summary: value }))}
+                />
               ) : addIdeaField ? (
                 <>
                   <DetailField
@@ -485,40 +647,69 @@ export function IdeaMindMap({
                 </>
               ) : (
                 <>
-                  <DetailField label="요약" value={addForm.summary} onChangeText={(value) => setAddForm((current) => ({ ...current, summary: value }))} />
-                <AdvancedIdeaFields
-                  draft={addForm}
-                  expanded={isAddAdvancedOpen}
-                  onToggle={() => setIsAddAdvancedOpen((current) => !current)}
-                  onChange={(field, value) => setAddForm((current) => ({ ...current, [field]: value }))}
-                />
+                  <DetailField
+                    label="요약"
+                    value={addForm.summary}
+                    onChangeText={(value) => setAddForm((current) => ({ ...current, summary: value }))}
+                  />
+                  <AdvancedIdeaFields
+                    draft={addForm}
+                    expanded={isAddAdvancedOpen}
+                    onToggle={() => setIsAddAdvancedOpen((current) => !current)}
+                    onChange={(field, value) => setAddForm((current) => ({ ...current, [field]: value }))}
+                  />
                 </>
               )}
-              {addError ? <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>{addError}</ThemedText> : null}
+              {addError ? <ThemedText style={styles.errorAlertText}>{addError}</ThemedText> : null}
               <View style={styles.addNodeActions}>
-                <Pressable accessibilityRole="button" accessibilityLabel="노드 추가 취소" disabled={isAddingNode} onPress={() => setAddTargetNodeId(null)} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, (pressed || isAddingNode) && styles.pressed]}><ThemedText type="smallBold">취소</ThemedText></Pressable>
-                <Pressable accessibilityRole="button" accessibilityLabel={addTargetNode?.nodetype === 'root' ? '분류 가지 추가' : '아이디어 추가'} disabled={isAddingNode} onPress={() => void submitNewNode()} style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, (pressed || isAddingNode) && styles.pressed]}>{isAddingNode ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.whiteText}>추가</ThemedText>}</Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isAddingNode}
+                  onPress={() => setAddTargetNodeId(null)}
+                  style={({ pressed }) => [styles.secondaryButton, (pressed || isAddingNode) && styles.pressed]}>
+                  <ThemedText style={styles.secondaryButtonText}>취소</ThemedText>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isAddingNode}
+                  onPress={() => void submitNewNode()}
+                  style={({ pressed }) => [styles.primaryButton, (pressed || isAddingNode) && styles.pressed]}>
+                  {isAddingNode ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <ThemedText style={styles.whiteText}>추가</ThemedText>
+                  )}
+                </Pressable>
               </View>
             </ScrollView>
-          </ThemedView>
+          </View>
         </View>
       </Modal>
 
+      {/* 노드 상세 및 편집 모달 */}
       <Modal visible={Boolean(selectedNode)} transparent animationType={width < 700 ? 'slide' : 'fade'} onRequestClose={() => setSelectedNodeId(null)}>
-        <View accessibilityViewIsModal style={[styles.overlay, { backgroundColor: theme.overlay }]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="마인드맵 상세 닫기"
-            onPress={() => setSelectedNodeId(null)}
-            style={StyleSheet.absoluteFill}
-          />
-          <ThemedView type="surfaceElevated" style={[styles.detailPanel, width < 700 && styles.mobileDetailPanel, { borderColor: theme.border }, Shadows.floating]}>
+        <View accessibilityViewIsModal style={styles.overlay}>
+          <Pressable accessibilityRole="button" onPress={() => setSelectedNodeId(null)} style={StyleSheet.absoluteFill} />
+          <View style={[styles.detailPanel, width < 700 && styles.mobileDetailPanel, Shadows.floating]}>
             <ScrollView contentContainerStyle={styles.detailContent} keyboardShouldPersistTaps="handled">
               <View style={styles.detailHeader}>
-                <View><ThemedText type="sectionTitle">{selectedNode?.nodetype === 'root' ? '중심 주제 편집' : selectedNode?.nodetype === 'branch' ? '분류 가지' : '아이디어 상세'}</ThemedText><ThemedText type="small" themeColor="textSecondary">{selectedNode?.title}</ThemedText></View>
-                <Pressable accessibilityRole="button" accessibilityLabel="상세 닫기" onPress={() => setSelectedNodeId(null)} style={styles.closeButton}><ThemedText type="button">닫기</ThemedText></Pressable>
+                <View style={{ gap: 2 }}>
+                  <ThemedText style={styles.modalHeadingTitle}>
+                    {selectedNode?.nodetype === 'root'
+                      ? '중심 주제 편집'
+                      : selectedNode?.nodetype === 'branch'
+                      ? '분류 가지'
+                      : '아이디어 상세'}
+                  </ThemedText>
+                  <ThemedText style={styles.modalHeadingSub}>{selectedNode?.title}</ThemedText>
+                </View>
+                <Pressable accessibilityRole="button" onPress={() => setSelectedNodeId(null)} style={styles.closeButton}>
+                  <ThemedText style={styles.closeButtonText}>닫기</ThemedText>
+                </Pressable>
               </View>
-              {selectedNode?.nodetype === 'root' ? <DetailField label="중심 주제" value={topicDraft} multiline={false} onChangeText={setTopicDraft} /> : null}
+              {selectedNode?.nodetype === 'root' ? (
+                <DetailField label="중심 주제" value={topicDraft} multiline={false} onChangeText={setTopicDraft} />
+              ) : null}
               {selectedNode?.nodetype === 'branch' && !selectedNode.branchfield ? (
                 <>
                   <DetailField label="분류 이름" value={topicDraft} multiline={false} onChangeText={setTopicDraft} />
@@ -526,9 +717,11 @@ export function IdeaMindMap({
                 </>
               ) : null}
               {selectedNode?.nodetype === 'branch' && selectedNode.branchfield ? (
-                <View style={[styles.fixedBranchNotice, { borderColor: theme.border, backgroundColor: theme.primarySoft }]}>
-                  <ThemedText type="smallBold">고정 필드 가지</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">이 가지는 {getIdeaFieldLabel(selectedNode.branchfield)} 필드 전용이며 이름을 바꾸거나 삭제할 수 없습니다.</ThemedText>
+                <View style={styles.fixedBranchNotice}>
+                  <ThemedText style={styles.fieldLabel}>고정 필드 가지</ThemedText>
+                  <ThemedText style={styles.modalHeadingSub}>
+                    이 가지는 {getIdeaFieldLabel(selectedNode.branchfield)} 필드 전용이며 이름을 바꾸거나 삭제할 수 없습니다.
+                  </ThemedText>
                 </View>
               ) : null}
               {selectedIdea ? (
@@ -544,8 +737,13 @@ export function IdeaMindMap({
                     />
                   ) : null}
                   {selectedNode?.nodetype === 'idea_field' ? (
-                    <Pressable accessibilityRole="button" accessibilityLabel="원본 아이디어 전체 편집" accessibilityState={{ expanded: isFullIdeaEditorOpen }} onPress={() => setIsFullIdeaEditorOpen((current) => !current)} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, pressed && styles.pressed]}>
-                      <ThemedText type="smallBold">{isFullIdeaEditorOpen ? '전체 편집 닫기' : '원본 아이디어 전체 편집'}</ThemedText>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setIsFullIdeaEditorOpen((current) => !current)}
+                      style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+                      <ThemedText style={styles.secondaryButtonText}>
+                        {isFullIdeaEditorOpen ? '전체 편집 닫기' : '원본 아이디어 전체 편집'}
+                      </ThemedText>
                     </Pressable>
                   ) : null}
                   {isFullIdeaEditorOpen ? (
@@ -557,66 +755,430 @@ export function IdeaMindMap({
                         excludedField={selectedIdeaField}
                         onChange={(field, value) => setForm((current) => ({ ...current, [field]: value }))}
                       />
-                      {selectedNode?.nodetype === 'idea' && customBranches.length > 0 ? <View style={styles.field}><ThemedText type="smallBold">다른 사용자 정의 가지로 이동</ThemedText><View style={styles.branchChoices}>{customBranches.map((branch) => <Pressable key={branch.id} accessibilityRole="button" accessibilityLabel={`${branch.title} 가지로 이동`} accessibilityState={{ selected: selectedNode?.parentnodeid === branch.id }} disabled={selectedNode?.parentnodeid === branch.id} onPress={() => selectedNode ? void onMoveNode(selectedNode.id, branch.id) : undefined} style={({ pressed }) => [styles.branchChoice, { borderColor: theme.border }, selectedNode?.parentnodeid === branch.id && { backgroundColor: theme.primarySoft }, pressed && styles.pressed]}><ThemedText type="smallBold">{branch.title}</ThemedText></Pressable>)}</View></View> : null}
+                      {selectedNode?.nodetype === 'idea' && customBranches.length > 0 ? (
+                        <View style={styles.field}>
+                          <ThemedText style={styles.fieldLabel}>다른 사용자 정의 가지로 이동</ThemedText>
+                          <View style={styles.branchChoices}>
+                            {customBranches.map((branch) => (
+                              <Pressable
+                                key={branch.id}
+                                disabled={selectedNode?.parentnodeid === branch.id}
+                                onPress={() => (selectedNode ? void onMoveNode(selectedNode.id, branch.id) : undefined)}
+                                style={({ pressed }) => [
+                                  styles.branchChoice,
+                                  selectedNode?.parentnodeid === branch.id && styles.activeBranchChoice,
+                                  pressed && styles.pressed,
+                                ]}>
+                                <ThemedText
+                                  style={[
+                                    styles.branchChoiceText,
+                                    selectedNode?.parentnodeid === branch.id && styles.activeBranchChoiceText,
+                                  ]}>
+                                  {branch.title}
+                                </ThemedText>
+                              </Pressable>
+                            ))}
+                          </View>
+                        </View>
+                      ) : null}
                     </>
                   ) : null}
                 </>
               ) : null}
-              {selectedNode?.nodetype === 'branch' && !selectedNode.branchfield ? <ThemedText type="small" themeColor="textSecondary">가지를 삭제해도 실제 아이디어는 목록에 보존됩니다.</ThemedText> : null}
-              {localError ? <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>{localError}</ThemedText> : null}
+              {selectedNode?.nodetype === 'branch' && !selectedNode.branchfield ? (
+                <ThemedText style={styles.modalHeadingSub}>가지를 삭제해도 실제 아이디어는 목록에 보존됩니다.</ThemedText>
+              ) : null}
+              {localError ? <ThemedText style={styles.errorAlertText}>{localError}</ThemedText> : null}
               <View style={styles.detailActions}>
-                {selectedNode?.nodetype === 'branch' && !selectedNode.branchfield ? <Pressable accessibilityRole="button" accessibilityLabel="분류 가지 삭제" disabled={isSaving} onPress={deleteSelectedBranch} style={({ pressed }) => [styles.dangerButton, { borderColor: theme.danger }, (pressed || isSaving) && styles.pressed]}><ThemedText type="smallBold" style={{ color: theme.danger }}>삭제</ThemedText></Pressable> : null}
-                {selectedIdea ? <Pressable accessibilityRole="button" accessibilityLabel={`${selectedIdea.title} 아이디어 삭제`} disabled={isSaving} onPress={deleteSelectedIdea} style={({ pressed }) => [styles.dangerButton, { borderColor: theme.danger }, (pressed || isSaving) && styles.pressed]}><ThemedText type="smallBold" style={{ color: theme.danger }}>아이디어 삭제</ThemedText></Pressable> : null}
-                {selectedNode?.nodetype === 'root' || (selectedNode?.nodetype === 'branch' && !selectedNode.branchfield) || (selectedIdea && (isFullIdeaEditorOpen || selectedIdeaField)) ? <Pressable accessibilityRole="button" accessibilityLabel="상세 내용 저장" disabled={isSaving} onPress={() => void saveDetails()} style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, (pressed || isSaving) && styles.pressed]}>{isSaving ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.whiteText}>저장</ThemedText>}</Pressable> : null}
+                {selectedNode?.nodetype === 'branch' && !selectedNode.branchfield ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={isSaving}
+                    onPress={deleteSelectedBranch}
+                    style={({ pressed }) => [styles.dangerButton, (pressed || isSaving) && styles.pressed]}>
+                    <ThemedText style={styles.dangerButtonText}>삭제</ThemedText>
+                  </Pressable>
+                ) : null}
+                {selectedIdea ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={isSaving}
+                    onPress={deleteSelectedIdea}
+                    style={({ pressed }) => [styles.dangerButton, (pressed || isSaving) && styles.pressed]}>
+                    <ThemedText style={styles.dangerButtonText}>아이디어 삭제</ThemedText>
+                  </Pressable>
+                ) : null}
+                {selectedNode?.nodetype === 'root' ||
+                (selectedNode?.nodetype === 'branch' && !selectedNode.branchfield) ||
+                (selectedIdea && (isFullIdeaEditorOpen || selectedIdeaField)) ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={isSaving}
+                    onPress={() => void saveDetails()}
+                    style={({ pressed }) => [styles.primaryButton, (pressed || isSaving) && styles.pressed]}>
+                    {isSaving ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <ThemedText style={styles.whiteText}>저장</ThemedText>
+                    )}
+                  </Pressable>
+                ) : null}
               </View>
             </ScrollView>
-          </ThemedView>
+          </View>
         </View>
       </Modal>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { gap: Spacing.three },
-  toolbar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.three },
-  toolbarCopy: { flex: 1, minWidth: 240, gap: Spacing.half },
+  toolbar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  toolbarCopy: { flex: 1, minWidth: 240, gap: 2 },
+  mapHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: PALETTE.text,
+  },
+  mapHeaderSub: {
+    fontSize: 13,
+    color: PALETTE.textSecondary,
+  },
   toolbarActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   mapFrame: { position: 'relative' },
-  zoomControls: { minHeight: ControlHeight.touch, flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  fixedZoomControls: { position: 'absolute', zIndex: 10, elevation: 10, top: Spacing.three, right: Spacing.three, borderWidth: 1, borderRadius: Radius.large, padding: Spacing.one },
-  zoomButton: { width: ControlHeight.touch, height: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: Radius.pill },
-  zoomBadge: { minWidth: 58, height: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.one },
-  viewport: { width: '100%', height: 640, borderWidth: 1, borderRadius: Radius.large },
+  zoomControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  fixedZoomControls: {
+    position: 'absolute',
+    zIndex: 10,
+    elevation: 10,
+    top: Spacing.three,
+    right: Spacing.three,
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    backgroundColor: PALETTE.card,
+    borderRadius: Radius.large,
+    padding: 4,
+  },
+  zoomButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    borderRadius: Radius.pill,
+    backgroundColor: PALETTE.background,
+  },
+  zoomButtonText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: PALETTE.text,
+  },
+  zoomBadge: {
+    minWidth: 52,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    borderRadius: Radius.medium,
+    backgroundColor: PALETTE.card,
+    paddingHorizontal: 6,
+  },
+  zoomBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: PALETTE.text,
+  },
+  viewport: {
+    width: '100%',
+    height: 620,
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    borderRadius: Radius.large,
+    backgroundColor: PALETTE.background,
+  },
   nodeWrap: { position: 'absolute', width: nodeWidth, height: nodeHeight },
-  node: { width: nodeWidth, height: nodeHeight, justifyContent: 'center', gap: Spacing.half, borderWidth: 2, borderRadius: Radius.medium, padding: Spacing.two },
-  addNodeButton: { position: 'absolute', right: -14, top: -14, zIndex: 2, width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderRadius: 17 },
-  highlightedNode: { borderWidth: 3, transform: [{ scale: 1.04 }] },
-  empty: { alignItems: 'center', gap: Spacing.three, borderWidth: 1, borderRadius: Radius.large, padding: Spacing.four },
-  primaryButton: { minHeight: ControlHeight.button, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
-  secondaryButton: { minHeight: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
-  whiteText: { color: '#ffffff' },
-  overlay: { flex: 1, alignItems: 'flex-end', justifyContent: 'center', padding: Spacing.three },
-  detailPanel: { width: '100%', maxWidth: 520, maxHeight: '92%', borderWidth: 1, borderRadius: Radius.xlarge },
-  addNodePanel: { width: '100%', maxWidth: 520, maxHeight: '90%', borderWidth: 1, borderRadius: Radius.xlarge },
+  node: {
+    width: nodeWidth,
+    height: nodeHeight,
+    justifyContent: 'center',
+    gap: 4,
+    borderWidth: 1.5,
+    borderRadius: Radius.large,
+    padding: Spacing.two + 2,
+  },
+  rootNode: {
+    backgroundColor: PALETTE.primary,
+    borderColor: PALETTE.primaryDark,
+  },
+  branchNode: {
+    backgroundColor: PALETTE.primaryLight,
+    borderColor: '#FDE68A',
+  },
+  ideaNode: {
+    backgroundColor: PALETTE.card,
+    borderColor: PALETTE.cardBorder,
+  },
+  nodeBadge: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: PALETTE.textSecondary,
+  },
+  rootBadge: {
+    color: '#FFFBEB',
+  },
+  branchBadge: {
+    color: PALETTE.primaryDark,
+  },
+  nodeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: PALETTE.text,
+    lineHeight: 18,
+  },
+  rootTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+  },
+  branchTitle: {
+    color: PALETTE.primaryDark,
+  },
+  nodeSummary: {
+    fontSize: 11,
+    color: PALETTE.textSecondary,
+    lineHeight: 14,
+  },
+  rootSummary: {
+    color: '#FEF3C7',
+  },
+  addNodeButton: {
+    position: 'absolute',
+    right: -10,
+    top: -10,
+    zIndex: 2,
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: PALETTE.primaryDark,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  addNodeButtonText: {
+    color: PALETTE.primaryDark,
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: -2,
+  },
+  highlightedNode: {
+    borderColor: PALETTE.success,
+    borderWidth: 2.5,
+  },
+  empty: {
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.large,
+    padding: Spacing.four,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: PALETTE.text,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: PALETTE.textSecondary,
+    textAlign: 'center',
+  },
+  primaryButton: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.four,
+    backgroundColor: PALETTE.primary,
+  },
+  secondaryButton: {
+    minHeight: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    backgroundColor: PALETTE.card,
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
+  },
+  secondaryButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: PALETTE.text,
+  },
+  whiteText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  overlay: {
+    flex: 1,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    backgroundColor: PALETTE.overlay,
+    padding: Spacing.three,
+  },
+  detailPanel: {
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '92%',
+    backgroundColor: PALETTE.card,
+    borderColor: PALETTE.cardBorder,
+    borderWidth: 1,
+    borderRadius: Radius.large,
+  },
+  addNodePanel: {
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '90%',
+    backgroundColor: PALETTE.card,
+    borderColor: PALETTE.cardBorder,
+    borderWidth: 1,
+    borderRadius: Radius.large,
+  },
   addNodeContent: { gap: Spacing.three, padding: Spacing.four },
-  addNodeCopy: { gap: Spacing.one },
-  addNodeActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.two },
+  addNodeCopy: { gap: 4 },
+  addNodeActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.two, marginTop: Spacing.one },
   mobileDetailPanel: { maxWidth: undefined, maxHeight: '90%', alignSelf: 'stretch', marginTop: 'auto' },
   detailContent: { gap: Spacing.three, padding: Spacing.four },
   detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.two },
-  detailActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.two },
-  dangerButton: { minHeight: ControlHeight.button, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
-  closeButton: { minHeight: ControlHeight.touch, justifyContent: 'center', paddingHorizontal: Spacing.two },
-  field: { gap: Spacing.one },
-  fixedBranchNotice: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
-  advancedSection: { overflow: 'hidden', borderWidth: 1, borderRadius: Radius.medium },
-  advancedToggle: { minHeight: ControlHeight.touch, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
-  advancedToggleCopy: { flex: 1, gap: Spacing.half },
-  advancedFields: { gap: Spacing.three, borderTopWidth: 1, padding: Spacing.three },
-  input: { minHeight: ControlHeight.input, borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
+  modalHeadingTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: PALETTE.text,
+  },
+  modalHeadingSub: {
+    fontSize: 13,
+    color: PALETTE.textSecondary,
+    lineHeight: 18,
+  },
+  detailActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.two, marginTop: Spacing.one },
+  dangerButton: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: PALETTE.danger,
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
+  },
+  dangerButtonText: {
+    color: PALETTE.danger,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  closeButton: { minHeight: 36, justifyContent: 'center', paddingHorizontal: Spacing.two },
+  closeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: PALETTE.textSecondary,
+  },
+  field: { gap: 6 },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: PALETTE.text,
+  },
+  fixedBranchNotice: {
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    backgroundColor: PALETTE.primaryLight,
+    borderRadius: Radius.medium,
+    padding: Spacing.three,
+  },
+  advancedSection: {
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    backgroundColor: PALETTE.card,
+    borderRadius: Radius.medium,
+  },
+  advancedToggle: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  advancedToggleCopy: { flex: 1, gap: 2 },
+  advancedDescription: {
+    fontSize: 11,
+    color: PALETTE.textSecondary,
+  },
+  advancedToggleBtn: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: PALETTE.primaryDark,
+  },
+  advancedFields: {
+    gap: Spacing.three,
+    borderTopWidth: 1,
+    borderTopColor: PALETTE.cardBorder,
+    padding: Spacing.three,
+  },
+  input: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: PALETTE.inputBorder,
+    backgroundColor: PALETTE.inputBg,
+    borderRadius: Radius.medium,
+    color: PALETTE.text,
+    fontSize: 14,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
   multilineInput: { minHeight: 76, textAlignVertical: 'top' },
-  branchChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
-  branchChoice: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.pill, paddingHorizontal: Spacing.three },
+  branchChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  branchChoice: {
+    minHeight: 34,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    backgroundColor: PALETTE.background,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.three,
+  },
+  activeBranchChoice: {
+    backgroundColor: PALETTE.primaryLight,
+    borderColor: '#FDE68A',
+  },
+  branchChoiceText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: PALETTE.textSecondary,
+  },
+  activeBranchChoiceText: {
+    color: PALETTE.primaryDark,
+    fontWeight: '700',
+  },
+  errorAlertText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: PALETTE.danger,
+  },
   pressed: { opacity: Platform.OS === 'web' ? 0.72 : 0.6 },
 });
