@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { calculateIdeaResults, createIdeaResultData } from '../src/lib/idea-evaluation.ts';
+import {
+  calculateIdeaResults,
+  createBlindIdeaAnalyses,
+  createIdeaResultData,
+  formatBlindAnalysisText,
+} from '../src/lib/idea-evaluation.ts';
 
 const analyses = [
   {
@@ -23,6 +28,37 @@ const analyses = [
     difficulty: '쉬움',
   },
 ];
+
+test('blind AI card copy is concise and uses Korean noun-style endings', () => {
+  assert.equal(
+    formatBlindAnalysisText('사용자에게 전달할 가치가 분명합니다.', '대체 문구'),
+    '사용자에게 전달할 가치가 분명함',
+  );
+  assert.equal(
+    formatBlindAnalysisText('설치 과정이 복잡합니다. 별도 설명입니다.', '대체 문구'),
+    '설치 과정이 복잡함',
+  );
+
+  const [card] = createBlindIdeaAnalyses([
+    {
+      id: 'idea-long',
+      title: '긴 분석',
+      content: '내용',
+      summary: '',
+      problem: '문제',
+      solution: '해결',
+    },
+  ], [{
+    ideaId: 'idea-long',
+    advantages: ['짧은 장점입니다.', '두 번째 장점입니다.'],
+    risk: '축제라는 일회성 이벤트를 위해 앱을 설치하고 친구를 초대하는 과정이 매우 길어질 수 있습니다.',
+    difficulty: '보통',
+  }]);
+
+  assert.deepEqual(card.advantages, ['짧은 장점임', '두 번째 장점임']);
+  assert.ok(card.risk.length <= 40);
+  assert.doesNotMatch(card.risk, /[.!?]$/);
+});
 
 test('blind evaluation results count unique participants and rounded pass rate', () => {
   const results = calculateIdeaResults(analyses, [

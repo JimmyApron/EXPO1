@@ -6,10 +6,10 @@ import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { EvaluationChoice, StoredIdeaEvaluation } from '@/types/idea-evaluation';
 
-const evaluationSelect = 'id, projectid, ideaid, userid, choice, createdat, locked';
+const evaluationSelect = 'id, projectid, ideaid, userid, choice, evaluationround, createdat, locked';
 
-function storageKey(projectId: string, userId: string) {
-  return `watt:ideaevaluations:${projectId}:${userId}`;
+function storageKey(projectId: string, userId: string, evaluationRound: number) {
+  return `watt:ideaevaluations:${projectId}:${userId}:${evaluationRound}`;
 }
 
 function fromDatabase(value: Record<string, unknown>): StoredIdeaEvaluation | null {
@@ -18,6 +18,7 @@ function fromDatabase(value: Record<string, unknown>): StoredIdeaEvaluation | nu
     typeof value.projectid !== 'string' ||
     typeof value.ideaid !== 'string' ||
     typeof value.userid !== 'string' ||
+    typeof value.evaluationround !== 'number' ||
     (value.choice !== 'pass' && value.choice !== 'pick') ||
     typeof value.createdat !== 'string'
   ) {
@@ -29,15 +30,16 @@ function fromDatabase(value: Record<string, unknown>): StoredIdeaEvaluation | nu
     projectId: value.projectid,
     ideaId: value.ideaid,
     userId: value.userid,
+    evaluationRound: value.evaluationround,
     choice: value.choice,
     createdAt: value.createdat,
     locked: true,
   };
 }
 
-async function loadLocal(projectId: string, userId: string) {
+async function loadLocal(projectId: string, userId: string, evaluationRound: number) {
   try {
-    const stored = await AsyncStorage.getItem(storageKey(projectId, userId));
+    const stored = await AsyncStorage.getItem(storageKey(projectId, userId, evaluationRound));
     const parsed: unknown = stored ? JSON.parse(stored) : [];
     return Array.isArray(parsed)
       ? parsed.filter((item): item is StoredIdeaEvaluation => Boolean(item) && typeof item === 'object')
@@ -47,7 +49,7 @@ async function loadLocal(projectId: string, userId: string) {
   }
 }
 
-export function useIdeaEvaluations(projectId: string) {
+export function useIdeaEvaluations(projectId: string, evaluationRound: number) {
   const { user } = useAuth();
   const [evaluations, setEvaluations] = useState<StoredIdeaEvaluation[]>([]);
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(true);
@@ -66,10 +68,11 @@ export function useIdeaEvaluations(projectId: string) {
     const { data, error } = await supabase
       .from('ideaevaluations')
       .select(evaluationSelect)
-      .eq('projectid', projectId);
+      .eq('projectid', projectId)
+      .eq('evaluationround', evaluationRound);
 
     if (error) {
-      const local = await loadLocal(projectId, user.id);
+      const local = await loadLocal(projectId, user.id, evaluationRound);
       setEvaluations(local);
       setEvaluationError('평가 저장소에 연결하지 못해 이 기기의 임시 평가를 사용합니다.');
     } else {
@@ -78,7 +81,7 @@ export function useIdeaEvaluations(projectId: string) {
         .filter((item): item is StoredIdeaEvaluation => Boolean(item)));
     }
     setIsLoadingEvaluations(false);
-  }, [projectId, user]);
+  }, [evaluationRound, projectId, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => void loadEvaluations(), 0);
@@ -109,6 +112,7 @@ export function useIdeaEvaluations(projectId: string) {
       projectId,
       ideaId,
       userId: user.id,
+      evaluationRound,
       choice,
       createdAt,
       locked: true,
@@ -116,7 +120,7 @@ export function useIdeaEvaluations(projectId: string) {
 
     const { data, error } = await supabase
       .from('ideaevaluations')
-      .insert({ projectid: projectId, ideaid: ideaId, userid: user.id, choice, locked: true })
+      .insert({ projectid: projectId, ideaid: ideaId, userid: user.id, choice, evaluationround: evaluationRound, locked: true })
       .select(evaluationSelect)
       .single();
 
@@ -128,12 +132,12 @@ export function useIdeaEvaluations(projectId: string) {
     }
 
     const local = [...evaluations, fallback];
-    await AsyncStorage.setItem(storageKey(projectId, user.id), JSON.stringify(local));
+    await AsyncStorage.setItem(storageKey(projectId, user.id, evaluationRound), JSON.stringify(local));
     setEvaluations(local);
     setEvaluationError('평가가 이 기기에만 임시 저장되었습니다. 마이그레이션 적용 후 자동으로 팀 결과에 반영됩니다.');
     setIsSavingEvaluation(false);
     return { evaluation: fallback };
-  }, [evaluations, isSavingEvaluation, projectId, user]);
+  }, [evaluationRound, evaluations, isSavingEvaluation, projectId, user]);
 
   return {
     currentUserId: user?.id ?? '',

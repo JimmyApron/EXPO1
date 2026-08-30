@@ -54,11 +54,13 @@ test('coach fingerprint is order-independent and changes with meaningful inputs'
   const fingerprint = createCoachInputFingerprint([first, second], conditions);
 
   assert.equal(fingerprint, createCoachInputFingerprint([second, first], conditions));
+  assert.notEqual(fingerprint, createCoachInputFingerprint([first], conditions));
   assert.notEqual(fingerprint, createCoachInputFingerprint([{ ...first, problem: '새 문제' }, second], conditions));
   assert.notEqual(fingerprint, createCoachInputFingerprint([first, second], { ...conditions, budget: 200000 }));
   assert.equal(isCoachAnalysisStale({ inputFingerprint: fingerprint }, fingerprint), false);
   assert.equal(isCoachAnalysisStale({ inputFingerprint: 'old' }, fingerprint), true);
-  assert.equal(isCoachAnalysisStale({}, fingerprint), false);
+  assert.equal(isCoachAnalysisStale({}, fingerprint), true);
+  assert.equal(isCoachAnalysisStale(null, fingerprint), false);
 });
 
 test('MVP and presentation remain tied to the idea they were generated from', () => {

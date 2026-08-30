@@ -48,7 +48,7 @@ export function isCoachAnalysisStale(
   analysis: FinalIdeaAnalysisResult | null | undefined,
   currentFingerprint: string,
 ) {
-  return Boolean(analysis?.inputFingerprint && analysis.inputFingerprint !== currentFingerprint);
+  return Boolean(analysis && analysis.inputFingerprint !== currentFingerprint);
 }
 
 export function isMvpPlanCurrent(plan: MvpPlan | null | undefined, selectedIdeaId: string | null | undefined) {

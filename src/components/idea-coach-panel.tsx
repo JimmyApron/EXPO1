@@ -112,11 +112,11 @@ function CandidateAnalysis({ analysis }: { analysis: FinalIdeaAnalysis }) {
       <ThemedText type="small" themeColor="textSecondary">{analysis.summary}</ThemedText>
       <View style={styles.analysisColumns}>
         <View style={styles.analysisColumn}>
-          <ThemedText type="smallBold">장점</ThemedText>
+          <ThemedText type="smallBold">가장 큰 장점 3가지</ThemedText>
           <BulletList items={analysis.strengths} emptyText="장점 분석을 다시 실행해 주세요." />
         </View>
         <View style={styles.analysisColumn}>
-          <ThemedText type="smallBold">위험</ThemedText>
+          <ThemedText type="smallBold">가장 큰 리스크 3가지</ThemedText>
           <BulletList items={analysis.risks ?? analysis.improvements} emptyText="위험 분석을 다시 실행해 주세요." />
         </View>
         <View style={styles.analysisColumn}>
@@ -170,8 +170,9 @@ export function IdeaCoachPanel({
   const fingerprint = useMemo(() => createCoachInputFingerprint(candidates, draft), [candidates, draft]);
   const { analysis, analysisError, canAnalyze, isAnalyzing, isLimited, maxAnalysisIdeas, skippedBlankCount, analyzeIdeas } =
     useFinalIdeaAnalysis(projectId, candidates, draft);
-  const activeAnalysis = analysis ?? flow?.coachresult ?? null;
-  const isAnalysisStale = isCoachAnalysisStale(activeAnalysis, fingerprint);
+  const storedAnalysis = analysis ?? flow?.coachresult ?? null;
+  const isAnalysisStale = isCoachAnalysisStale(storedAnalysis, fingerprint);
+  const activeAnalysis = isAnalysisStale ? null : storedAnalysis;
   const analysisById = useMemo(
     () => new Map(activeAnalysis?.analyses.map((item) => [item.ideaId, item]) ?? []),
     [activeAnalysis],

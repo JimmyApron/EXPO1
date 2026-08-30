@@ -70,6 +70,11 @@ function normalizeNonEmptyStringArray(value: unknown) {
   return items.length > 0 ? items : null;
 }
 
+function normalizeTopThreeItems(value: unknown) {
+  const items = normalizeNonEmptyStringArray(value);
+  return items?.length === 3 ? items : null;
+}
+
 function normalizeAnalysisLevel(value: unknown): FinalAnalysisLevel | null {
   if (value === '높음' || value === '보통' || value === '낮음') {
     return value;
@@ -122,8 +127,8 @@ export function normalizeFinalIdeaAnalysis(
     }
 
     const summary = replaceIdeaReferencesWithTitles(source.summary, ideas);
-    const strengths = normalizeNonEmptyStringArray(source.strengths);
-    const risks = normalizeNonEmptyStringArray(source.risks);
+    const strengths = normalizeTopThreeItems(source.strengths);
+    const risks = normalizeTopThreeItems(source.risks);
     const improvements = normalizeNonEmptyStringArray(source.improvements);
     const feasibility = normalizeAnalysisLevel(source.feasibility);
     const projectFit = normalizeAnalysisLevel(source.projectFit);

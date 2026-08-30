@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   activeModeText: {
-    color: '#ffffff',
+    color: PALETTE.primaryDark,
   },
   field: {
     gap: Spacing.two,

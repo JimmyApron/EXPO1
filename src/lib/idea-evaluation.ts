@@ -17,6 +17,34 @@ function shortText(value: string, fallback: string) {
   return cleaned || fallback;
 }
 
+const maxBlindAnalysisLength = 40;
+
+/** Keeps AI card copy compact even if a provider ignores the requested style. */
+export function formatBlindAnalysisText(value: string, fallback: string) {
+  const firstSentence = shortText(value, fallback)
+    .replace(/^[•*\-]\s*/, '')
+    .replace(/\s+/g, ' ')
+    .split(/[.!?。！？\r\n]/, 1)[0]
+    .trim()
+    .replace(/할 수 있습니다$/u, '할 수 있음')
+    .replace(/될 수 있습니다$/u, '될 수 있음')
+    .replace(/필요합니다$/u, '필요함')
+    .replace(/어렵습니다$/u, '어려움')
+    .replace(/높습니다$/u, '높음')
+    .replace(/낮습니다$/u, '낮음')
+    .replace(/있습니다$/u, '있음')
+    .replace(/없습니다$/u, '없음')
+    .replace(/됩니다$/u, '됨')
+    .replace(/합니다$/u, '함')
+    .replace(/입니다$/u, '임');
+
+  if (firstSentence.length <= maxBlindAnalysisLength) return firstSentence;
+
+  const clipped = firstSentence.slice(0, maxBlindAnalysisLength + 1);
+  const lastSpace = clipped.lastIndexOf(' ');
+  return clipped.slice(0, lastSpace >= 24 ? lastSpace : maxBlindAnalysisLength).trim();
+}
+
 /**
  * Converts project ideas into the deliberately limited data contract used by
  * the blind-evaluation UI. No author, title, likes, recommendations, or team
@@ -35,10 +63,10 @@ export function createBlindIdeaAnalyses(
       problem: shortText(idea.problem, '해결하려는 문제를 구체화하는 단계입니다.'),
       solution: shortText(idea.solution, shortText(idea.summary, '핵심 해결 방식을 검토 중입니다.')),
       advantages: [
-        ai?.advantages[0] ?? '문제를 빠르게 해결할 수 있는 방향입니다.',
-        ai?.advantages[1] ?? '사용자가 이해하고 활용하기 쉬운 방식입니다.',
+        formatBlindAnalysisText(ai?.advantages[0] ?? '', '문제 해결 효과를 확인하기 쉬움'),
+        formatBlindAnalysisText(ai?.advantages[1] ?? '', '사용자에게 줄 가치가 분명함'),
       ],
-      risk: ai?.risk ?? '실제 사용자 검증과 운영 방식 확인이 필요합니다.',
+      risk: formatBlindAnalysisText(ai?.risk ?? '', '실제 사용자 수요 검증이 필요함'),
       difficulty: ai?.difficulty ?? '보통',
     };
   });

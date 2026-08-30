@@ -45,6 +45,9 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
     title: idea.title,
     description: idea.summary || idea.content,
     targetUsers: idea.targetusers.join(', ') || '과제 대상 사용자',
+    problem: idea.problem,
+    solution: idea.solution,
+    coreFeatures: idea.corefeatures,
   }), [idea]);
   const { plan, isGenerating, error, generatePlan } = useMvpPlan(
     mvpIdea,

@@ -35,8 +35,8 @@ const systemInstruction = `IMPORTANT: Use ideaId values only in the structured a
 각 아이디어에 대해 다음 내용을 작성하세요.
 
 1. 핵심 내용 요약
-2. 주요 장점
-3. 예상 위험과 실패 가능성
+2. 가장 큰 장점 3개
+3. 가장 큰 리스크 3개
 4. 구체적인 개선 제안
 5. 현재 개발 기간과 난이도를 고려한 실현 가능성
 6. 과제 또는 프로젝트 목적과의 적합성
@@ -55,6 +55,9 @@ const systemInstruction = `IMPORTANT: Use ideaId values only in the structured a
 ‘추천합니다’, ‘고려할 수 있습니다’와 같은 보조적인 표현을 사용하세요.
 모든 결과는 자연스럽고 이해하기 쉬운 한국어로 작성하세요.
 분석은 간결하게 작성하고, 각 항목은 너무 길지 않게 제한하세요.
+strengths와 risks는 중요도가 높은 순서대로 정확히 3개씩 작성하세요.
+strengths와 risks의 각 항목은 한 가지 내용만 담은 40자 이내의 짧은 음슴체로 작성하고 마침표는 생략하세요.
+문맥에 맞게 ‘~함’, ‘~임’, ‘~됨’, ‘~있음’, ‘~필요’ 등의 종결 표현을 자연스럽게 사용하세요.
 analyses에는 입력된 모든 아이디어를 정확히 한 번씩 포함하고, ideaId는 입력값을 그대로 사용하세요.
 summary, strengths, risks, improvements와 overall의 모든 항목을 비워 두지 마세요.`;
 
@@ -73,10 +76,12 @@ const responseSchema = {
           summary: { type: 'string', description: '아이디어 핵심 내용 요약' },
           strengths: {
             type: 'array',
+            description: '중요도순으로 정렬된 가장 큰 장점 3개. 각 항목은 40자 이내의 짧은 음슴체',
             items: { type: 'string' },
           },
           risks: {
             type: 'array',
+            description: '중요도순으로 정렬된 가장 큰 리스크 3개. 각 항목은 40자 이내의 짧은 음슴체',
             items: { type: 'string' },
           },
           improvements: {
@@ -248,7 +253,7 @@ Deno.serve(async (request) => {
       retryInstruction:
         attempt === 0
           ? undefined
-          : '이전 응답이 비어 있거나 필수 항목을 누락했습니다. 모든 아이디어와 모든 필드를 실제 분석 내용으로 채우세요.',
+          : '이전 응답이 비어 있거나 형식 규칙을 지키지 않았습니다. 모든 아이디어와 필드를 채우고, strengths와 risks를 중요도순으로 각각 정확히 3개씩 짧은 음슴체로 작성하세요.',
     });
 
     let deepSeekResponse: Response;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
@@ -54,7 +54,16 @@ export function BlindSwipeEvaluation({
   onGoToList,
   onGoToMvp,
 }: BlindSwipeEvaluationProps) {
-  const { flow, conditions, saveCoachResult, saveSelectedIdea } = flowController;
+  const {
+    flow,
+    conditions,
+    isloadingflow,
+    restartBlindEvaluation,
+    saveBlindAnalysis,
+    saveCoachResult,
+    saveSelectedIdea,
+  } = flowController;
+  const evaluationRound = flow?.evaluationround ?? 1;
   const {
     currentUserId,
     evaluations,
@@ -62,11 +71,12 @@ export function BlindSwipeEvaluation({
     isLoadingEvaluations,
     isSavingEvaluation,
     saveEvaluation,
-  } = useIdeaEvaluations(projectId);
+  } = useIdeaEvaluations(projectId, evaluationRound);
   const [displayIdeaId, setDisplayIdeaId] = useState('');
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [selectionError, setSelectionError] = useState('');
   const [isSelectingResult, setIsSelectingResult] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const recommendationRequestKey = useRef('');
   const translateX = useSharedValue(0);
 
@@ -76,7 +86,8 @@ export function BlindSwipeEvaluation({
       .sort((left, right) => left.createdat.localeCompare(right.createdat)),
     [ideas],
   );
-  const { analyses: aiAnalyses, blindAnalysisError, isAnalyzingIdeas, isAnalysisReady } = useBlindIdeaAnalysis(projectId, candidates);
+  const { analyses: aiAnalyses, blindAnalysisError, isAnalyzingIdeas, isAnalysisReady, retryAnalysis } =
+    useBlindIdeaAnalysis(projectId, candidates, flow?.blindanalysis, saveBlindAnalysis, !isloadingflow);
   const analyses = useMemo(() => createBlindIdeaAnalyses(candidates, aiAnalyses), [aiAnalyses, candidates]);
   const myEvaluatedIds = useMemo(
     () => new Set(evaluations.filter((evaluation) => evaluation.userId === currentUserId).map((evaluation) => evaluation.ideaId)),
@@ -224,9 +235,78 @@ export function BlindSwipeEvaluation({
     }
     await loadIdeas();
     setIsSelectingResult(false);
+    onGoToMvp();
   };
 
-  if (isLoadingIdeas || isLoadingEvaluations || !isAnalysisReady || isAnalyzingIdeas) {
+  const restartAllAnalyses = async () => {
+    if (isRestarting || isAnalyzingIdeas || isSavingEvaluation) return;
+    setSelectionError('');
+    setIsRestarting(true);
+    const restarted = await restartBlindEvaluation();
+    if (restarted.error) {
+      setSelectionError(restarted.error);
+      setIsRestarting(false);
+      return;
+    }
+
+    retryAnalysis();
+    await loadIdeas();
+    setIsRestarting(false);
+  };
+
+  const requestRestart = () => {
+    const message = '저장된 AI 분석과 현재 평가 진행을 초기화하고 모든 아이디어를 처음부터 다시 평가할까요?';
+    if (Platform.OS === 'web') {
+      if (globalThis.confirm?.(message)) void restartAllAnalyses();
+      return;
+    }
+
+    Alert.alert('전체 재분석', message, [
+      { text: '취소', style: 'cancel' },
+      { text: '다시 시작', style: 'destructive', onPress: () => void restartAllAnalyses() },
+    ]);
+  };
+
+  const restartButton = (
+    <Pressable
+      accessibilityRole="button"
+      disabled={isRestarting || isAnalyzingIdeas || isSavingEvaluation}
+      onPress={requestRestart}
+      style={({ pressed }) => [
+        styles.restartButton,
+        (pressed || isRestarting || isAnalyzingIdeas || isSavingEvaluation) && styles.pressed,
+      ]}>
+      {isRestarting ? (
+        <ActivityIndicator size="small" color={orange} />
+      ) : (
+        <ThemedText type="smallBold" style={styles.orangeText}>전체 재분석</ThemedText>
+      )}
+    </Pressable>
+  );
+
+  if (blindAnalysisError && !isAnalyzingIdeas) {
+    return (
+      <View style={styles.emptyCard}>
+        <ThemedText type="subtitle" style={styles.navyText}>AI 분석을 불러오지 못했어요</ThemedText>
+        <ThemedText type="small" style={styles.errorText}>{blindAnalysisError}</ThemedText>
+        <Pressable onPress={retryAnalysis} style={styles.outlineButton}>
+          <ThemedText type="smallBold" style={styles.orangeText}>AI 분석 다시 시도</ThemedText>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (isloadingflow || isLoadingIdeas || isLoadingEvaluations) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator color={orange} />
+        <ThemedText type="smallBold" style={styles.navyText}>저장된 블라인드 평가를 불러오는 중이에요</ThemedText>
+        <ThemedText type="small" style={styles.mutedText}>기존 AI 분석 결과와 평가 진행 상태를 확인하고 있습니다.</ThemedText>
+      </View>
+    );
+  }
+
+  if (!isAnalysisReady || isAnalyzingIdeas) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator color={orange} />
@@ -256,6 +336,7 @@ export function BlindSwipeEvaluation({
           <ThemedText type="smallBold" style={styles.orangeText}>내 평가는 모두 잠겼습니다</ThemedText>
           <ThemedText type="small" style={styles.mutedText}>확정한 평가는 수정할 수 없어요.</ThemedText>
         </View>
+        {restartButton}
         <ResultSummaryScreen
           data={resultData}
           selectedIdeaId={selectedIdeaId}
@@ -281,9 +362,12 @@ export function BlindSwipeEvaluation({
 
   return (
     <View style={styles.screen}>
-      <View style={styles.heading}>
-        <ThemedText type="subtitle" style={styles.navyText}>블라인드 스와이프 평가</ThemedText>
-        <ThemedText type="small" style={styles.mutedText}>모든 아이디어를 평가하면 현재 결과를 볼 수 있어요.</ThemedText>
+      <View style={styles.headingRow}>
+        <View style={styles.heading}>
+          <ThemedText type="subtitle" style={styles.navyText}>블라인드 스와이프 평가</ThemedText>
+          <ThemedText type="small" style={styles.mutedText}>모든 아이디어를 평가하면 현재 결과를 볼 수 있어요.</ThemedText>
+        </View>
+        {restartButton}
       </View>
       <View style={styles.progressRow}>
         <ThemedText type="smallBold" style={styles.navyText}>진행 현황</ThemedText>
@@ -337,6 +421,7 @@ export function BlindSwipeEvaluation({
 const styles = StyleSheet.create({
   screen: { width: '100%', maxWidth: 520, alignSelf: 'center', gap: Spacing.three, padding: Spacing.four, borderRadius: Radius.xlarge, backgroundColor: cream },
   heading: { gap: Spacing.one },
+  headingRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.two },
   navyText: { color: navy },
   mutedText: { color: muted },
   orangeText: { color: orange },
@@ -360,6 +445,7 @@ const styles = StyleSheet.create({
   emptyCard: { gap: Spacing.three, padding: Spacing.four, borderWidth: 1, borderColor: orange, borderRadius: Radius.xlarge, backgroundColor: cream },
   emptyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   outlineButton: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderColor: orange, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, backgroundColor: '#FFFFFF' },
+  restartButton: { minHeight: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: orange, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, backgroundColor: '#FFFFFF' },
   completeBanner: { gap: Spacing.one, padding: Spacing.three, borderRadius: Radius.medium, borderWidth: 1, borderColor: '#F5D18D', backgroundColor: '#FFF2CD' },
   errorText: { color: '#C2410C' },
   pressed: { opacity: 0.65 },

@@ -51,7 +51,7 @@
     "lint": "expo lint",
     "test:mind-map": "node --experimental-strip-types --test tests/mind-map.test.mjs",
     "test:project-flow": "node --experimental-strip-types --test tests/project-flow.test.mjs",
-    "test": "node --experimental-strip-types --test tests/deepseek-config.test.mjs tests/final-idea-analysis.test.mjs tests/idea-evaluation.test.mjs tests/mind-map.test.mjs tests/project-flow.test.mjs"
+    "test": "node --experimental-strip-types --test tests/deepseek-config.test.mjs tests/final-idea-analysis.test.mjs tests/idea-evaluation.test.mjs tests/mind-map.test.mjs tests/mvp-plan.test.mjs tests/project-flow.test.mjs"
   },
   "private": true
 }

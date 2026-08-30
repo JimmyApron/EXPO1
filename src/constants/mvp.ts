@@ -8,6 +8,9 @@ export const selectedIdea: MvpIdea = {
   title: sampleCandidateIdeas[0].title,
   description: sampleCandidateIdeas[0].summary,
   targetUsers: sampleCandidateIdeas[0].targetUsers.join(', '),
+  problem: sampleCandidateIdeas[0].problem,
+  solution: sampleCandidateIdeas[0].solution,
+  coreFeatures: sampleCandidateIdeas[0].coreFeatures,
 };
 
 export function createSampleMvpPlan(idea: MvpIdea = selectedIdea): MvpPlan {

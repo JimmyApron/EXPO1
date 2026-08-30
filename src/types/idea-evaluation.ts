@@ -17,6 +17,12 @@ export type BlindIdeaAiAnalysis = {
   difficulty: IdeaAnalysis['difficulty'];
 };
 
+export type BlindIdeaAnalysisCache = {
+  inputKey: string;
+  analyses: BlindIdeaAiAnalysis[];
+  analyzedAt: string;
+};
+
 export type IdeaEvaluation = {
   ideaId: string;
   userId: string;
@@ -28,6 +34,7 @@ export type IdeaEvaluation = {
 export type StoredIdeaEvaluation = IdeaEvaluation & {
   id: string;
   projectId: string;
+  evaluationRound: number;
 };
 
 export type IdeaResultForComparison = {

@@ -64,10 +64,17 @@ function toAnalysisInput(input: IdeaInput): IdeaDraftAnalysisInput {
   const category = normalizeIdeaCategory(input.category);
 
   return {
+    analysisMode: 'draft_clarity',
     title: input.title.trim(),
     content: input.content.trim(),
     category: getIdeaCategoryLabel(category),
     status: normalizeIdeaStatus(input.status),
+    summary: input.summary?.trim() ?? '',
+    problem: input.problem?.trim() ?? '',
+    targetUsers: input.targetusers?.map((item) => item.trim()).filter(Boolean) ?? [],
+    solution: input.solution?.trim() ?? '',
+    keywords: input.keywords?.map((item) => item.trim()).filter(Boolean) ?? [],
+    coreFeatures: input.corefeatures?.map((item) => item.trim()).filter(Boolean) ?? [],
   };
 }
 

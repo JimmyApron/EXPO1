@@ -3,6 +3,9 @@ export type MvpIdea = {
   title: string;
   description: string;
   targetUsers: string;
+  problem: string;
+  solution: string;
+  coreFeatures: string[];
 };
 
 export type MvpFeature = {

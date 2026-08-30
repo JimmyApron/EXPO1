@@ -5,12 +5,13 @@ import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { FinalIdeaAnalysisResult } from '@/types/final-analysis';
+import type { BlindIdeaAnalysisCache } from '@/types/idea-evaluation';
 import type { MvpPlan } from '@/types/mvp-plan';
 import type { PresentationData } from '@/types/presentation';
 import type { CompleteProjectConditions, ProjectFlow } from '@/types/project-flow';
 
 const flowselect =
-  'id, projectid, userid, durationweeks, teamsize, skilllevel, budget, evaluationcriteria, selectedideaid, coachresult, mvpplan, presentationdata, createdat, updatedat';
+  'id, projectid, userid, durationweeks, teamsize, skilllevel, budget, evaluationcriteria, selectedideaid, coachresult, blindanalysis, evaluationround, mvpplan, presentationdata, createdat, updatedat';
 
 function createLocalFlow(projectid: string, userid: string): ProjectFlow {
   const now = new Date().toISOString();
@@ -25,6 +26,8 @@ function createLocalFlow(projectid: string, userid: string): ProjectFlow {
     evaluationcriteria: sampleProjectConditions.evaluationCriteria,
     selectedideaid: null,
     coachresult: null,
+    blindanalysis: null,
+    evaluationround: 1,
     mvpplan: null,
     presentationdata: null,
     createdat: now,
@@ -107,6 +110,8 @@ export function useProjectFlow(projectid?: string) {
         evaluationcriteria: current.evaluationcriteria,
         selectedideaid: current.selectedideaid,
         coachresult: current.coachresult,
+        blindanalysis: current.blindanalysis,
+        evaluationround: current.evaluationround,
         mvpplan: current.mvpplan,
         presentationdata: current.presentationdata,
         ...patch,
@@ -179,6 +184,19 @@ export function useProjectFlow(projectid?: string) {
     (coachresult: FinalIdeaAnalysisResult) => savePatch({ coachresult }),
     [savePatch],
   );
+  const saveBlindAnalysis = useCallback(
+    (blindanalysis: BlindIdeaAnalysisCache) => savePatch({ blindanalysis }),
+    [savePatch],
+  );
+  const restartBlindEvaluation = useCallback(async () => {
+    if (!projectid) return { error: '프로젝트 정보가 없습니다.' };
+
+    const { error } = await supabase.rpc('restart_blind_evaluation', { target_project_id: projectid });
+    if (error) return { error: error.message };
+
+    await loadFlow();
+    return {};
+  }, [loadFlow, projectid]);
   const saveMvpPlan = useCallback(
     (mvpplan: MvpPlan) => {
       const current = flowRef.current;
@@ -203,6 +221,8 @@ export function useProjectFlow(projectid?: string) {
     saveConditions,
     saveSelectedIdea,
     saveCoachResult,
+    saveBlindAnalysis,
+    restartBlindEvaluation,
     saveMvpPlan,
     savePresentationData,
   };

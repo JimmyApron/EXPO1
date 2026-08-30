@@ -4,23 +4,11 @@ import {
   resolveDeepSeekModel,
   withDeepSeekToolInstruction,
 } from '../_shared/deepseek.ts';
+import { normalizeMvpPlan } from '../_shared/mvp-plan.ts';
 
 declare const Deno: {
   env: { get(name: string): string | undefined };
   serve(handler: (request: Request) => Response | Promise<Response>): void;
-};
-
-type MvpPlan = {
-  ideaId: string;
-  ideaTitle: string;
-  summary: string;
-  mustHaveFeatures: { name: string; description: string }[];
-  laterFeatures: { name: string; description: string }[];
-  screens: { name: string; purpose: string; wireframe: string[] }[];
-  schedule: { period: string; goal: string; tasks: string[] }[];
-  teamRoles: { role: string; responsibilities: string[] }[];
-  apis: { name: string; purpose: string; method: string }[];
-  presentationOrder: string[];
 };
 
 const corsHeaders = {
@@ -31,27 +19,19 @@ const corsHeaders = {
 
 const mvpToolName = 'record_mvp_plan';
 
-const systemInstruction = `당신은 대학생 팀 프로젝트의 B 역할인 AI MVP 생성기입니다.
-
-전체 제품 흐름은 다음과 같습니다.
-아이디어 수집·정리 → AI 비교·코칭 → 최종 아이디어 선정 → MVP 기획 → 발표자료
-
-당신은 앞 단계에서 선정된 아이디어와 프로젝트 조건을 받아, 다음 발표 자료 생성 단계가 바로 활용할 수 있는 현실적인 MVP 계획을 작성합니다.
-
-팀의 기본 작업 영역은 다음과 같습니다.
-1. 아이디어 추출·마인드맵: 회의록·채팅·이미지에서 아이디어 추출, 수정·저장·선택, 마인드맵, 최종 통합
-2. AI Project Coach: 기간·인원·기술 수준·예산·평가 기준, 구현 가능성 비교, 위험·개선 방향, 추천과 최종 선정
-3. AI MVP 생성기: 필수·추후 기능, 화면·와이어프레임, 일정, 역할, API, 발표 순서
-4. AI 발표 자료 생성: 슬라이드·대본·예상 Q&A·사업계획서·최종 보고서·문서 내보내기
+const systemInstruction = `당신은 대학생 팀 프로젝트를 위한 AI MVP 기획자입니다.
+입력으로 받은 단 하나의 선정 아이디어와 프로젝트 조건만 기준으로 현실적인 MVP 계획을 작성하세요.
 
 다음 원칙을 반드시 지키세요.
-- mustHaveFeatures에는 제한된 기간 안에 전체 흐름을 시연하는 데 꼭 필요한 기능만 넣으세요.
-- laterFeatures에는 고도화, 익명 터치·스와이프 평가, 품질 개선처럼 핵심 검증 이후로 미룰 수 있는 기능을 넣으세요.
+- idea의 problem, solution, targetUsers, coreFeatures를 우선 사용하고 description은 보조 맥락으로만 사용하세요.
+- mustHaveFeatures에는 제한된 기간 안에 아이디어의 핵심 가설을 검증하는 데 꼭 필요한 기능만 넣으세요.
+- laterFeatures에는 핵심 검증 이후로 미룰 수 있는 고도화 기능만 넣으세요. 적절한 기능이 없으면 빈 배열도 허용됩니다.
 - screens는 사용자가 실제로 거치는 순서로 구성하고, wireframe에는 화면의 위에서 아래 순서대로 주요 UI 블록을 적으세요.
 - schedule은 입력된 기간 안에서 구현, 기능 연결, 통합 테스트, 오류 수정, 발표 준비까지 끝나도록 작성하세요.
-- teamRoles는 입력된 팀 규모를 고려하되, 위 네 작업 영역의 담당과 최종 통합 책임이 빠지지 않게 배분하세요.
-- apis에는 실제 구현에 필요한 연동만 적으세요. 특정 공급자가 입력에 없으면 임의의 유료 서비스명을 단정하지 말고 일반적인 API 종류로 표현하세요.
-- presentationOrder는 문제 정의에서 시작해 선정 근거, MVP 범위, 화면 흐름, 일정·역할, 기대 효과로 자연스럽게 이어지게 하세요.
+- teamRoles는 입력된 팀 규모 안에서 역할을 배분하세요. 한 사람이 여러 책임을 맡을 수 있습니다.
+- apis에는 이 아이디어 구현에 실제로 필요한 연동만 적으세요. 외부 API가 필요하지 않으면 빈 배열로 작성하세요.
+- presentationOrder는 문제 정의, 대상 사용자, 해결 방식, MVP 범위, 화면 흐름, 일정·역할, 기대 효과 순으로 자연스럽게 구성하세요.
+- 입력된 아이디어와 무관한 마인드맵, 아이디어 평가, 발표자료 생성 기능을 임의로 포함하지 마세요.
 - 입력에 없는 성과, 조사 결과, 시장 수치 또는 완료된 기능을 만들어내지 마세요.
 - 모든 결과는 간결하고 실행 가능한 한국어로 작성하세요.`;
 
@@ -77,7 +57,7 @@ const responseSchema = {
     },
     laterFeatures: {
       type: 'array',
-      description: '핵심 검증 이후로 미룰 기능 1~8개',
+      description: '핵심 검증 이후로 미룰 기능 0~8개. 없으면 빈 배열',
       items: {
         type: 'object',
         additionalProperties: false,
@@ -143,7 +123,7 @@ const responseSchema = {
     },
     apis: {
       type: 'array',
-      description: '실제 구현에 필요한 API 1~10개',
+      description: '실제 구현에 필요한 API 0~10개. 없으면 빈 배열',
       items: {
         type: 'object',
         additionalProperties: false,
@@ -211,6 +191,9 @@ function normalizeIdea(value: unknown) {
     title: cleanString(value.title, 200),
     description: cleanString(value.description, 3000),
     targetUsers: cleanString(value.targetUsers, 1000),
+    problem: cleanString(value.problem, 2000),
+    solution: cleanString(value.solution, 2000),
+    coreFeatures: cleanStringArray(value.coreFeatures, 20),
   };
 
   return idea.id && idea.title ? idea : null;
@@ -225,76 +208,6 @@ function normalizeConditions(value: unknown) {
     budget: Math.max(0, Math.min(1_000_000_000, Number(conditions.budget) || 0)),
     evaluationCriteria: cleanStringArray(conditions.evaluationCriteria, 20),
   };
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
-}
-
-function hasItemCount(value: unknown[], minimum: number, maximum: number) {
-  return value.length >= minimum && value.length <= maximum;
-}
-
-function isNamedDescription(value: unknown) {
-  return isRecord(value) && typeof value.name === 'string' && typeof value.description === 'string';
-}
-
-function isMvpPlan(value: unknown, ideaId: string): value is MvpPlan {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    value.ideaId === ideaId &&
-    typeof value.ideaTitle === 'string' &&
-    typeof value.summary === 'string' &&
-    Array.isArray(value.mustHaveFeatures) &&
-    hasItemCount(value.mustHaveFeatures, 3, 8) &&
-    value.mustHaveFeatures.every(isNamedDescription) &&
-    Array.isArray(value.laterFeatures) &&
-    hasItemCount(value.laterFeatures, 1, 8) &&
-    value.laterFeatures.every(isNamedDescription) &&
-    Array.isArray(value.screens) &&
-    hasItemCount(value.screens, 4, 10) &&
-    value.screens.every(
-      (screen) =>
-        isRecord(screen) &&
-        typeof screen.name === 'string' &&
-        typeof screen.purpose === 'string' &&
-        isStringArray(screen.wireframe) &&
-        hasItemCount(screen.wireframe, 3, 7),
-    ) &&
-    Array.isArray(value.schedule) &&
-    hasItemCount(value.schedule, 1, 16) &&
-    value.schedule.every(
-      (item) =>
-        isRecord(item) &&
-        typeof item.period === 'string' &&
-        typeof item.goal === 'string' &&
-        isStringArray(item.tasks) &&
-        hasItemCount(item.tasks, 2, 6),
-    ) &&
-    Array.isArray(value.teamRoles) &&
-    hasItemCount(value.teamRoles, 2, 8) &&
-    value.teamRoles.every(
-      (item) =>
-        isRecord(item) &&
-        typeof item.role === 'string' &&
-        isStringArray(item.responsibilities) &&
-        hasItemCount(item.responsibilities, 2, 6),
-    ) &&
-    Array.isArray(value.apis) &&
-    hasItemCount(value.apis, 1, 10) &&
-    value.apis.every(
-      (item) =>
-        isRecord(item) &&
-        typeof item.name === 'string' &&
-        typeof item.purpose === 'string' &&
-        typeof item.method === 'string',
-    ) &&
-    isStringArray(value.presentationOrder) &&
-    hasItemCount(value.presentationOrder, 6, 10)
-  );
 }
 
 async function validateUser(authorization: string) {
@@ -397,6 +310,7 @@ Deno.serve(async (request) => {
       body: JSON.stringify({
         model: deepSeekModel,
         max_tokens: 5000,
+        thinking: { type: 'disabled' },
         system: withDeepSeekToolInstruction(systemInstruction, mvpToolName),
         messages: [{ role: 'user', content: prompt }],
         tools: [
@@ -406,6 +320,10 @@ Deno.serve(async (request) => {
             input_schema: responseSchema,
           },
         ],
+        tool_choice: {
+          type: 'tool',
+          name: mvpToolName,
+        },
       }),
       signal: controller.signal,
     });
@@ -461,8 +379,9 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답을 해석하지 못했습니다.' }, 502);
   }
 
-  const mvpPlan = getDeepSeekToolInput(deepSeekBody);
-  if (!isMvpPlan(mvpPlan, selectedIdeaId)) {
+  const mvpPlan = normalizeMvpPlan(getDeepSeekToolInput(deepSeekBody), idea);
+  if (!mvpPlan) {
+    console.error('DeepSeek MVP tool input did not contain usable core sections.');
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI MVP 계획 형식이 올바르지 않습니다.' }, 502);
   }
 

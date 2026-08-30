@@ -31,7 +31,7 @@ test('only the approved DeepSeek V4 models can be resolved', () => {
 test('DeepSeek structured output requests are configured for their response flow', async () => {
   const sources = await Promise.all(deepSeekOnlyFunctionFiles.map((file) => readFile(file, 'utf8')));
   const extractionSource = await readFile(extractionFunctionFile, 'utf8');
-  const [finalAnalysisSource, ...otherSources] = sources;
+  const [finalAnalysisSource, draftAnalysisSource, mvpSource, presentationSource] = sources;
 
   assert.match(
     withDeepSeekToolInstruction('기본 지침', 'record_result'),
@@ -41,9 +41,13 @@ test('DeepSeek structured output requests are configured for their response flow
     assert.match(source, /withDeepSeekToolInstruction\(systemInstruction,/);
   });
   assert.match(finalAnalysisSource, /thinking:\s*\{\s*type:\s*'disabled'\s*\}/);
-  assert.match(otherSources.at(-1), /thinking:\s*\{\s*type:\s*'disabled'\s*\}/);
+  assert.match(draftAnalysisSource, /thinking:\s*\{\s*type:\s*'disabled'\s*\}/);
+  assert.match(presentationSource, /thinking:\s*\{\s*type:\s*'disabled'\s*\}/);
   assert.match(finalAnalysisSource, /tool_choice:\s*\{\s*type:\s*'tool'/);
-  otherSources.forEach((source) => assert.doesNotMatch(source, /tool_choice/));
+  assert.match(draftAnalysisSource, /tool_choice:\s*\{\s*type:\s*'tool'/);
+  assert.match(mvpSource, /tool_choice:\s*\{\s*type:\s*'tool'/);
+  assert.match(mvpSource, /thinking:\s*\{\s*type:\s*'disabled'\s*\}/);
+  assert.doesNotMatch(presentationSource, /tool_choice/);
   assert.match(extractionSource, /withDeepSeekToolInstruction\(systemInstruction, toolName\)/);
   assert.match(extractionSource, /usesClaudeVision \? \{ tool_choice:/);
 });
@@ -73,4 +77,30 @@ test('Claude is isolated to image extraction', async () => {
   assert.match(extractionSource, /Deno\.env\.get\('ANTHROPIC_API_KEY'\)/);
   assert.match(extractionSource, /https:\/\/api\.anthropic\.com\/v1\/messages/);
   assert.match(extractionSource, /usesClaudeVision \? claudeMessagesUrl : deepSeekMessagesUrl/);
+});
+
+test('blind AI analysis prioritizes the problem-solution mechanism over writing quality', async () => {
+  const draftAnalysisSource = await readFile(
+    new URL('../supabase/functions/analyze-idea-draft/index.ts', import.meta.url),
+    'utf8',
+  );
+  const blindHookSource = await readFile(
+    new URL('../src/hooks/use-blind-idea-analysis.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(draftAnalysisSource, /익명 평가 카드의 'AI 장점'과 'AI 리스크'에 바로 표시됩니다/);
+  assert.match(draftAnalysisSource, /기능을 다시 설명하지 말고 문제와 해결 방식이 맞물려 생기는 효과/);
+  assert.match(draftAnalysisSource, /공백 포함 40자 이내의 음슴체/);
+  assert.match(draftAnalysisSource, /대응책, 검증 방법, 부연 설명을 이어 붙이지 마세요/);
+  assert.match(draftAnalysisSource, /blindResponseSchema/);
+  assert.match(draftAnalysisSource, /isBlindAnalysis \? blindResponseSchema : draftResponseSchema/);
+  assert.match(draftAnalysisSource, /strengths\.length === 2/);
+  assert.match(draftAnalysisSource, /improvements\.length === 1/);
+  assert.match(blindHookSource, /analysisMode: 'problem_solution'/);
+  assert.match(blindHookSource, /promptVersion: blindAnalysisPromptVersion/);
+  assert.doesNotMatch(blindHookSource, /updatedAt:\s*idea\.updatedat/);
+  for (const field of ['problem', 'solution', 'targetUsers', 'coreFeatures']) {
+    assert.match(blindHookSource, new RegExp(`${field}: idea\\.`));
+  }
 });

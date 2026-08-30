@@ -433,13 +433,16 @@ create table if not exists projectflows (
   evaluationcriteria text[] not null default array['창의성', '구현 가능성', '사용자 편의성', '완성도'],
   selectedideaid uuid null references ideas(id) on delete set null,
   coachresult jsonb null,
+  blindanalysis jsonb null,
+  evaluationround integer not null default 1,
   mvpplan jsonb null,
   presentationdata jsonb null,
   createdat timestamptz not null default now(),
   updatedat timestamptz not null default now(),
   constraint projectflowsdurationweekscheck check (durationweeks between 1 and 104),
   constraint projectflowsteamsizecheck check (teamsize between 1 and 100),
-  constraint projectflowsbudgetcheck check (budget >= 0)
+  constraint projectflowsbudgetcheck check (budget >= 0),
+  constraint projectflowsevaluationroundcheck check (evaluationround >= 1)
 );
 
 alter table projectflows disable row level security;
@@ -478,13 +481,14 @@ create table if not exists public.ideaevaluations (
   ideaid uuid not null references public.ideas(id) on delete cascade,
   userid uuid not null references auth.users(id) on delete cascade,
   choice text not null check (choice in ('pass', 'pick')),
+  evaluationround integer not null default 1 check (evaluationround >= 1),
   locked boolean not null default true check (locked),
   createdat timestamptz not null default now(),
-  unique (projectid, ideaid, userid)
+  constraint ideaevaluationsprojectideaiduseridroundkey unique (projectid, ideaid, userid, evaluationround)
 );
 
 create index if not exists ideaevaluationsprojectidideaididx
-  on public.ideaevaluations (projectid, ideaid);
+  on public.ideaevaluations (projectid, evaluationround, ideaid);
 
 alter table public.ideaevaluations enable row level security;
 
@@ -501,6 +505,10 @@ security definer
 set search_path = pg_catalog
 as $$
 begin
+  if tg_op = 'DELETE' and pg_trigger_depth() > 1 then
+    return old;
+  end if;
+
   raise exception using errcode = 'P0001', message = 'Submitted blind evaluations are locked.';
 end;
 $$;
@@ -510,6 +518,67 @@ create trigger ideaevaluationsimmutable
   for each row execute function public.reject_idea_evaluation_change();
 
 grant select, insert on table public.ideaevaluations to authenticated;
+
+create or replace function public.restart_blind_evaluation(target_project_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  actor_id uuid := auth.uid();
+begin
+  if actor_id is null or not exists (
+    select 1
+    from public.projects as p
+    where p.id = target_project_id
+      and (
+        p.userid = actor_id
+        or (p.roomid is not null and public.is_room_member(p.roomid, actor_id))
+      )
+  ) then
+    raise exception using errcode = '42501', message = '프로젝트 멤버만 블라인드 평가를 다시 시작할 수 있습니다.';
+  end if;
+
+  update public.ideas
+  set status = 'approved', updatedat = now()
+  where projectid = target_project_id and status = 'selected';
+
+  update public.projectflows
+  set selectedideaid = null,
+      coachresult = null,
+      blindanalysis = null,
+      evaluationround = evaluationround + 1,
+      updatedat = now()
+  where projectid = target_project_id;
+end;
+$$;
+
+revoke all on function public.restart_blind_evaluation(uuid) from public, anon;
+grant execute on function public.restart_blind_evaluation(uuid) to authenticated;
+
+-- Deleting an idea changes the candidate set, so any stored AI comparison is stale.
+create or replace function public.invalidate_coach_result_after_idea_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  update public.projectflows
+  set coachresult = null,
+      blindanalysis = null,
+      updatedat = now()
+  where projectid = old.projectid;
+
+  return old;
+end;
+$$;
+
+drop trigger if exists ideasinvalidatecoachresultafterdelete on public.ideas;
+create trigger ideasinvalidatecoachresultafterdelete
+  after delete on public.ideas
+  for each row execute function public.invalidate_coach_result_after_idea_delete();
 
 -- Project mind maps keep structural nodes separate from ideas.
 alter table public.ideas add column if not exists legacystructural boolean not null default false;
