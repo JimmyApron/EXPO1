@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     width: 4,
     alignSelf: 'stretch',
     borderRadius: 2,
-    backgroundColor: '#4050D0',
+    backgroundColor: '#F59E0B',
   },
   copy: {
     flex: 1,

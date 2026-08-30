@@ -435,7 +435,7 @@ const styles = StyleSheet.create({
   candidateToolbar: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.two },
   toolbarActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   textButton: { minHeight: ControlHeight.touch, justifyContent: 'center', paddingHorizontal: Spacing.two },
-  textButtonLabel: { color: '#4050D0' },
+  textButtonLabel: { color: '#F59E0B' },
   candidateList: { gap: Spacing.three },
   emptyState: { gap: Spacing.one, borderRadius: Radius.medium, padding: Spacing.three },
   errorText: { color: '#b91c1c' },

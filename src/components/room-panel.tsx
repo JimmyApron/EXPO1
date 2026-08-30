@@ -1056,7 +1056,7 @@ const styles = StyleSheet.create({
     paddingLeft: Spacing.two,
   },
   roomToggleText: {
-    color: '#4050D0',
+    color: '#F59E0B',
   },
   metricRow: {
     flexDirection: 'row',
@@ -1132,7 +1132,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
   },
   dDayText: {
-    color: '#3442B8',
+    color: '#D97706',
   },
   form: {
     gap: Spacing.three,
@@ -1171,7 +1171,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   codeText: {
-    color: '#3442B8',
+    color: '#D97706',
     letterSpacing: 1,
   },
   codeCopyButton: {
@@ -1249,7 +1249,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     minHeight: ControlHeight.button,
     borderRadius: Radius.medium,
-    backgroundColor: '#4050D0',
+    backgroundColor: '#F59E0B',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,

@@ -3,55 +3,56 @@ import '@/global.css';
 import { Platform } from 'react-native';
 
 /**
- * Watt design tokens. Keep semantic names here so screens remain readable and
- * light/dark mode never depends on a one-off color choice.
+ * Watt design tokens.
+ * 따뜻한 크림 배경(#FAF7F2), 화이트 카드(#FFFFFF), 옐로우/오렌지 포인트(#F59E0B), 딥 네이비 텍스트(#1E293B)
  */
 export const Colors = {
   light: {
-    text: '#171B32',
-    textSecondary: '#555E78',
-    textTertiary: '#7B839B',
-    background: '#F7F8FD',
-    backgroundElement: '#FFFFFF',
-    backgroundSelected: '#E9ECF8',
-    surface: '#FFFFFF',
-    surfaceElevated: '#FFFFFF',
-    primary: '#4050D0',
-    primaryHover: '#3442B8',
-    primarySoft: '#EEF0FF',
-    primaryText: '#FFFFFF',
-    border: '#DCE0EF',
-    divider: '#E9EBF4',
-    success: '#20B86B',
-    successSoft: '#E7F8EF',
-    warning: '#B56713',
-    warningSoft: '#FFF3DF',
-    danger: '#C93C4A',
-    dangerSoft: '#FFF0F1',
-    overlay: 'rgba(17, 24, 39, 0.56)',
+    text: '#1E293B',                     // 짙은 네이비 본문
+    textSecondary: '#64748B',            // 보조 회색 텍스트
+    textTertiary: '#94A3B8',             // 흐린 텍스트/비활성 아이콘
+    background: '#FAF7F2',               // 앱 전체 부드러운 크림 배경
+    backgroundElement: '#FFFFFF',        // 컴포넌트/카드 기본 흰색
+    backgroundSelected: '#FEF3C7',       // 선택된 항목 연노랑 배경
+    surface: '#FFFFFF',                  // 메인 서피스 흰색
+    surfaceElevated: '#FFFFFF',          // 모달/팝업 서피스 흰색
+    primary: '#F59E0B',                  // 메인 옐로우/오렌지
+    primaryHover: '#D97706',             // 버튼 호버 딥 오렌지
+    primarySoft: '#FEF3C7',              // 연노랑 하이라이트
+    primaryText: '#FFFFFF',              // 버튼 위 흰색 텍스트
+    border: '#F3E8D6',                   // 부드러운 크림 테두리
+    divider: '#EFE6D8',                  // 얇은 구분선
+    success: '#10B981',                  // 완료/성공 에메랄드
+    successSoft: '#ECFDF5',              // 성공 연초록
+    warning: '#D97706',                  // 경고/D-Day 딥 오렌지
+    warningSoft: '#FEF3C7',              // 경고 연노랑
+    danger: '#EF4444',                   // 위험/삭제 레드
+    dangerSoft: '#FEF2F2',               // 위험 연빨강
+    overlay: 'rgba(15, 23, 42, 0.45)',   // 모달 뒷배경 오버레이
   },
   dark: {
-    text: '#F4F6FB',
-    textSecondary: '#B6BED0',
-    textTertiary: '#8993A8',
-    background: '#101329',
-    backgroundElement: '#191D38',
-    backgroundSelected: '#2A3058',
-    surface: '#191D38',
-    surfaceElevated: '#222746',
-    primary: '#7B87F2',
-    primaryHover: '#929CF8',
-    primarySoft: '#282F64',
+    // 다크모드에서도 어두운 남색 대신 동일한 밝고 부드러운 톤 유지
+    text: '#1E293B',
+    textSecondary: '#64748B',
+    textTertiary: '#94A3B8',
+    background: '#FAF7F2',
+    backgroundElement: '#FFFFFF',
+    backgroundSelected: '#FEF3C7',
+    surface: '#FFFFFF',
+    surfaceElevated: '#FFFFFF',
+    primary: '#F59E0B',
+    primaryHover: '#D97706',
+    primarySoft: '#FEF3C7',
     primaryText: '#FFFFFF',
-    border: '#363D66',
-    divider: '#2B3154',
-    success: '#45D58D',
-    successSoft: '#173E30',
-    warning: '#F5B85B',
-    warningSoft: '#49351A',
-    danger: '#FF8B94',
-    dangerSoft: '#4A232A',
-    overlay: 'rgba(3, 6, 12, 0.72)',
+    border: '#F3E8D6',
+    divider: '#EFE6D8',
+    success: '#10B981',
+    successSoft: '#ECFDF5',
+    warning: '#D97706',
+    warningSoft: '#FEF3C7',
+    danger: '#EF4444',
+    dangerSoft: '#FEF2F2',
+    overlay: 'rgba(15, 23, 42, 0.45)',
   },
 } as const;
 
@@ -98,30 +99,30 @@ export const Radius = {
 } as const;
 
 export const ControlHeight = {
-  input: 48,
-  button: 46,
-  touch: 44,
+  input: 44,
+  button: 44,
+  touch: 40,
 } as const;
 
 export const Shadows = {
   card: Platform.select({
-    web: { boxShadow: '0 8px 28px rgba(30, 41, 59, 0.07)' },
+    web: { boxShadow: '0 4px 20px rgba(30, 41, 59, 0.05)' },
     default: {
-      shadowColor: '#0F172A',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.08,
-      shadowRadius: 14,
+      shadowColor: '#1E293B',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.05,
+      shadowRadius: 10,
       elevation: 2,
     },
   }),
   floating: Platform.select({
-    web: { boxShadow: '0 16px 48px rgba(15, 23, 42, 0.16)' },
+    web: { boxShadow: '0 12px 36px rgba(15, 23, 42, 0.12)' },
     default: {
-      shadowColor: '#0F172A',
-      shadowOffset: { width: 0, height: 12 },
-      shadowOpacity: 0.16,
-      shadowRadius: 24,
-      elevation: 7,
+      shadowColor: '#1E293B',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.12,
+      shadowRadius: 20,
+      elevation: 6,
     },
   }),
 } as const;

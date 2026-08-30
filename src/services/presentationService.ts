@@ -6,7 +6,7 @@ const sampleSlides = [
     type: 'title' as const,
     title: '프로젝트 발표',
     content: '서비스 소개와 핵심 기능을 한눈에 보여줍니다.',
-    accent: '#4050D0',
+    accent: '#F59E0B',
   },
   {
     id: 'slide-2',

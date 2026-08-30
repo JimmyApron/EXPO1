@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
   },
   bulkFilterText: {
-    color: '#4050D0',
+    color: '#F59E0B',
   },
   settingsGrid: {
     flexDirection: 'row',
@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
     color: '#475569',
   },
   activeSettingText: {
-    color: '#3442B8',
+    color: '#D97706',
   },
   settingStepperRow: {
     flexDirection: 'row',

@@ -13,14 +13,28 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandIcon } from '@/components/brand-icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
+import { Radius, Shadows, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
-import { useTheme } from '@/hooks/use-theme';
 import { issupabaseconfigured } from '@/lib/supabase';
+
+// 🎨 디자인 시스템 컬러 팔레트
+const PALETTE = {
+  primary: '#F59E0B',        // 메인 옐로우/오렌지
+  primaryLight: '#FEF3C7',   // 연노랑 (배경 하이라이트)
+  primaryDark: '#D97706',    // 딥 오렌지
+  background: '#FAF7F2',     // 부드러운 크림/오프화이트 배경
+  card: '#FFFFFF',           // 깨끗한 흰색 카드
+  cardBorder: '#F3E8D6',     // 연한 크림 테두리
+  inputBg: '#FFFFFF',        // 입력창 배경
+  inputBorder: '#E2E8F0',    // 인풋 테두리
+  text: '#1E293B',           // 짙은 네이비 (본문/제목)
+  textSecondary: '#64748B',  // 보조 텍스트 그레이
+  success: '#10B981',        // 성공 초록
+  danger: '#EF4444',         // 리스크/경고 빨강
+};
 
 export function AuthScreen() {
   const { signin, signup, autherror } = useAuth();
-  const theme = useTheme();
   const { width } = useWindowDimensions();
   const isWide = width >= 880;
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -29,15 +43,6 @@ export function AuthScreen() {
   const [message, setMessage] = useState('');
   const [formerror, setFormerror] = useState('');
   const [isbusy, setIsbusy] = useState(false);
-
-  const inputStyle = [
-    styles.input,
-    {
-      borderColor: theme.backgroundSelected,
-      color: theme.text,
-      backgroundColor: theme.background,
-    },
-  ];
 
   const handleSubmit = async () => {
     setMessage('');
@@ -70,11 +75,12 @@ export function AuthScreen() {
 
   if (!issupabaseconfigured) {
     return (
-      <ThemedView style={[styles.centerContainer, { backgroundColor: theme.background }]}>
-        <ThemedText type="subtitle">Supabase 설정 필요</ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.centerText}>
-          EXPO_PUBLIC_SUPABASE_URL과 EXPO_PUBLIC_SUPABASE_ANON_KEY를 설정한 뒤 앱을 다시
-          시작하세요.
+      <ThemedView style={[styles.centerContainer, { backgroundColor: PALETTE.background }]}>
+        <ThemedText type="subtitle" style={{ color: PALETTE.text }}>
+          Supabase 설정 필요
+        </ThemedText>
+        <ThemedText style={[styles.centerText, { color: PALETTE.textSecondary }]}>
+          EXPO_PUBLIC_SUPABASE_URL과 EXPO_PUBLIC_SUPABASE_ANON_KEY를 설정한 뒤 앱을 다시 시작하세요.
         </ThemedText>
       </ThemedView>
     );
@@ -82,51 +88,81 @@ export function AuthScreen() {
 
   return (
     <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
+      style={[styles.scrollView, { backgroundColor: PALETTE.background }]}
       contentContainerStyle={styles.scrollContent}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={[styles.container, isWide && styles.containerWide]}>
+        <View style={[styles.container, isWide && styles.containerWide]}>
+          {/* 좌측/상단 브랜딩 영역 */}
           <View style={[styles.brandPanel, isWide && styles.brandPanelWide]}>
-            <BrandIcon size={isWide ? 112 : 82} />
+            <View style={styles.iconContainer}>
+              <BrandIcon size={isWide ? 104 : 72} />
+            </View>
             <View style={styles.header}>
-              <ThemedText type="title" style={styles.wordmark}>Watt</ThemedText>
-              <ThemedText themeColor="textSecondary" style={styles.brandCopy}>
+              <ThemedText type="title" style={[styles.wordmark, { color: PALETTE.text }]}>
+                Watt
+              </ThemedText>
+              <ThemedText style={[styles.brandCopy, { color: PALETTE.textSecondary }]}>
                 아이디어를 모아 실행 가능한 과제로 발전시켜 보세요.
               </ThemedText>
             </View>
+
             {isWide ? (
-              <View style={[styles.brandNote, { borderColor: theme.divider }]}>
-                <ThemedText type="smallBold">아이디어에서 결과물까지</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+              <View
+                style={[
+                  styles.brandNote,
+                  { borderColor: PALETTE.cardBorder, backgroundColor: PALETTE.primaryLight },
+                ]}>
+                <ThemedText type="smallBold" style={{ color: PALETTE.text }}>
+                  💡 아이디어에서 결과물까지
+                </ThemedText>
+                <ThemedText type="small" style={{ color: PALETTE.textSecondary }}>
                   팀의 생각을 정리하고, 검토하고, 실제 발표와 MVP 계획으로 연결합니다.
                 </ThemedText>
               </View>
             ) : null}
           </View>
 
-          <ThemedView
-            type="surfaceElevated"
-            style={[styles.form, { borderColor: theme.border }, Shadows.floating]}>
+          {/* 우측/하단 로그인 폼 카드 */}
+          <View
+            style={[
+              styles.form,
+              { backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder },
+              Shadows.floating,
+            ]}>
             <View style={styles.formHeader}>
-              <ThemedText type="subtitle" style={styles.formTitle}>
+              <ThemedText type="subtitle" style={[styles.formTitle, { color: PALETTE.text }]}>
                 {mode === 'signin' ? '다시 만나 반가워요' : 'Watt 시작하기'}
               </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {mode === 'signin' ? '계정으로 로그인해 작업을 이어가세요.' : '새 계정을 만들고 첫 과제를 시작하세요.'}
+              <ThemedText type="small" style={{ color: PALETTE.textSecondary }}>
+                {mode === 'signin'
+                  ? '계정으로 로그인해 작업을 이어가세요.'
+                  : '새 계정을 만들고 첫 과제를 시작하세요.'}
               </ThemedText>
             </View>
-            <View style={styles.modeRow}>
+
+            {/* 로그인 / 회원가입 탭 토글 */}
+            <View
+              style={[
+                styles.modeRow,
+                { backgroundColor: PALETTE.background, borderColor: PALETTE.cardBorder },
+              ]}>
               <Pressable
                 accessibilityRole="tab"
                 accessibilityState={{ selected: mode === 'signin' }}
                 onPress={() => setMode('signin')}
                 style={({ pressed }) => [
                   styles.modeButton,
-                  { borderColor: theme.border },
-                  mode === 'signin' && { backgroundColor: theme.primary },
+                  mode === 'signin' && styles.activeModeButton,
                   pressed && styles.pressed,
                 ]}>
-                <ThemedText type="smallBold" style={mode === 'signin' && styles.activeModeText}>
+                <ThemedText
+                  type="smallBold"
+                  style={[
+                    styles.modeText,
+                    mode === 'signin'
+                      ? styles.activeModeText
+                      : { color: PALETTE.textSecondary },
+                  ]}>
                   로그인
                 </ThemedText>
               </Pressable>
@@ -136,18 +172,27 @@ export function AuthScreen() {
                 onPress={() => setMode('signup')}
                 style={({ pressed }) => [
                   styles.modeButton,
-                  { borderColor: theme.border },
-                  mode === 'signup' && { backgroundColor: theme.primary },
+                  mode === 'signup' && styles.activeModeButton,
                   pressed && styles.pressed,
                 ]}>
-                <ThemedText type="smallBold" style={mode === 'signup' && styles.activeModeText}>
+                <ThemedText
+                  type="smallBold"
+                  style={[
+                    styles.modeText,
+                    mode === 'signup'
+                      ? styles.activeModeText
+                      : { color: PALETTE.textSecondary },
+                  ]}>
                   회원가입
                 </ThemedText>
               </Pressable>
             </View>
 
+            {/* 입력 폼 */}
             <View style={styles.field}>
-              <ThemedText type="smallBold">이메일</ThemedText>
+              <ThemedText type="smallBold" style={{ color: PALETTE.text }}>
+                이메일
+              </ThemedText>
               <TextInput
                 value={email}
                 onChangeText={setEmail}
@@ -155,13 +200,22 @@ export function AuthScreen() {
                 autoComplete="email"
                 keyboardType="email-address"
                 placeholder="you@example.com"
-                placeholderTextColor={theme.textSecondary}
-                style={inputStyle}
+                placeholderTextColor={PALETTE.textSecondary}
+                style={[
+                  styles.input,
+                  {
+                    borderColor: PALETTE.inputBorder,
+                    color: PALETTE.text,
+                    backgroundColor: PALETTE.inputBg,
+                  },
+                ]}
               />
             </View>
 
             <View style={styles.field}>
-              <ThemedText type="smallBold">비밀번호</ThemedText>
+              <ThemedText type="smallBold" style={{ color: PALETTE.text }}>
+                비밀번호
+              </ThemedText>
               <TextInput
                 value={password}
                 onChangeText={setPassword}
@@ -169,28 +223,37 @@ export function AuthScreen() {
                 autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                 secureTextEntry
                 placeholder="6자 이상"
-                placeholderTextColor={theme.textSecondary}
-                style={inputStyle}
+                placeholderTextColor={PALETTE.textSecondary}
+                style={[
+                  styles.input,
+                  {
+                    borderColor: PALETTE.inputBorder,
+                    color: PALETTE.text,
+                    backgroundColor: PALETTE.inputBg,
+                  },
+                ]}
               />
             </View>
 
+            {/* 피드백 메시지 */}
             {message ? (
-              <ThemedText type="small" style={[styles.messageText, { color: theme.success }]}>
+              <ThemedText type="small" style={[styles.messageText, { color: PALETTE.success }]}>
                 {message}
               </ThemedText>
             ) : null}
             {formerror || autherror ? (
-              <ThemedText type="small" style={[styles.errorText, { color: theme.danger }]}>
+              <ThemedText type="small" style={[styles.errorText, { color: PALETTE.danger }]}>
                 {formerror || autherror}
               </ThemedText>
             ) : null}
 
+            {/* 메인 액션 버튼 */}
             <Pressable
               disabled={isbusy}
               onPress={handleSubmit}
               style={({ pressed }) => [
                 styles.primaryButton,
-                { backgroundColor: theme.primary },
+                { backgroundColor: PALETTE.primary },
                 (pressed || isbusy) && styles.pressed,
               ]}>
               {isbusy ? (
@@ -201,8 +264,8 @@ export function AuthScreen() {
                 </ThemedText>
               )}
             </Pressable>
-          </ThemedView>
-        </ThemedView>
+          </View>
+        </View>
       </SafeAreaView>
     </ScrollView>
   );
@@ -224,12 +287,13 @@ const styles = StyleSheet.create({
   },
   container: {
     width: '100%',
-    maxWidth: 1040,
+    maxWidth: 960,
     gap: Spacing.four,
   },
   containerWide: {
     flexDirection: 'row',
-    alignItems: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.six,
   },
   centerContainer: {
@@ -243,38 +307,44 @@ const styles = StyleSheet.create({
     maxWidth: 560,
     textAlign: 'center',
   },
+  iconContainer: {
+    marginBottom: Spacing.one,
+  },
   header: {
     gap: Spacing.two,
   },
   brandPanel: {
     flex: 1,
     justifyContent: 'center',
-    gap: Spacing.four,
-    paddingVertical: Spacing.three,
+    gap: Spacing.three,
+    paddingVertical: Spacing.two,
   },
   brandPanelWide: {
-    minHeight: 520,
-    paddingHorizontal: Spacing.four,
+    minHeight: 480,
+    paddingHorizontal: Spacing.three,
   },
   wordmark: {
-    fontSize: 46,
-    lineHeight: 52,
-    letterSpacing: -1.6,
+    fontSize: 42,
+    lineHeight: 48,
+    fontWeight: '800',
+    letterSpacing: -1.2,
   },
   brandCopy: {
-    maxWidth: 460,
-    fontSize: 18,
-    lineHeight: 28,
+    maxWidth: 440,
+    fontSize: 16,
+    lineHeight: 24,
   },
   brandNote: {
-    maxWidth: 440,
+    maxWidth: 420,
     gap: Spacing.one,
-    borderTopWidth: 1,
-    paddingTop: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    padding: Spacing.three,
+    marginTop: Spacing.two,
   },
   form: {
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 440,
     alignSelf: 'center',
     gap: Spacing.four,
     borderWidth: 1,
@@ -285,21 +355,35 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   formTitle: {
-    fontSize: 22,
-    lineHeight: 30,
+    fontSize: 20,
+    lineHeight: 28,
+    fontWeight: '700',
   },
   modeRow: {
     flexDirection: 'row',
+    borderWidth: 1,
     borderRadius: Radius.medium,
-    gap: Spacing.one,
+    padding: 3,
+    gap: 4,
   },
   modeButton: {
-    minHeight: ControlHeight.touch,
+    minHeight: 38,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderRadius: Radius.small,
+  },
+  activeModeButton: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  modeText: {
+    fontSize: 14,
   },
   activeModeText: {
     color: '#ffffff',
@@ -308,7 +392,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   input: {
-    minHeight: ControlHeight.input,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: Radius.medium,
     fontSize: 16,
@@ -317,7 +401,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   primaryButton: {
-    minHeight: ControlHeight.button,
+    minHeight: 46,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.medium,
@@ -325,7 +409,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
   messageText: {
     fontWeight: '600',

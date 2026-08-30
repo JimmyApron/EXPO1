@@ -9,7 +9,7 @@ import { NotificationKindLabels, type AppNotification, type NotificationKind } f
 const kindColors: Record<NotificationKind, { background: string; text: string }> = {
   deadline: { background: '#fee2e2', text: '#b91c1c' },
   ideareview: { background: '#fef3c7', text: '#92400e' },
-  finalselection: { background: '#EEF0FF', text: '#3442B8' },
+  finalselection: { background: '#FEF3C7', text: '#D97706' },
   stalledidea: { background: '#f1f5f9', text: '#475569' },
   feedback: { background: '#E7F8EF', text: '#168B51' },
   likesurge: { background: '#fce7f3', text: '#be185d' },

@@ -35,11 +35,11 @@ type BlindSwipeEvaluationProps = {
   onGoToMvp: () => void;
 };
 
-const orange = '#F59A00';
+const orange = '#F59E0B';
 const orangeDark = '#D97706';
-const cream = '#FFF9ED';
-const navy = '#171B32';
-const muted = '#667085';
+const cream = '#FAF7F2';
+const navy = '#1E293B';
+const muted = '#64748B';
 const cardExitDistance = 520;
 const swipeThreshold = 86;
 

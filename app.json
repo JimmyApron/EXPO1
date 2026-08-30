@@ -4,25 +4,25 @@
     "slug": "EXPO1",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/watt-icon.png",
-    "backgroundColor": "#4050D0",
-    "primaryColor": "#4050D0",
+    "icon": "./assets/images/brand-icon.png",
+    "backgroundColor": "#FAF7F2",
+    "primaryColor": "#F59E0B",
     "scheme": "expo1",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/watt-icon.png"
+      "icon": "./assets/images/brand-icon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#4050D0",
-        "foregroundImage": "./assets/images/watt-icon.png"
+        "backgroundColor": "#F59E0B",
+        "foregroundImage": "./assets/images/brand-icon.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.EXPO1"
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/watt-icon.png"
+      "favicon": "./assets/images/brand-icon.png"
     },
     "plugins": [
       "expo-router",
@@ -37,13 +37,13 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#4050D0",
-          "image": "./assets/images/watt-icon.png",
+          "backgroundColor": "#FAF7F2",
+          "image": "./assets/images/brand-icon.png",
           "imageWidth": 180,
           "resizeMode": "contain",
           "dark": {
-            "backgroundColor": "#4050D0",
-            "image": "./assets/images/watt-icon.png"
+            "backgroundColor": "#FAF7F2",
+            "image": "./assets/images/brand-icon.png"
           }
         }
       ],
