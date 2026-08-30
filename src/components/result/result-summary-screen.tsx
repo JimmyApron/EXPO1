@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { IdeaResultCard } from '@/components/result/idea-result-card';
 import { ThemedText } from '@/components/themed-text';
@@ -8,15 +8,127 @@ import { ControlHeight, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { IdeaResultData } from '@/types/result';
 
-type Props = { data: IdeaResultData; selectedIdeaId?: string | null; onGoToEvaluation: () => void; onSelectIdea: (ideaId: string) => Promise<void> };
+type ResultSummaryScreenProps = {
+  data: IdeaResultData;
+  selectedIdeaId?: string | null;
+  canSelect: boolean;
+  selectionHint: string;
+  isRanking: boolean;
+  rankingError: string;
+  onRetryRanking: () => void;
+  onSelectIdea: (ideaId: string) => Promise<void>;
+  onGoToMvp: () => void;
+};
 
-export function ResultSummaryScreen({ data, selectedIdeaId, onGoToEvaluation, onSelectIdea }: Props) {
+export function ResultSummaryScreen({
+  data,
+  selectedIdeaId,
+  canSelect,
+  selectionHint,
+  isRanking,
+  rankingError,
+  onRetryRanking,
+  onSelectIdea,
+  onGoToMvp,
+}: ResultSummaryScreenProps) {
   const [selectingId, setSelectingId] = useState<string | null>(null);
   const theme = useTheme();
-  if (!data.currentUserEvaluatedAll) return <ThemedView type="backgroundElement" style={[styles.locked, { borderColor: theme.border }]}><ThemedText type="cardTitle">모든 아이디어를 평가하면 현재 결과를 볼 수 있어요</ThemedText><ThemedText type="small" themeColor="textSecondary">평가 전에는 AI 추천 순위와 다른 팀원의 결과를 공개하지 않아요.</ThemedText><Pressable accessibilityRole="button" onPress={onGoToEvaluation} style={[styles.evaluateButton, { borderColor: theme.primary }]}><ThemedText type="button" style={{ color: theme.primary }}>아이디어 평가하러 가기</ThemedText></Pressable></ThemedView>;
-  const canSelect = data.currentUserRole === 'leader' || data.currentParticipantCount >= Math.ceil(data.teamSize / 2);
-  const select = async (ideaId: string) => { setSelectingId(ideaId); try { await onSelectIdea(ideaId); } finally { setSelectingId(null); } };
-  return <View style={styles.container}><View style={styles.heading}><View><ThemedText type="sectionTitle">중간 결과</ThemedText><ThemedText type="small" themeColor="textSecondary">다른 팀원이 평가하면 참여 인원과 통과율이 갱신될 수 있어요.</ThemedText></View><View style={[styles.participants, { backgroundColor: theme.primarySoft }]}><ThemedText type="smallBold" style={{ color: theme.primary }}>현재 {data.currentParticipantCount}명 참여</ThemedText><ThemedText type="caption" style={{ color: theme.primary }}>팀 {data.teamSize}명</ThemedText></View></View><View style={styles.list}>{[...data.ideas].sort((a, b) => a.aiRank - b.aiRank).map((idea) => <IdeaResultCard key={idea.id} idea={idea} canSelect={canSelect} isSelected={selectedIdeaId === idea.id} isSelecting={selectingId === idea.id} onSelect={() => void select(idea.id)} />)}</View></View>;
+  const sortedIdeas = [...data.ideas].sort(
+    (left, right) => (left.aiRank ?? Number.MAX_SAFE_INTEGER) - (right.aiRank ?? Number.MAX_SAFE_INTEGER),
+  );
+
+  const select = async (ideaId: string) => {
+    if (selectingId) return;
+    setSelectingId(ideaId);
+    try {
+      await onSelectIdea(ideaId);
+    } finally {
+      setSelectingId(null);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.heading}>
+        <View style={styles.headingCopy}>
+          <ThemedText type="sectionTitle">중간 결과</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            다른 팀원이 평가하면 참여 인원과 통과율이 실시간으로 갱신돼요.
+          </ThemedText>
+        </View>
+        <View style={[styles.participants, { backgroundColor: theme.primarySoft }]}>
+          <ThemedText type="smallBold" style={{ color: theme.primary }}>
+            현재 {data.currentParticipantCount}명 참여
+          </ThemedText>
+        </View>
+      </View>
+
+      {isRanking ? (
+        <ThemedView type="backgroundElement" style={[styles.rankingNotice, { borderColor: theme.border }]}>
+          <ActivityIndicator color={theme.primary} />
+          <ThemedText type="small" themeColor="textSecondary">평가가 끝나 AI 추천 순위를 계산하고 있어요.</ThemedText>
+        </ThemedView>
+      ) : null}
+      {rankingError ? (
+        <ThemedView type="dangerSoft" style={styles.rankingNotice}>
+          <ThemedText type="small" style={{ color: theme.danger }}>{rankingError}</ThemedText>
+          <Pressable accessibilityRole="button" onPress={onRetryRanking} style={[styles.retryButton, { borderColor: theme.danger }]}>
+            <ThemedText type="smallBold">AI 순위 다시 분석</ThemedText>
+          </Pressable>
+        </ThemedView>
+      ) : null}
+
+      <View style={styles.list}>
+        {sortedIdeas.map((idea) => (
+          <IdeaResultCard
+            key={idea.id}
+            idea={idea}
+            canSelect={canSelect}
+            isSelected={selectedIdeaId === idea.id}
+            isSelecting={selectingId === idea.id}
+            isDisabled={isRanking || Boolean(selectingId)}
+            selectionHint={selectionHint}
+            onSelect={() => void select(idea.id)}
+            onGoToMvp={onGoToMvp}
+          />
+        ))}
+      </View>
+    </View>
+  );
 }
 
-const styles = StyleSheet.create({ container: { gap: Spacing.three }, heading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.three }, participants: { minWidth: 116, alignItems: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two }, list: { gap: Spacing.three }, locked: { alignItems: 'center', gap: Spacing.two, borderWidth: 1, borderRadius: Radius.large, padding: Spacing.four }, evaluateButton: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, marginTop: Spacing.one } });
+const styles = StyleSheet.create({
+  container: { gap: Spacing.three },
+  heading: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+  },
+  headingCopy: { flex: 1, minWidth: 220, gap: Spacing.one },
+  participants: {
+    minWidth: 140,
+    alignItems: 'center',
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  rankingNotice: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    padding: Spacing.three,
+  },
+  retryButton: {
+    minHeight: ControlHeight.touch,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
+  },
+  list: { gap: Spacing.three },
+});

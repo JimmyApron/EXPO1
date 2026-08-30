@@ -1,5 +1,3 @@
-export type ResultUserRole = 'leader' | 'member';
-
 export type MvpSummary = {
   core: string;
   essentialFeatures: string[];
@@ -10,21 +8,17 @@ export type MvpSummary = {
 
 export type IdeaResult = {
   id: string;
-  title: string;
+  label: string;
   passCount: number;
   participantCount: number;
   passRate: number;
-  aiRank: number;
-  aiStrength: string;
+  aiRank: number | null;
+  aiAdvantages: string[];
   aiRisk: string;
   difficulty: string;
-  mvpSummary: MvpSummary;
 };
 
 export type IdeaResultData = {
   currentParticipantCount: number;
-  teamSize: number;
-  currentUserEvaluatedAll: boolean;
-  currentUserRole: ResultUserRole;
   ideas: IdeaResult[];
 };

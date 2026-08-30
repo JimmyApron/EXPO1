@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { MvpSummaryCard } from '@/components/result/mvp-summary-card';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useMvpPlan } from '@/hooks/use-mvp-plan';
 import type { useProjectFlow } from '@/hooks/use-project-flow';
@@ -91,57 +92,41 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
 
       {plan ? (
         <>
-          <ThemedView type="primarySoft" style={[styles.summaryCard, { borderColor: theme.primary }]}>
-            <ThemedText type="smallBold">{plan.ideaTitle}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">{plan.summary}</ThemedText>
-          </ThemedView>
-          <Section title="화면 구조와 와이어프레임 초안">
-            {plan.screens.map((screen) => (
-              <View key={screen.name} style={styles.wireframe}>
-                <ThemedText type="smallBold">{screen.name}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">{screen.purpose}</ThemedText>
-                <View style={[styles.wireframeBox, { borderColor: theme.primary }]}>
-                  {screen.wireframe.map((block) => (
-                    <View key={block} style={[styles.wireframeBlock, { backgroundColor: theme.primarySoft }]}>
-                      <ThemedText type="small">{block}</ThemedText>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ))}
-          </Section>
-          <Section title="전체 개발 일정">
-            {plan.schedule.map((step) => (
-              <View key={step.period} style={styles.timeline}>
-                <ThemedText type="smallBold" style={{ color: theme.primary }}>{step.period}</ThemedText>
-                <View style={styles.grow}>
-                  <ThemedText type="smallBold">{step.goal}</ThemedText>
-                  <BulletList items={step.tasks} />
-                </View>
-              </View>
-            ))}
-          </Section>
-          <Section title="팀원 역할 분담">
-            <View style={styles.grid}>
-              {plan.teamRoles.map((role) => (
-                <View key={role.role} style={[styles.innerCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
-                  <ThemedText type="smallBold">{role.role}</ThemedText>
-                  <BulletList items={role.responsibilities} />
+          <ThemedText type="smallBold" style={{ color: theme.primary }}>{plan.ideaTitle}</ThemedText>
+          <MvpSummaryCard
+            summary={{
+              core: plan.summary,
+              essentialFeatures: plan.mustHaveFeatures.map((feature) => `${feature.name} — ${feature.description}`),
+              laterFeatures: plan.laterFeatures.map((feature) => `${feature.name} — ${feature.description}`),
+              schedule: plan.schedule.map((step) => `${step.period} · ${step.goal} · ${step.tasks.join(', ')}`),
+              requiredApis: plan.apis.map((api) => `${api.method} ${api.name} · ${api.purpose}`),
+            }}>
+            <Section title="화면 구조와 와이어프레임 초안">
+              {plan.screens.map((screen) => (
+                <View key={screen.name} style={styles.wireframe}>
+                  <ThemedText type="smallBold">{screen.name}</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">{screen.purpose}</ThemedText>
+                  <View style={[styles.wireframeBox, { borderColor: theme.primary }]}>
+                    {screen.wireframe.map((block) => (
+                      <View key={block} style={[styles.wireframeBlock, { backgroundColor: theme.primarySoft }]}>
+                        <ThemedText type="small">{block}</ThemedText>
+                      </View>
+                    ))}
+                  </View>
                 </View>
               ))}
-            </View>
-          </Section>
-          <Section title="필요 API 목록">
-            {plan.apis.map((api) => (
-              <View key={api.name} style={styles.apiRow}>
-                <ThemedText type="smallBold" style={{ color: theme.primary }}>{api.method}</ThemedText>
-                <View style={styles.grow}>
-                  <ThemedText type="smallBold">{api.name}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">{api.purpose}</ThemedText>
-                </View>
+            </Section>
+            <Section title="팀원 역할 분담">
+              <View style={styles.grid}>
+                {plan.teamRoles.map((role) => (
+                  <View key={role.role} style={[styles.innerCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
+                    <ThemedText type="smallBold">{role.role}</ThemedText>
+                    <BulletList items={role.responsibilities} />
+                  </View>
+                ))}
               </View>
-            ))}
-          </Section>
+            </Section>
+          </MvpSummaryCard>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="발표자료 단계로 이동"
@@ -161,7 +146,6 @@ const styles = StyleSheet.create({
   primaryButton: { minHeight: ControlHeight.button, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: Spacing.four, borderRadius: Radius.medium },
   whiteText: { color: '#fff' },
   pressed: { opacity: 0.7 },
-  summaryCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
   noticeCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
   card: { gap: Spacing.three, borderWidth: 1, borderRadius: Radius.large, padding: Spacing.four },
   sectionTitle: { fontSize: 18, lineHeight: 26 },
@@ -169,9 +153,6 @@ const styles = StyleSheet.create({
   wireframe: { gap: Spacing.two },
   wireframeBox: { gap: Spacing.two, borderWidth: 1, borderStyle: 'dashed', borderRadius: Radius.medium, padding: Spacing.two },
   wireframeBlock: { padding: Spacing.two, borderRadius: Radius.small },
-  timeline: { flexDirection: 'row', gap: Spacing.three },
-  grow: { flex: 1, gap: Spacing.one },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   innerCard: { minWidth: 220, flex: 1, gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
-  apiRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
 });

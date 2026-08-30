@@ -57,6 +57,7 @@ import {
 
 type IdeaBoardProps = {
   projectId: string;
+  projectOwnerId: string;
   projectTitle: string;
   projectDeadline?: string | null;
   initialSection?: ProjectSection;
@@ -1353,6 +1354,7 @@ function AnalysisTextBlock({ label, children }: { label: string; children: React
 
 export function IdeaBoard({
   projectId,
+  projectOwnerId,
   projectTitle,
   projectDeadline,
   initialSection = 'home',
@@ -1886,6 +1888,7 @@ export function IdeaBoard({
           {workflowStep === 'selection' ? (
             <BlindSwipeEvaluation
               projectId={projectId}
+              projectOwnerId={projectOwnerId}
               ideas={ideas}
               isLoadingIdeas={isLoadingIdeas}
               loadIdeas={loadIdeas}

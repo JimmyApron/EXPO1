@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -9,12 +9,15 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { ResultSummaryScreen } from '@/components/result/result-summary-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useBlindIdeaAnalysis } from '@/hooks/use-blind-idea-analysis';
+import { useFinalIdeaAnalysis } from '@/hooks/use-final-idea-analysis';
 import { useIdeaEvaluations } from '@/hooks/use-idea-evaluations';
-import { calculateIdeaResults, createBlindIdeaAnalyses } from '@/lib/idea-evaluation';
 import type { useProjectFlow } from '@/hooks/use-project-flow';
+import { calculateIdeaResults, createBlindIdeaAnalyses, createIdeaResultData } from '@/lib/idea-evaluation';
+import { createCoachInputFingerprint, isCoachAnalysisStale } from '@/lib/project-flow';
 import type { EvaluationChoice } from '@/types/idea-evaluation';
 import type { Idea } from '@/types/idea';
 
@@ -22,6 +25,7 @@ type ProjectFlowController = ReturnType<typeof useProjectFlow>;
 
 type BlindSwipeEvaluationProps = {
   projectId: string;
+  projectOwnerId: string;
   ideas: Idea[];
   flowController: ProjectFlowController;
   isLoadingIdeas: boolean;
@@ -39,12 +43,9 @@ const muted = '#667085';
 const cardExitDistance = 520;
 const swipeThreshold = 86;
 
-function resultLabel(label: string) {
-  return label.replace('익명 ', '');
-}
-
 export function BlindSwipeEvaluation({
   projectId,
+  projectOwnerId,
   ideas,
   flowController,
   isLoadingIdeas,
@@ -53,7 +54,7 @@ export function BlindSwipeEvaluation({
   onGoToList,
   onGoToMvp,
 }: BlindSwipeEvaluationProps) {
-  const { saveSelectedIdea } = flowController;
+  const { flow, conditions, saveCoachResult, saveSelectedIdea } = flowController;
   const {
     currentUserId,
     evaluations,
@@ -66,6 +67,7 @@ export function BlindSwipeEvaluation({
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [selectionError, setSelectionError] = useState('');
   const [isSelectingResult, setIsSelectingResult] = useState(false);
+  const recommendationRequestKey = useRef('');
   const translateX = useSharedValue(0);
 
   const candidates = useMemo(
@@ -86,14 +88,73 @@ export function BlindSwipeEvaluation({
     [analyses, displayIdeaId, isTransitioning, remaining],
   );
   const isComplete = analyses.length > 0 && remaining.length === 0;
+  const recommendationFingerprint = useMemo(
+    () => createCoachInputFingerprint(candidates, conditions),
+    [candidates, conditions],
+  );
+  const {
+    analysis: generatedRecommendation,
+    analysisError: recommendationError,
+    canAnalyze: canAnalyzeRecommendation,
+    isAnalyzing: isAnalyzingRecommendation,
+    analyzeIdeas,
+  } = useFinalIdeaAnalysis(projectId, candidates, conditions);
+  const savedRecommendation = flow?.coachresult;
+  const activeRecommendation = generatedRecommendation
+    && !isCoachAnalysisStale(generatedRecommendation, recommendationFingerprint)
+    ? generatedRecommendation
+    : savedRecommendation && !isCoachAnalysisStale(savedRecommendation, recommendationFingerprint)
+      ? savedRecommendation
+      : null;
   const currentParticipantCount = useMemo(
-    () => new Set(evaluations.map((evaluation) => evaluation.userId)).size,
-    [evaluations],
+    () => {
+      const candidateIds = new Set(analyses.map((analysis) => analysis.id));
+      return new Set(
+        evaluations
+          .filter((evaluation) => candidateIds.has(evaluation.ideaId))
+          .map((evaluation) => evaluation.userId),
+      ).size;
+    },
+    [analyses, evaluations],
   );
   const results = useMemo(
     () => calculateIdeaResults(analyses, evaluations, currentParticipantCount),
     [analyses, currentParticipantCount, evaluations],
   );
+  const resultData = useMemo(
+    () => createIdeaResultData(results, activeRecommendation),
+    [activeRecommendation, results],
+  );
+  const teamSize = Math.max(1, conditions.teamSize);
+  const majorityCount = Math.floor(teamSize / 2) + 1;
+  const isProjectLeader = Boolean(currentUserId && currentUserId === projectOwnerId);
+  const canSelectFinalIdea = isProjectLeader || currentParticipantCount >= majorityCount;
+  const selectionHint = `팀장 또는 ${majorityCount}명 이상 참여 후 최종 선정할 수 있어요.`;
+  const selectedIdeaId = flow?.selectedideaid
+    ?? candidates.find((idea) => idea.status === 'selected')?.id
+    ?? null;
+
+  const requestRecommendation = useCallback(async (force = false) => {
+    if (!isComplete || !canAnalyzeRecommendation || activeRecommendation || isAnalyzingRecommendation) return;
+    if (!force && recommendationRequestKey.current === recommendationFingerprint) return;
+    recommendationRequestKey.current = recommendationFingerprint;
+    const recommendation = await analyzeIdeas(recommendationFingerprint);
+    if (recommendation) await saveCoachResult(recommendation);
+  }, [
+    activeRecommendation,
+    analyzeIdeas,
+    canAnalyzeRecommendation,
+    isAnalyzingRecommendation,
+    isComplete,
+    recommendationFingerprint,
+    saveCoachResult,
+  ]);
+
+  useEffect(() => {
+    if (!isComplete || activeRecommendation || recommendationError) return;
+    const timeout = globalThis.setTimeout(() => void requestRecommendation(), 0);
+    return () => globalThis.clearTimeout(timeout);
+  }, [activeRecommendation, isComplete, recommendationError, requestRecommendation]);
 
   const finishTransition = () => {
     translateX.value = 0;
@@ -149,6 +210,10 @@ export function BlindSwipeEvaluation({
 
   const selectForMvp = async (ideaId: string) => {
     if (isSelectingResult) return;
+    if (!canSelectFinalIdea) {
+      setSelectionError(selectionHint);
+      return;
+    }
     setSelectionError('');
     setIsSelectingResult(true);
     const saved = await saveSelectedIdea(ideaId);
@@ -159,7 +224,6 @@ export function BlindSwipeEvaluation({
     }
     await loadIdeas();
     setIsSelectingResult(false);
-    onGoToMvp();
   };
 
   if (isLoadingIdeas || isLoadingEvaluations || !isAnalysisReady || isAnalyzingIdeas) {
@@ -188,37 +252,24 @@ export function BlindSwipeEvaluation({
   if (isComplete && !isTransitioning) {
     return (
       <View style={styles.screen}>
-        <View style={styles.heading}>
-          <ThemedText type="subtitle" style={styles.navyText}>블라인드 평가 결과</ThemedText>
-          <ThemedText type="small" style={styles.mutedText}>모든 후보를 평가했습니다. 이제 결과를 비교해 최종 아이디어를 고르세요.</ThemedText>
-        </View>
         <View style={styles.completeBanner}>
           <ThemedText type="smallBold" style={styles.orangeText}>내 평가는 모두 잠겼습니다</ThemedText>
-          <ThemedText type="small" style={styles.mutedText}>현재 참여 인원 {currentParticipantCount}명</ThemedText>
+          <ThemedText type="small" style={styles.mutedText}>확정한 평가는 수정할 수 없어요.</ThemedText>
         </View>
-        <View style={styles.resultList}>
-          {results.map((result) => (
-            <View key={result.ideaId} style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                <ThemedText type="cardTitle" style={styles.navyText}>{resultLabel(result.anonymousLabel)}</ThemedText>
-                <View style={styles.rateBadge}><ThemedText type="smallBold" style={styles.orangeText}>통과율 {result.passRate}%</ThemedText></View>
-              </View>
-              <ThemedText type="small" style={styles.mutedText}>통과 {result.pickCount}명 · 참여 {result.participantCount}명</ThemedText>
-              <View style={styles.resultDetails}>
-                <ThemedText type="small" style={styles.navyText}>AI 장점 · {result.aiAdvantages.join(' · ')}</ThemedText>
-                <ThemedText type="small" style={styles.navyText}>AI 리스크 · {result.aiRisk}</ThemedText>
-                <ThemedText type="small" style={styles.navyText}>구현 난이도 · {result.difficulty}</ThemedText>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                disabled={isSelectingResult}
-                onPress={() => void selectForMvp(result.ideaId)}
-                style={({ pressed }) => [styles.resultAction, (pressed || isSelectingResult) && styles.pressed]}>
-                <ThemedText type="smallBold" style={styles.whiteText}>이 아이디어로 MVP 시작</ThemedText>
-              </Pressable>
-            </View>
-          ))}
-        </View>
+        <ResultSummaryScreen
+          data={resultData}
+          selectedIdeaId={selectedIdeaId}
+          canSelect={canSelectFinalIdea}
+          selectionHint={selectionHint}
+          isRanking={!activeRecommendation && !recommendationError}
+          rankingError={!activeRecommendation ? recommendationError : ''}
+          onRetryRanking={() => {
+            recommendationRequestKey.current = '';
+            void requestRecommendation(true);
+          }}
+          onSelectIdea={selectForMvp}
+          onGoToMvp={onGoToMvp}
+        />
         {selectionError ? <ThemedText type="small" style={styles.errorText}>{selectionError}</ThemedText> : null}
         {evaluationError ? <ThemedText type="small" style={styles.mutedText}>{evaluationError}</ThemedText> : null}
         {blindAnalysisError ? <ThemedText type="small" style={styles.mutedText}>{blindAnalysisError}</ThemedText> : null}
@@ -232,7 +283,7 @@ export function BlindSwipeEvaluation({
     <View style={styles.screen}>
       <View style={styles.heading}>
         <ThemedText type="subtitle" style={styles.navyText}>블라인드 스와이프 평가</ThemedText>
-        <ThemedText type="small" style={styles.mutedText}>한 손으로 넘기며 공정하게 검증해요</ThemedText>
+        <ThemedText type="small" style={styles.mutedText}>모든 아이디어를 평가하면 현재 결과를 볼 수 있어요.</ThemedText>
       </View>
       <View style={styles.progressRow}>
         <ThemedText type="smallBold" style={styles.navyText}>진행 현황</ThemedText>
@@ -290,7 +341,6 @@ const styles = StyleSheet.create({
   mutedText: { color: muted },
   orangeText: { color: orange },
   orangeDarkText: { color: orangeDark },
-  whiteText: { color: '#FFFFFF' },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing.one },
   progressTrack: { height: 7, borderRadius: Radius.pill, overflow: 'hidden', backgroundColor: '#F3E6C8' },
   progressFill: { height: '100%', borderRadius: Radius.pill, backgroundColor: orange },
@@ -311,12 +361,6 @@ const styles = StyleSheet.create({
   emptyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   outlineButton: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderColor: orange, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, backgroundColor: '#FFFFFF' },
   completeBanner: { gap: Spacing.one, padding: Spacing.three, borderRadius: Radius.medium, borderWidth: 1, borderColor: '#F5D18D', backgroundColor: '#FFF2CD' },
-  resultList: { gap: Spacing.three },
-  resultCard: { gap: Spacing.two, padding: Spacing.three, borderRadius: Radius.large, borderWidth: 1, borderColor: orange, backgroundColor: '#FFFFFF', ...Shadows.card },
-  resultHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
-  rateBadge: { borderRadius: Radius.pill, paddingHorizontal: Spacing.two, paddingVertical: Spacing.one, backgroundColor: '#FFF0BE' },
-  resultDetails: { gap: Spacing.one },
-  resultAction: { alignSelf: 'flex-start', minHeight: ControlHeight.touch, justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three, backgroundColor: orange },
   errorText: { color: '#C2410C' },
   pressed: { opacity: 0.65 },
 });

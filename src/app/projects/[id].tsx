@@ -130,6 +130,7 @@ export default function ProjectDetailScreen() {
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
           <IdeaBoard
             projectId={project.id}
+            projectOwnerId={project.userid}
             projectTitle={project.title}
             projectDeadline={project.deadline}
             initialSection={initialLocation.section}

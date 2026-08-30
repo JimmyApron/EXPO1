@@ -3,10 +3,8 @@ import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { ResultSummaryScreen } from '@/components/result/result-summary-screen';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useFinalIdeaAnalysis } from '@/hooks/use-final-idea-analysis';
-import { useIdeaResults } from '@/hooks/use-idea-results';
 import type { useProjectFlow } from '@/hooks/use-project-flow';
 import { useTheme } from '@/hooks/use-theme';
 import { createCoachInputFingerprint, isCoachAnalysisStale, isMvpPlanCurrent } from '@/lib/project-flow';
@@ -182,12 +180,6 @@ export function IdeaCoachPanel({
     ?? ideas.find((idea) => idea.status === 'selected')
     ?? null;
   const previousMvpIsStale = Boolean(flow?.mvpplan && !isMvpPlanCurrent(flow.mvpplan, selectedIdea?.id));
-  const { data: resultData } = useIdeaResults({
-    ideas: candidates,
-    analysis: activeAnalysis,
-    currentUserEvaluatedAll: Boolean(activeAnalysis),
-    teamSize: draft.teamSize,
-  });
 
   const persistConditions = useCallback((nextConditions: CompleteProjectConditions): Promise<{ error?: string }> => {
     const serialized = JSON.stringify(nextConditions);
@@ -399,14 +391,7 @@ export function IdeaCoachPanel({
         </ThemedView>
       ) : null}
 
-      <ResultSummaryScreen
-        data={resultData}
-        selectedIdeaId={selectedIdea?.id}
-        onGoToEvaluation={() => undefined}
-        onSelectIdea={handleSelect}
-      />
-
-      {false ? <View style={styles.section}>
+      <View style={styles.section}>
         <ThemedText type="smallBold" style={styles.sectionTitle}>{candidates.length === 1 ? '아이디어 구체화 결과와 최종 선정' : '후보별 분석과 최종 선정'}</ThemedText>
         {(isLoadingIdeas || isloadingflow) ? <ActivityIndicator /> : candidates.map((idea) => {
           const result = analysisById.get(idea.id);
@@ -431,7 +416,7 @@ export function IdeaCoachPanel({
           );
         })}
         {!activeAnalysis && candidates.length > 0 ? <ThemedText type="small" themeColor="textSecondary">후보를 분석하면 최종 선정 버튼이 활성화됩니다.</ThemedText> : null}
-      </View> : null}
+      </View>
 
       {previousMvpIsStale ? (
         <ThemedView type="backgroundElement" style={[styles.noticeCard, { backgroundColor: theme.warningSoft, borderColor: theme.warning }]}>
