@@ -25,8 +25,8 @@ export function CandidateIdeaCard({
   onChange,
 }: CandidateIdeaCardProps) {
   const theme = useTheme();
-  // 기본적으로 상세 내용은 접어두고 (false), 눌렀을 때만 열리도록 상태 관리
   const [isExpanded, setIsExpanded] = useState(false);
+  const displayKeywords = candidate.keywords.map((keyword) => keyword.trim()).filter(Boolean);
 
   const inputStyle = {
     color: theme.text,
@@ -43,7 +43,6 @@ export function CandidateIdeaCard({
         isSelected && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
         isSaved && { borderColor: theme.success },
       ]}>
-      {/* 1. 상단 헤더: 선택 체크박스 & ID */}
       <View style={styles.header}>
         <Pressable
           accessibilityRole="checkbox"
@@ -67,7 +66,6 @@ export function CandidateIdeaCard({
         </ThemedText>
       </View>
 
-      {/* 2. 기본 노출 영역: 제목 */}
       <View style={styles.field}>
         <ThemedText type="smallBold">제목</ThemedText>
         <TextInput
@@ -81,7 +79,6 @@ export function CandidateIdeaCard({
         />
       </View>
 
-      {/* 3. 기본 노출 영역: 한 줄 요약 */}
       <View style={styles.field}>
         <ThemedText type="smallBold">한 줄 요약</ThemedText>
         <TextInput
@@ -96,15 +93,14 @@ export function CandidateIdeaCard({
         />
       </View>
 
-      {/* 4. 기본 노출 영역: 키워드 태그 */}
       <View style={styles.field}>
         <ThemedText type="smallBold">키워드</ThemedText>
         <View style={styles.keywordList}>
-          {candidate.keywords && candidate.keywords.length > 0 ? (
-            candidate.keywords.map((kw, idx) => (
-              <View key={idx} style={[styles.keywordBadge, { backgroundColor: theme.background, borderColor: theme.border }]}>
+          {displayKeywords.length > 0 ? (
+            displayKeywords.map((keyword, index) => (
+              <View key={`${keyword}:${index}`} style={[styles.keywordBadge, { backgroundColor: theme.background, borderColor: theme.border }]}>
                 <ThemedText type="small" themeColor="textSecondary">
-                  #{kw.trim()}
+                  #{keyword}
                 </ThemedText>
               </View>
             ))
@@ -116,9 +112,10 @@ export function CandidateIdeaCard({
         </View>
       </View>
 
-      {/* 5. 상세 내용 열기/접기 토글 버튼 */}
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel={`후보 아이디어 상세 내용 ${isExpanded ? '접기' : '보기'}`}
+        accessibilityState={{ expanded: isExpanded }}
         onPress={() => setIsExpanded((prev) => !prev)}
         style={({ pressed }) => [
           styles.toggleButton,
@@ -130,15 +127,14 @@ export function CandidateIdeaCard({
         </ThemedText>
       </Pressable>
 
-      {/* 6. 아코디언 상세 영역 (눌렀을 때만 노출) */}
       {isExpanded ? (
         <View style={[styles.detailSection, { borderTopColor: theme.border }]}>
-          {/* 가지 1: 문제 */}
           <View style={styles.field}>
-            <ThemedText type="smallBold" style={{ color: '#dc2626' }}>
-              🚨 해결할 문제
+            <ThemedText type="smallBold" style={{ color: theme.danger }}>
+              해결할 문제
             </ThemedText>
             <TextInput
+              accessibilityLabel="후보 아이디어가 해결할 문제"
               value={candidate.problem}
               editable={!isBusy && !isSaved}
               multiline
@@ -149,13 +145,13 @@ export function CandidateIdeaCard({
             />
           </View>
 
-          {/* 가지 2: 대상 사용자 */}
           <View style={styles.field}>
-            <ThemedText type="smallBold" style={{ color: '#2563eb' }}>
-              👥 대상 사용자
+            <ThemedText type="smallBold" style={{ color: theme.primary }}>
+              대상 사용자
             </ThemedText>
             <TextInput
-              value={candidate.targetUsers?.join('\n') ?? ''}
+              accessibilityLabel="후보 아이디어 대상 사용자"
+              value={candidate.targetUsers.join('\n')}
               editable={!isBusy && !isSaved}
               multiline
               onChangeText={(value) => onChange({ ...candidate, targetUsers: value.split('\n').slice(0, 12) })}
@@ -165,12 +161,12 @@ export function CandidateIdeaCard({
             />
           </View>
 
-          {/* 가지 3: 해결 방법 */}
           <View style={styles.field}>
-            <ThemedText type="smallBold" style={{ color: '#16a34a' }}>
-              💡 해결 방법
+            <ThemedText type="smallBold" style={{ color: theme.success }}>
+              해결 방법
             </ThemedText>
             <TextInput
+              accessibilityLabel="후보 아이디어 해결 방법"
               value={candidate.solution}
               editable={!isBusy && !isSaved}
               multiline
@@ -181,11 +177,11 @@ export function CandidateIdeaCard({
             />
           </View>
 
-          {/* 추가: 핵심 기능 (키워드 수정 포함) */}
           <View style={styles.field}>
-            <ThemedText type="smallBold">✨ 핵심 기능</ThemedText>
+            <ThemedText type="smallBold">핵심 기능</ThemedText>
             <TextInput
-              value={candidate.coreFeatures?.join('\n') ?? ''}
+              accessibilityLabel="후보 아이디어 핵심 기능"
+              value={candidate.coreFeatures.join('\n')}
               editable={!isBusy && !isSaved}
               multiline
               onChangeText={(value) => onChange({ ...candidate, coreFeatures: value.split('\n').slice(0, 12) })}
@@ -196,9 +192,10 @@ export function CandidateIdeaCard({
           </View>
 
           <View style={styles.field}>
-            <ThemedText type="smallBold">🏷️ 키워드 직접 편집</ThemedText>
+            <ThemedText type="smallBold">키워드 편집</ThemedText>
             <TextInput
-              value={candidate.keywords?.join('\n') ?? ''}
+              accessibilityLabel="후보 아이디어 키워드 편집"
+              value={candidate.keywords.join('\n')}
               editable={!isBusy && !isSaved}
               multiline
               onChangeText={(value) => onChange({ ...candidate, keywords: value.split('\n').slice(0, 12) })}

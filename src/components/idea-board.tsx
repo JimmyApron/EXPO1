@@ -2074,6 +2074,7 @@ export function IdeaBoard({
               onUpdateBranch={updateBranch}
               onDeleteBranch={deleteBranch}
               onDeleteIdea={handleDeleteMindMapIdea}
+              onGoToAnalysis={() => handleFlowStepPress('selection')}
             />
           )}
         </>

@@ -37,6 +37,7 @@ type IdeaMindMapProps = {
   onUpdateBranch: (nodeId: string, title: string, summary: string) => MutationResult;
   onDeleteBranch: (nodeId: string) => MutationResult;
   onDeleteIdea: (ideaId: string) => MutationResult;
+  onGoToAnalysis: () => void;
 };
 
 const nodeWidth = 220;
@@ -185,6 +186,7 @@ export function IdeaMindMap({
   onUpdateBranch,
   onDeleteBranch,
   onDeleteIdea,
+  onGoToAnalysis,
 }: IdeaMindMapProps) {
   const theme = useTheme();
   const { width } = useWindowDimensions();
@@ -377,6 +379,7 @@ export function IdeaMindMap({
         </View>
         <View style={styles.toolbarActions}>
           <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 재정렬" disabled={isBusy} onPress={() => void onReorganize()} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, (pressed || isBusy) && styles.pressed]}><ThemedText type="smallBold">재정렬</ThemedText></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="정리한 아이디어 AI 분석으로 넘기기" disabled={isBusy || ideas.length === 0} onPress={onGoToAnalysis} style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, (pressed || isBusy || ideas.length === 0) && styles.pressed]}><ThemedText type="smallBold" style={styles.whiteText}>AI 분석으로 넘기기</ThemedText></Pressable>
         </View>
       </View>
 

@@ -54,6 +54,8 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
     extract,
   } = useCandidateIdeaExtraction(projectId);
   const isBusy = isPickingImages || isExtracting || isSaving;
+  const activeFlowStep = isSaving || savedIds.size > 0 ? 3 : candidates.length > 0 ? 2 : isExtracting ? 1 : 0;
+  const flowSteps = ['1  자료 입력', '2  AI 추출', '3  후보 검토', '4  마인드맵 구성'];
   const unsavedCandidates = useMemo(
     () => candidates.filter((candidate) => selectedIds.has(candidate.id) && !savedIds.has(candidate.id)),
     [candidates, savedIds, selectedIds],
@@ -160,14 +162,14 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
         </View>
 
         <View style={styles.flowRow} accessibilityLabel="아이디어 추출 단계">
-          {['1  자료 입력', '2  AI 추출', '3  후보 검토', '4  선택 저장'].map((step, index) => (
+          {flowSteps.map((step, index) => (
             <View
               key={step}
               style={[
                 styles.flowStep,
-                { backgroundColor: index === 0 ? theme.primarySoft : theme.background, borderColor: theme.border },
+                { backgroundColor: index === activeFlowStep ? theme.primarySoft : theme.background, borderColor: theme.border },
               ]}>
-              <ThemedText type="smallBold" style={{ color: index === 0 ? theme.primary : theme.textSecondary }}>
+              <ThemedText type="smallBold" style={{ color: index === activeFlowStep ? theme.primary : theme.textSecondary }}>
                 {step}
               </ThemedText>
             </View>
@@ -353,7 +355,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
             </View>
             <ThemedView type="backgroundElement" style={[styles.preview, { borderColor: theme.border }]}>
               <ThemedText type="smallBold">미리보기 · {topic.trim() || defaultTopic}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">해결할 문제 · 대상 사용자 · 해결 방법 · 핵심 기능</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">해결할 문제 · 대상 사용자 · 해결 방법</ThemedText>
               <ThemedText type="caption" themeColor="textSecondary">선택한 {unsavedCandidates.length}개 아이디어가 관련 가지 아래에 배치됩니다.</ThemedText>
             </ThemedView>
             {saveError ? <ThemedText accessibilityRole="alert" type="small" style={styles.errorText}>{saveError}</ThemedText> : null}

@@ -13,7 +13,13 @@ export const ideaFieldDefinitions: readonly {
   { field: 'keywords', branchTitle: '키워드', summary: '아이디어의 핵심 키워드' },
 ];
 
-export const defaultMindMapBranches = ideaFieldDefinitions.map((definition) => definition.branchTitle);
+const primaryMindMapFields: readonly IdeaField[] = ['problem', 'targetusers', 'solution'];
+
+export const mindMapBranchDefinitions = ideaFieldDefinitions.filter((definition) =>
+  primaryMindMapFields.includes(definition.field),
+);
+
+export const defaultMindMapBranches = mindMapBranchDefinitions.map((definition) => definition.branchTitle);
 
 export const listIdeaFields: readonly IdeaField[] = ['targetusers', 'corefeatures', 'keywords'];
 
@@ -87,7 +93,7 @@ export function getMindMapNodeIdeaField(node: MindMapNode, nodes: MindMapNode[])
   return getMindMapNodeBranch(node, nodes)?.branchfield ?? null;
 }
 
-/** Deterministically expands one idea into at most one node per populated structured field. */
+/** Expands one idea into the three concise fields shown on the mind map. */
 export function createIdeaFieldNodes(idea: Idea): IdeaFieldNodeInput[] {
   const values: Record<IdeaField, string> = {
     problem: cleanText(idea.problem),
@@ -97,7 +103,7 @@ export function createIdeaFieldNodes(idea: Idea): IdeaFieldNodeInput[] {
     keywords: formatList(idea.keywords),
   };
 
-  return ideaFieldDefinitions.flatMap((definition) => {
+  return mindMapBranchDefinitions.flatMap((definition) => {
     const summary = values[definition.field];
     return summary
       ? [{
@@ -111,11 +117,25 @@ export function createIdeaFieldNodes(idea: Idea): IdeaFieldNodeInput[] {
   });
 }
 
+/** Hides legacy derived branches while keeping their source fields on the idea. */
+export function getVisibleMindMapNodes(nodes: MindMapNode[]) {
+  const visibleFields = new Set(mindMapBranchDefinitions.map((definition) => definition.field));
+  const hiddenBranchIds = new Set(
+    nodes
+      .filter((node) => node.nodetype === 'branch' && node.branchfield && !visibleFields.has(node.branchfield))
+      .map((node) => node.id),
+  );
+
+  return nodes.filter(
+    (node) => !hiddenBranchIds.has(node.id) && !hiddenBranchIds.has(node.parentnodeid ?? ''),
+  );
+}
+
 function getBranchOrder(branch: MindMapNode) {
   const fixedIndex = branch.branchfield
-    ? ideaFieldDefinitions.findIndex((definition) => definition.field === branch.branchfield)
+    ? mindMapBranchDefinitions.findIndex((definition) => definition.field === branch.branchfield)
     : -1;
-  return fixedIndex >= 0 ? fixedIndex : ideaFieldDefinitions.length + branch.sortorder;
+  return fixedIndex >= 0 ? fixedIndex : mindMapBranchDefinitions.length + branch.sortorder;
 }
 
 /** Lays out each branch according to the height of its complete child list. */

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
-import { createIdeaFieldNodes, ideaFieldDefinitions, layoutMindMapNodes } from '@/lib/mind-map';
+import {
+  createIdeaFieldNodes,
+  getVisibleMindMapNodes,
+  layoutMindMapNodes,
+  mindMapBranchDefinitions,
+} from '@/lib/mind-map';
 import { supabase } from '@/lib/supabase';
 import type { Idea } from '@/types/idea';
 import type { MindMap, MindMapNode } from '@/types/mind-map';
@@ -55,7 +60,7 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
         const root = await supabase.from('mind_map_nodes').insert({ mindmapid: nextMap.id, userid: user.id, nodetype: 'root', title: nextMap.title, summary: '프로젝트의 중심 주제', x: 0, y: 0, sortorder: 0 }).select(nodeSelect).single();
         if (root.error) setMindMapError(root.error.message);
         else setNodes([root.data as MindMapNode]);
-      } else setNodes((result.data ?? []) as MindMapNode[]);
+      } else setNodes(getVisibleMindMapNodes((result.data ?? []) as MindMapNode[]));
     }
     setIsLoadingMindMap(false);
   }, [defaultTopic, projectId, user]);
@@ -113,8 +118,24 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
       current = current.map((node) => node.id === root?.id ? root! : node);
     }
 
+    // Core features and keywords remain on the source idea, but the visual map
+    // intentionally keeps only problem, target user, and solution branches.
+    const visibleFields = new Set(mindMapBranchDefinitions.map((definition) => definition.field));
+    const obsoleteBranches = current.filter(
+      (node) => node.nodetype === 'branch' && node.branchfield && !visibleFields.has(node.branchfield),
+    );
+    if (obsoleteBranches.length > 0) {
+      const obsoleteBranchIds = obsoleteBranches.map((branch) => branch.id);
+      const removed = await supabase.from('mind_map_nodes').delete().in('id', obsoleteBranchIds);
+      if (removed.error) return { error: removed.error.message };
+      const obsoleteBranchIdSet = new Set(obsoleteBranchIds);
+      current = current.filter(
+        (node) => !obsoleteBranchIdSet.has(node.id) && !obsoleteBranchIdSet.has(node.parentnodeid ?? ''),
+      );
+    }
+
     const fixedBranches = new Map<string, MindMapNode>();
-    for (const [index, definition] of ideaFieldDefinitions.entries()) {
+    for (const [index, definition] of mindMapBranchDefinitions.entries()) {
       let branch = current.find((node) => node.nodetype === 'branch' && node.branchfield === definition.field);
       if (!branch) {
         const sameTitle = current.find((node) => node.nodetype === 'branch' && !node.branchfield && node.title === definition.branchTitle);

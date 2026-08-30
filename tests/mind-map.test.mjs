@@ -6,6 +6,7 @@ import {
   createIdeaFieldNodes,
   getIdeaFieldDraftValue,
   getMindMapNodeIdeaField,
+  getVisibleMindMapNodes,
   layoutMindMapNodes,
   validateMindMapIdeaField,
 } from '../src/lib/mind-map.ts';
@@ -38,7 +39,7 @@ function makeIdea(overrides = {}) {
   };
 }
 
-test('populated structured fields create exactly one field node each', () => {
+test('populated structured fields create only the three concise mind-map branches', () => {
   const nodes = createIdeaFieldNodes(makeIdea({
     problem: '학생들이 과제 일정을 자주 놓친다',
     targetusers: ['중학생', '고등학생'],
@@ -47,10 +48,9 @@ test('populated structured fields create exactly one field node each', () => {
     keywords: ['AI', '학습', '일정 관리'],
   }));
 
-  assert.deepEqual(nodes.map((node) => node.ideafield), ['problem', 'targetusers', 'solution', 'corefeatures', 'keywords']);
+  assert.deepEqual(nodes.map((node) => node.ideafield), ['problem', 'targetusers', 'solution']);
   assert.equal(nodes[0].summary, '학생들이 과제 일정을 자주 놓친다');
   assert.equal(nodes[1].summary, '• 중학생\n• 고등학생');
-  assert.equal(nodes[3].summary, '• 과제 OCR\n• 마감 알림\n• 일정 추천');
   assert.ok(nodes.every((node) => !node.summary.includes('전체 요약')));
 });
 
@@ -100,6 +100,16 @@ test('add context follows the fixed branch for both branches and their idea node
   assert.equal(getMindMapNodeIdeaField(branch, [branch, child, customBranch]), 'targetusers');
   assert.equal(getMindMapNodeIdeaField(child, [branch, child, customBranch]), 'targetusers');
   assert.equal(getMindMapNodeIdeaField(customBranch, [branch, child, customBranch]), null);
+});
+
+test('legacy detail branches stay hidden without removing custom branches', () => {
+  const base = { mindmapid: 'map', userid: 'user', ideafield: null, ideaid: null, title: '', summary: '', x: 0, y: 0, sortorder: 0, createdat: '', updatedat: '' };
+  const root = { ...base, id: 'root', parentnodeid: null, branchfield: null, nodetype: 'root' };
+  const features = { ...base, id: 'features', parentnodeid: 'root', branchfield: 'corefeatures', nodetype: 'branch' };
+  const featureChild = { ...base, id: 'feature-child', parentnodeid: 'features', branchfield: null, ideaid: 'idea-a', ideafield: 'corefeatures', nodetype: 'idea_field' };
+  const custom = { ...base, id: 'custom', parentnodeid: 'root', branchfield: null, nodetype: 'branch' };
+
+  assert.deepEqual(getVisibleMindMapNodes([root, features, featureChild, custom]).map((node) => node.id), ['root', 'custom']);
 });
 
 test('layout reserves non-overlapping vertical space for branch subtrees', () => {
