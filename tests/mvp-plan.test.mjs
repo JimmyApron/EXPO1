@@ -45,3 +45,28 @@ test('MVP normalization cleans strings and common API method casing', () => {
 test('MVP normalization rejects responses missing a core section', () => {
   assert.equal(normalizeMvpPlan({ summary: '요약', mustHaveFeatures: [] }, idea), null);
 });
+
+test('MVP normalization keeps valid effort data and remains compatible with old saved plans', () => {
+  const base = {
+    summary: '요약',
+    mustHaveFeatures: [{ name: '로그인', description: '팀 계정으로 접속' }],
+    laterFeatures: [],
+    screens: [{ name: '로그인', purpose: '접속', wireframe: ['입력', '버튼'] }],
+    schedule: [{ period: '1주', goal: '인증', tasks: ['연동'] }],
+    teamRoles: [{ role: '개발', responsibilities: ['구현'] }],
+    apis: [{ name: '/login', purpose: '인증', method: 'POST' }],
+    presentationOrder: ['문제'],
+  };
+  const oldPlan = normalizeMvpPlan(base, idea);
+  assert.equal(oldPlan?.mustHaveFeatures[0].effort, undefined);
+  assert.equal(oldPlan?.apis[0].effort, undefined);
+
+  const effort = { difficulty: '중급', requiredSkills: ['인증', '외부 API'], estimatedWeeks: 1, beginnerComment: '공식 예제를 먼저 검증하세요.' };
+  const currentPlan = normalizeMvpPlan({
+    ...base,
+    mustHaveFeatures: [{ ...base.mustHaveFeatures[0], effort }],
+    apis: [{ ...base.apis[0], effort }],
+  }, idea);
+  assert.deepEqual(currentPlan?.mustHaveFeatures[0].effort, effort);
+  assert.deepEqual(currentPlan?.apis[0].effort, effort);
+});

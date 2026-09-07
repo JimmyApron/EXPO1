@@ -452,15 +452,8 @@ Deno.serve(async (request) => {
   }
 
   if (!aiResponse.ok) {
-    let errorBody = '';
-    try {
-      errorBody = await aiResponse.text();
-    } catch {
-      errorBody = '';
-    }
     console.error(`${providerName} API returned an error status.`, {
       status: aiResponse.status,
-      body: errorBody.slice(0, 500),
     });
     if (aiResponse.status === 401) {
       return jsonResponse(

@@ -208,8 +208,26 @@ export function useProjectFlow(projectid?: string) {
     [savePatch],
   );
   const savePresentationData = useCallback(
-    (presentationdata: PresentationData) => savePatch({ presentationdata }),
-    [savePatch],
+    async (presentationdata: PresentationData, expected?: PresentationData) => {
+      if (!expected) return savePatch({ presentationdata });
+      if (!user || !projectid) return { error: '로그인이 필요합니다.' };
+      // Compare the persisted snapshot to avoid replacing a teammate's newer work.
+      const { data, error } = await supabase.from('projectflows')
+        .update({ presentationdata, updatedat: new Date().toISOString() })
+        .eq('projectid', projectid)
+        .eq('selectedideaid', presentationdata.ideaId ?? '')
+        .eq('presentationdata', JSON.stringify(expected))
+        .select(flowselect)
+        .maybeSingle();
+      if (error) return { error: error.message };
+      if (!data) return { error: '다른 변경사항이 먼저 저장되었습니다. 최신 발표자료를 다시 열고 재작성해 주세요.' };
+      const saved = data as ProjectFlow;
+      flowRef.current = saved;
+      setFlow(saved);
+      setFlowerror('');
+      return { flow: saved };
+    },
+    [projectid, savePatch, user],
   );
 
   return {

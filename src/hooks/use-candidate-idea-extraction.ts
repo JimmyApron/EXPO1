@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import { useAuth } from '@/hooks/use-auth';
 import { normalizeExtractCandidateIdeasResponse, maxCandidateTextLength } from '@/lib/candidate-idea';
 import { supabase } from '@/lib/supabase';
+import { renderWebImage } from '@/lib/redact-image';
 import type {
   CandidateIdeaImage,
   ExtractCandidateIdeasRequest,
@@ -30,25 +31,9 @@ async function optimizeImage(asset: ImagePicker.ImagePickerAsset): Promise<Candi
     throw new Error('원본 이미지가 너무 큽니다. 16MB 이하의 캡처를 선택해 주세요.');
   }
 
-  // On web, ImagePicker can legitimately return zero dimensions. Passing that
-  // asset through ImageManipulator makes its Canvas path call createImageData
-  // with a zero width, so use the picker-provided JPEG data directly instead.
+  // Decode real dimensions and encode actual JPEG bytes, even for zero-size picker metadata.
   if (Platform.OS === 'web') {
-    const data = asset.base64 ?? '';
-    if (!data) {
-      throw new Error('브라우저에서 이미지 데이터를 읽지 못했습니다. 다른 이미지를 선택해 주세요.');
-    }
-    if (getEstimatedBase64Bytes(data) > maxImageBytes) {
-      throw new Error('이미지 용량이 8MB를 초과합니다. 더 작은 캡처를 선택해 주세요.');
-    }
-
-    return {
-      uri: asset.uri,
-      width: Number.isFinite(asset.width) ? asset.width : 0,
-      height: Number.isFinite(asset.height) ? asset.height : 0,
-      mediaType: 'image/jpeg',
-      data,
-    };
+    return renderWebImage(asset.uri);
   }
 
   const context = ImageManipulator.ImageManipulator.manipulate(asset.uri);
@@ -111,6 +96,8 @@ export function useCandidateIdeaExtraction(projectId: string) {
   const accessToken = session?.access_token ?? '';
   const userId = user?.id ?? '';
   const [images, setImages] = useState<CandidateIdeaImage[]>([]);
+  const [imageSelectionId, setImageSelectionId] = useState(0);
+  const [preparedImages, setPreparedImages] = useState<Record<string, CandidateIdeaImage | undefined>>({});
   const [isPickingImages, setIsPickingImages] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [permissionError, setPermissionError] = useState('');
@@ -156,6 +143,8 @@ export function useCandidateIdeaExtraction(projectId: string) {
       }
 
       const optimized = await Promise.all(result.assets.map(optimizeImage));
+      setPreparedImages({});
+      setImageSelectionId((current) => current + 1);
       setImages(optimized);
     } catch (error) {
       setExtractionError(error instanceof Error ? error.message : '이미지를 처리하지 못했습니다.');
@@ -164,7 +153,11 @@ export function useCandidateIdeaExtraction(projectId: string) {
     }
   }, [isExtracting, isPickingImages]);
 
-  const clearImages = useCallback(() => setImages([]), []);
+  const clearImages = useCallback(() => { setImages([]); setPreparedImages({}); }, []);
+  const prepareImage = useCallback((uri: string, prepared?: CandidateIdeaImage) => {
+    setPreparedImages((current) => ({ ...current, [uri]: prepared }));
+  }, []);
+  const canExtractImages = images.length > 0 && images.every((image) => Boolean(preparedImages[image.uri]));
 
   const extract = useCallback(
     async (
@@ -178,13 +171,20 @@ export function useCandidateIdeaExtraction(projectId: string) {
         setExtractionError('로그인이 필요합니다.');
         return null;
       }
+      if (source.type === 'image' && !canExtractImages) {
+        setExtractionError('모든 캡처의 실제 전송본을 확인해 주세요. 가림본 또는 가림 없는 이미지의 전송 준비가 필요합니다.');
+        return null;
+      }
 
       const requestSource: ExtractCandidateIdeasRequest['source'] =
         source.type === 'text'
           ? { type: 'text', text: source.text.trim().slice(0, maxCandidateTextLength) }
           : {
               type: 'image',
-              images: images.map(({ mediaType, data }) => ({ mediaType, data })),
+              images: images.map((image) => {
+                const prepared = preparedImages[image.uri]!;
+                return { mediaType: prepared.mediaType, data: prepared.data };
+              }),
             };
 
       if (requestSource.type === 'text' && !requestSource.text) {
@@ -219,6 +219,7 @@ export function useCandidateIdeaExtraction(projectId: string) {
 
         if (requestSource.type === 'image') {
           setImages([]);
+          setPreparedImages({});
         }
         return normalized;
       } catch {
@@ -228,17 +229,20 @@ export function useCandidateIdeaExtraction(projectId: string) {
         setIsExtracting(false);
       }
     },
-    [accessToken, images, isExtracting, projectId, userId],
+    [accessToken, canExtractImages, images, isExtracting, preparedImages, projectId, userId],
   );
 
   return {
     images,
+    imageSelectionId,
     isPickingImages,
     isExtracting,
     permissionError,
     extractionError,
     pickImages,
     clearImages,
+    prepareImage,
+    canExtractImages,
     clearExtractionError: () => setExtractionError(''),
     extract,
   };

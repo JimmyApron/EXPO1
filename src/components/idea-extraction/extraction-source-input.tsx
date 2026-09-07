@@ -1,7 +1,8 @@
-import { Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ExtractionPrivacyNotice } from './extraction-privacy-notice';
+import { ImageRedactionEditor } from './image-redaction-editor';
 import { ControlHeight, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { CandidateIdeaImage } from '@/types/candidate-idea';
@@ -12,29 +13,34 @@ type ExtractionSourceInputProps = {
   mode: ExtractionSourceMode;
   text: string;
   images: CandidateIdeaImage[];
+  imageSelectionId: number;
   isBusy: boolean;
   permissionError: string;
   onChangeMode: (mode: ExtractionSourceMode) => void;
   onChangeText: (value: string) => void;
   onPickImages: () => void;
   onClearImages: () => void;
+  onPrepareImage: (uri: string, prepared?: CandidateIdeaImage) => void;
 };
 
 export function ExtractionSourceInput({
   mode,
   text,
   images,
+  imageSelectionId,
   isBusy,
   permissionError,
   onChangeMode,
   onChangeText,
   onPickImages,
   onClearImages,
+  onPrepareImage,
 }: ExtractionSourceInputProps) {
   const theme = useTheme();
 
   return (
     <View style={styles.container}>
+      <ExtractionPrivacyNotice />
       <View style={styles.modeRow} accessibilityRole="tablist">
         {(['text', 'image'] as const).map((sourceMode) => {
           const selected = mode === sourceMode;
@@ -84,13 +90,6 @@ export function ExtractionSourceInput({
         </View>
       ) : (
         <View style={styles.field}>
-          <ThemedView type="warningSoft" style={[styles.privacyNotice, { borderColor: theme.warning }]}>
-            <ThemedText type="smallBold">개인정보를 먼저 확인해 주세요</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              카카오톡 캡처에 이름, 전화번호 등 불필요한 개인정보가 있다면 가린 뒤 선택해 주세요.
-            </ThemedText>
-          </ThemedView>
-
           <View style={styles.imageActions}>
             <Pressable
               accessibilityRole="button"
@@ -135,19 +134,10 @@ export function ExtractionSourceInput({
           {images.length > 0 ? (
             <View style={styles.previewGrid}>
               {images.map((image, index) => (
-                <View
-                  key={`${image.uri}:${index}`}
-                  style={[styles.previewCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
-                  <Image
-                    accessibilityLabel={`선택한 캡처 ${index + 1}`}
-                    source={{ uri: image.uri }}
-                    resizeMode="contain"
-                    style={styles.previewImage}
-                  />
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {image.width} × {image.height}
-                  </ThemedText>
-                </View>
+                <ImageRedactionEditor
+                  key={`${imageSelectionId}:${index}`}
+                  image={image} index={index} disabled={isBusy} onPrepare={onPrepareImage}
+                />
               ))}
             </View>
           ) : null}

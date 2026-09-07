@@ -1,13 +1,20 @@
+type MvpEffort = {
+  difficulty: '초급' | '중급' | '고급';
+  requiredSkills: string[];
+  estimatedWeeks: number;
+  beginnerComment: string;
+};
+
 export type MvpPlan = {
   ideaId: string;
   ideaTitle: string;
   summary: string;
-  mustHaveFeatures: { name: string; description: string }[];
+  mustHaveFeatures: { name: string; description: string; effort?: MvpEffort }[];
   laterFeatures: { name: string; description: string }[];
   screens: { name: string; purpose: string; wireframe: string[] }[];
   schedule: { period: string; goal: string; tasks: string[] }[];
   teamRoles: { role: string; responsibilities: string[] }[];
-  apis: { name: string; purpose: string; method: string }[];
+  apis: { name: string; purpose: string; method: string; effort?: MvpEffort }[];
   presentationOrder: string[];
 };
 
@@ -31,13 +38,28 @@ function textList(value: unknown, maxItems: number, maxItemLength = 300) {
   return value.map((item) => text(item, maxItemLength)).filter(Boolean).slice(0, maxItems);
 }
 
+export function normalizeMvpEffort(value: unknown): MvpEffort | undefined {
+  if (!isRecord(value)) return undefined;
+  const difficulty = text(value.difficulty);
+  const requiredSkills = [...new Set(textList(value.requiredSkills, 8, 40))];
+  const estimatedWeeks = value.estimatedWeeks;
+  const beginnerComment = text(value.beginnerComment, 600);
+  if (
+    (difficulty !== '초급' && difficulty !== '중급' && difficulty !== '고급') ||
+    typeof estimatedWeeks !== 'number' || !Number.isFinite(estimatedWeeks) ||
+    estimatedWeeks <= 0 || estimatedWeeks > 104 || !requiredSkills.length || !beginnerComment
+  ) return undefined;
+  return { difficulty, requiredSkills, estimatedWeeks, beginnerComment };
+}
+
 function namedDescriptions(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
     if (!isRecord(item)) return [];
     const name = text(item.name, 120);
     const description = text(item.description, 500);
-    return name && description ? [{ name, description }] : [];
+    const effort = normalizeMvpEffort(item.effort);
+    return name && description ? [{ name, description, ...(effort ? { effort } : {}) }] : [];
   }).slice(0, maxItems);
 }
 
@@ -80,7 +102,8 @@ export function normalizeMvpPlan(value: unknown, idea: MvpIdea): MvpPlan | null 
       const name = text(item.name, 120);
       const purpose = text(item.purpose, 500);
       const method = text(item.method, 10).toUpperCase();
-      return name && purpose && apiMethods.has(method) ? [{ name, purpose, method }] : [];
+      const effort = normalizeMvpEffort(item.effort);
+      return name && purpose && apiMethods.has(method) ? [{ name, purpose, method, ...(effort ? { effort } : {}) }] : [];
     }).slice(0, 10)
     : [];
   const presentationOrder = textList(value.presentationOrder, 10);

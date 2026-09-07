@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { normalizeMvpPlan } from '../../supabase/functions/_shared/mvp-plan';
 
 import { MVP_EDGE_FUNCTION_NAME } from '@/constants/mvp';
 import { useAuth } from '@/hooks/use-auth';
@@ -49,7 +50,7 @@ export function useMvpPlan(
 ) {
   const { session } = useAuth();
   const [plan, setPlan] = useState<MvpPlan | null>(
-    isMvpPlan(savedPlan, idea.id) ? savedPlan : null,
+    isMvpPlan(savedPlan, idea.id) ? normalizeMvpPlan(savedPlan, idea) : null,
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
@@ -57,7 +58,7 @@ export function useMvpPlan(
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(
-      () => setPlan(isMvpPlan(savedPlan, idea.id) ? savedPlan : null),
+      () => setPlan(isMvpPlan(savedPlan, idea.id) ? normalizeMvpPlan(savedPlan, idea) : null),
       0,
     );
     return () => globalThis.clearTimeout(timeout);
@@ -79,9 +80,11 @@ export function useMvpPlan(
       });
       if (invokeError) throw invokeError;
       if (!isMvpPlan(data, idea.id)) throw new Error('AI 계획 응답 형식이 올바르지 않습니다.');
-      const saveResult = await onSave?.(data) as { error?: string } | undefined;
+      const normalized = normalizeMvpPlan(data, idea);
+      if (!normalized) throw new Error('AI 계획 응답 형식이 올바르지 않습니다.');
+      const saveResult = await onSave?.(normalized) as { error?: string } | undefined;
       if (saveResult?.error) throw new Error(saveResult.error);
-      setPlan(data);
+      setPlan(normalized);
     } catch (caughtError) {
       setError(await getMvpErrorMessage(caughtError));
     } finally {

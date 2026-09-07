@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { applyPresentationRewrite, documentBlocks, type PresentationRewriteTarget } from '../../supabase/functions/_shared/presentation-rewrite';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { PresentationRewriteControls } from '@/components/presentation-rewrite-controls';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { usePresentationGeneration } from '@/hooks/use-presentation-generation';
@@ -15,8 +17,12 @@ type PresentationViewProps = {
   selectedIdea: CandidateIdea;
   sampleMvpPlan: SampleMvpPlan;
   initialData?: PresentationData | null;
-  onSave?: (data: PresentationData) => Promise<unknown>;
+  onSave?: (data: PresentationData, expected?: PresentationData) => Promise<unknown>;
 };
+
+function rewriteTargetKey(target: PresentationRewriteTarget) {
+  return target.kind === 'slide' ? `slide:${target.index}` : `${target.field}:${target.start}`;
+}
 
 export function PresentationView({
   projectId,
@@ -27,11 +33,42 @@ export function PresentationView({
   onSave,
 }: PresentationViewProps) {
   const theme = useTheme();
-  const { canGenerate, generatePresentation } = usePresentationGeneration();
+  const { canGenerate, generatePresentation, rewritePresentation } = usePresentationGeneration();
   const [activeTab, setActiveTab] = useState<'slides' | 'qna' | 'report'>('slides');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [presentationData, setPresentationData] = useState<PresentationData | null>(initialData ?? null);
+  const operationRef = useRef(false);
+  const [rewriting, setRewriting] = useState<string | null>(null);
+  const [rewriteStatus, setRewriteStatus] = useState<{ key: string; message: string } | null>(null);
+
+  const handleRewrite = async (target: PresentationRewriteTarget, instruction: string) => {
+    if (!presentationData || operationRef.current || !canGenerate) return;
+    const key = rewriteTargetKey(target);
+    const previous = presentationData;
+    operationRef.current = true;
+    setRewriting(key);
+    setRewriteStatus(null);
+    try {
+      const content = await rewritePresentation({ projectId, projectConditions, selectedIdea, mvpPlan: sampleMvpPlan }, previous, target, instruction);
+      const next = { ...applyPresentationRewrite(previous, target, content), ideaId: selectedIdea.id };
+      const result = await onSave?.(next, previous) as { error?: string } | undefined;
+      if (result?.error) throw new Error(result.error);
+      setPresentationData(next);
+      setRewriteStatus({ key, message: onSave ? '이 부분을 재작성하고 저장했습니다.' : '이 부분을 화면에 반영했습니다.' });
+    } catch (caught) {
+      setRewriteStatus({ key, message: `${caught instanceof Error ? caught.message : '재작성에 실패했습니다.'} 기존 내용은 유지됩니다.` });
+    } finally {
+      operationRef.current = false;
+      setRewriting(null);
+    }
+  };
+
+  const rewriteControls = (target: PresentationRewriteTarget) => {
+    const key = rewriteTargetKey(target);
+    return <PresentationRewriteControls disabled={loading || rewriting !== null || !canGenerate} loading={rewriting === key}
+      message={rewriteStatus?.key === key ? rewriteStatus.message : ''} onRewrite={(instruction) => void handleRewrite(target, instruction)} />;
+  };
   const tabs = useMemo(
     () => [
       { key: 'slides' as const, label: '슬라이드 & 대본' },
@@ -42,11 +79,13 @@ export function PresentationView({
   );
 
   const handleGeneratePresentation = async () => {
-    if (loading || !canGenerate) {
+    if (operationRef.current || !canGenerate) {
       return;
     }
 
+    operationRef.current = true;
     setLoading(true);
+    setRewriteStatus(null);
     setError('');
     try {
       const generatedData = await generatePresentation({
@@ -69,6 +108,7 @@ export function PresentationView({
           : '발표 자료를 생성하지 못했습니다. 다시 시도해주세요.',
       );
     } finally {
+      operationRef.current = false;
       setLoading(false);
     }
   };
@@ -87,9 +127,9 @@ export function PresentationView({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={presentationData ? '발표자료 다시 생성' : '발표자료 생성 및 저장'}
-        accessibilityState={{ disabled: loading || !canGenerate }}
+        accessibilityState={{ disabled: loading || rewriting !== null || !canGenerate }}
         onPress={handleGeneratePresentation}
-        disabled={loading || !canGenerate}
+        disabled={loading || rewriting !== null || !canGenerate}
         style={({ pressed }) => [
           styles.primaryButton,
           { backgroundColor: theme.primary },
@@ -128,7 +168,7 @@ export function PresentationView({
 
           {activeTab === 'slides' ? (
             <View style={styles.listGap}>
-              {presentationData.slides.map((slide) => (
+              {presentationData.slides.map((slide, slideIndex) => (
                 <ThemedView
                   key={slide.slideNumber}
                   type="backgroundElement"
@@ -146,6 +186,7 @@ export function PresentationView({
                     <ThemedText type="smallBold">발표 대본</ThemedText>
                     <ThemedText type="small">{slide.speakerScript}</ThemedText>
                   </View>
+                  {rewriteControls({ kind: 'slide', index: slideIndex })}
                 </ThemedView>
               ))}
             </View>
@@ -167,14 +208,17 @@ export function PresentationView({
 
           {activeTab === 'report' ? (
             <View style={styles.listGap}>
-              <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
-                <ThemedText type="smallBold">사업계획서 초안</ThemedText>
-                <ThemedText type="small">{presentationData.businessPlanDraft}</ThemedText>
-              </ThemedView>
-              <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
-                <ThemedText type="smallBold">최종 결과 보고서</ThemedText>
-                <ThemedText type="small">{presentationData.finalReport}</ThemedText>
-              </ThemedView>
+              {(['businessPlanDraft', 'finalReport'] as const).map((field) => (
+                <View key={field} style={styles.listGap}>
+                  <ThemedText type="smallBold">{field === 'businessPlanDraft' ? '사업계획서 초안' : '최종 결과 보고서'}</ThemedText>
+                  {documentBlocks(presentationData[field]).map(({ start, end }, index) => (
+                    <ThemedView key={`${field}:${index}`} type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+                      <ThemedText type="small">{presentationData[field].slice(start, end)}</ThemedText>
+                      {rewriteControls({ kind: 'document', field, start, end })}
+                    </ThemedView>
+                  ))}
+                </View>
+              ))}
             </View>
           ) : null}
 

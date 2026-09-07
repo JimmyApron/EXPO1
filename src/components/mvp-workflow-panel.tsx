@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MvpSummaryCard } from '@/components/result/mvp-summary-card';
+import { MvpEffortTags } from '@/components/mvp-effort-tags';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useMvpPlan } from '@/hooks/use-mvp-plan';
 import type { useProjectFlow } from '@/hooks/use-project-flow';
@@ -97,6 +98,30 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
         <>
           <ThemedText type="smallBold" style={{ color: theme.primary }}>{plan.ideaTitle}</ThemedText>
           <MvpSummaryCard
+            featureDetails={(
+              <Section title="필수 기능 · 구현 난이도">
+                <ThemedText type="small" themeColor="textSecondary">초급 개발자 1명, 주 10시간 기준 AI 추정입니다. 학습·테스트를 포함하며 기능과 API의 중복 작업량은 단순 합산하지 마세요.</ThemedText>
+                {plan.mustHaveFeatures.map((feature, index) => (
+                  <View key={`${feature.name}:${index}`} style={styles.list}>
+                    <ThemedText type="smallBold">{feature.name}</ThemedText>
+                    <ThemedText type="small">{feature.description}</ThemedText>
+                    <MvpEffortTags effort={feature.effort} />
+                  </View>
+                ))}
+              </Section>
+            )}
+            apiDetails={(
+              <Section title="필요 API · 구현 난이도">
+                {plan.apis.length === 0 ? <ThemedText type="small">별도 API 연동 없음</ThemedText> : null}
+                {plan.apis.map((api, index) => (
+                  <View key={`${api.name}:${index}`} style={styles.list}>
+                    <ThemedText type="smallBold">{api.method} {api.name}</ThemedText>
+                    <ThemedText type="small">{api.purpose}</ThemedText>
+                    <MvpEffortTags effort={api.effort} />
+                  </View>
+                ))}
+              </Section>
+            )}
             summary={{
               core: plan.summary,
               essentialFeatures: plan.mustHaveFeatures.map((feature) => `${feature.name} — ${feature.description}`),

@@ -44,12 +44,15 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
   const [topic, setTopic] = useState(defaultTopic);
   const {
     images,
+    imageSelectionId,
     isPickingImages,
     isExtracting,
     permissionError,
     extractionError,
     pickImages,
     clearImages,
+    prepareImage,
+    canExtractImages,
     clearExtractionError,
     extract,
   } = useCandidateIdeaExtraction(projectId);
@@ -180,6 +183,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
           mode={mode}
           text={sourceText}
           images={images}
+          imageSelectionId={imageSelectionId}
           isBusy={isBusy}
           permissionError={permissionError}
           onChangeMode={(nextMode) => {
@@ -190,17 +194,18 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
           onChangeText={setSourceText}
           onPickImages={() => void pickImages()}
           onClearImages={clearImages}
+          onPrepareImage={prepareImage}
         />
 
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="아이디어 추출하기"
-          disabled={isBusy || (mode === 'text' ? !sourceText.trim() : images.length === 0)}
+          disabled={isBusy || (mode === 'text' ? !sourceText.trim() : !canExtractImages)}
           onPress={() => void runExtraction()}
           style={({ pressed }) => [
             styles.extractButton,
             { backgroundColor: theme.primary },
-            (pressed || isBusy || (mode === 'text' ? !sourceText.trim() : images.length === 0)) && styles.pressed,
+            (pressed || isBusy || (mode === 'text' ? !sourceText.trim() : !canExtractImages)) && styles.pressed,
           ]}>
           {isPickingImages || isExtracting ? (
             <View style={styles.loadingRow}>
@@ -210,7 +215,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
               </ThemedText>
             </View>
           ) : (
-            <ThemedText type="smallBold" style={styles.primaryButtonText}>아이디어 추출하기</ThemedText>
+            <ThemedText type="smallBold" style={styles.primaryButtonText}>{mode === 'image' ? '확인한 전송본으로 OCR · 아이디어 추출' : '텍스트를 DeepSeek로 보내 아이디어 추출'}</ThemedText>
           )}
         </Pressable>
 

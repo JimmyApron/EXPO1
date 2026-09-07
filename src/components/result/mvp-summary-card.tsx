@@ -11,7 +11,7 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
   return <View style={styles.list}><ThemedText type="smallBold">{title}</ThemedText>{items.map((item, index) => <ThemedText key={`${item}:${index}`} type="small" themeColor="textSecondary">• {item}</ThemedText>)}</View>;
 }
 
-export function MvpSummaryCard({ summary, children }: { summary: MvpSummary; children?: ReactNode }) {
+export function MvpSummaryCard({ summary, children, featureDetails, apiDetails }: { summary: MvpSummary; children?: ReactNode; featureDetails?: ReactNode; apiDetails?: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const theme = useTheme();
   return (
@@ -21,7 +21,7 @@ export function MvpSummaryCard({ summary, children }: { summary: MvpSummary; chi
       <Pressable accessibilityRole="button" accessibilityLabel={`MVP 상세 ${expanded ? '접기' : '보기'}`} accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)} style={styles.toggle}>
         <ThemedText type="button" style={{ color: theme.primary }}>{expanded ? 'MVP 상세 접기 ▲' : 'MVP 상세 보기 ▼'}</ThemedText>
       </Pressable>
-      {expanded ? <View style={styles.details}><DetailList title="필수 기능" items={summary.essentialFeatures} /><DetailList title="추후 기능" items={summary.laterFeatures} /><DetailList title="개발 일정" items={summary.schedule} /><DetailList title="필요 API" items={summary.requiredApis} />{children}</View> : null}
+      {expanded ? <View style={styles.details}>{featureDetails ?? <DetailList title="필수 기능" items={summary.essentialFeatures} />}<DetailList title="추후 기능" items={summary.laterFeatures} /><DetailList title="개발 일정" items={summary.schedule} />{apiDetails ?? <DetailList title="필요 API" items={summary.requiredApis} />}{children}</View> : null}
     </ThemedView>
   );
 }

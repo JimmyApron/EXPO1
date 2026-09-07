@@ -8,9 +8,18 @@ export type MvpIdea = {
   coreFeatures: string[];
 };
 
+export type MvpEffort = {
+  difficulty: '초급' | '중급' | '고급';
+  requiredSkills: string[];
+  estimatedWeeks: number;
+  beginnerComment: string;
+};
+
 export type MvpFeature = {
   name: string;
   description: string;
+  /** Older saved plans have no effort assessment. */
+  effort?: MvpEffort;
 };
 
 export type MvpScreen = {
@@ -34,6 +43,7 @@ export type MvpApi = {
   name: string;
   purpose: string;
   method: string;
+  effort?: MvpEffort;
 };
 
 export type MvpPlan = {

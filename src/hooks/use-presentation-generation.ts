@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { normalizePresentationRewrite, type PresentationRewriteTarget } from '../../supabase/functions/_shared/presentation-rewrite';
 
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
@@ -105,8 +106,26 @@ export function usePresentationGeneration() {
     [accessToken],
   );
 
+  const rewritePresentation = useCallback(async (
+    input: GeneratePresentationInput,
+    presentationData: PresentationData,
+    target: PresentationRewriteTarget,
+    instruction: string,
+  ) => {
+    if (!accessToken) throw new Error('로그인이 필요합니다.');
+    const { data, error } = await supabase.functions.invoke('generate-presentation', {
+      body: { ...input, rewrite: { presentationData, target, instruction } },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (error) throw new Error(await getInvokeErrorMessage(error));
+    const content = normalizePresentationRewrite(data, target);
+    if (!content) throw new Error('부분 재작성 응답을 확인하지 못했습니다. 기존 내용은 유지됩니다.');
+    return content;
+  }, [accessToken]);
+
   return {
     canGenerate: Boolean(accessToken),
     generatePresentation,
+    rewritePresentation,
   };
 }

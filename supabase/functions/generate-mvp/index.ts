@@ -25,6 +25,8 @@ const systemInstruction = `당신은 대학생 팀 프로젝트를 위한 AI MVP
 다음 원칙을 반드시 지키세요.
 - idea의 problem, solution, targetUsers, coreFeatures를 우선 사용하고 description은 보조 맥락으로만 사용하세요.
 - mustHaveFeatures에는 제한된 기간 안에 아이디어의 핵심 가설을 검증하는 데 꼭 필요한 기능만 넣으세요.
+- mustHaveFeatures와 apis의 각 항목에는 effort를 반드시 포함하세요. difficulty는 초급/중급/고급 중 하나, requiredSkills는 CRUD·인증·OCR·외부 API·데이터 모델링·배포 등 실제 필요한 역량, estimatedWeeks는 양수인 주 단위 예상 작업량(예: 0.5, 1, 2), beginnerComment는 비전공자/초급 팀의 선행 학습·위험·범위 축소 대안을 구체적으로 적으세요.
+- 예상 작업량은 초급 개발자 1명이 주 10시간 참여하며 학습·구현·연동·테스트하는 기준입니다. 기능과 API의 중복 작업은 합산하지 않도록 설명하고, 입력 팀 규모·기간으로 어렵다면 그 이유와 대안을 코멘트에 명시하세요. 추정치를 보장된 일정처럼 표현하지 마세요.
 - laterFeatures에는 핵심 검증 이후로 미룰 수 있는 고도화 기능만 넣으세요. 적절한 기능이 없으면 빈 배열도 허용됩니다.
 - screens는 사용자가 실제로 거치는 순서로 구성하고, wireframe에는 화면의 위에서 아래 순서대로 주요 UI 블록을 적으세요.
 - schedule은 입력된 기간 안에서 구현, 기능 연결, 통합 테스트, 오류 수정, 발표 준비까지 끝나도록 작성하세요.
@@ -34,6 +36,17 @@ const systemInstruction = `당신은 대학생 팀 프로젝트를 위한 AI MVP
 - 입력된 아이디어와 무관한 마인드맵, 아이디어 평가, 발표자료 생성 기능을 임의로 포함하지 마세요.
 - 입력에 없는 성과, 조사 결과, 시장 수치 또는 완료된 기능을 만들어내지 마세요.
 - 모든 결과는 간결하고 실행 가능한 한국어로 작성하세요.`;
+
+const effortSchema = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    difficulty: { type: 'string', enum: ['초급', '중급', '고급'] },
+    requiredSkills: { type: 'array', items: { type: 'string' } },
+    estimatedWeeks: { type: 'number', exclusiveMinimum: 0, maximum: 104 },
+    beginnerComment: { type: 'string' },
+  },
+  required: ['difficulty', 'requiredSkills', 'estimatedWeeks', 'beginnerComment'],
+};
 
 const responseSchema = {
   type: 'object',
@@ -51,8 +64,9 @@ const responseSchema = {
         properties: {
           name: { type: 'string' },
           description: { type: 'string' },
+          effort: effortSchema,
         },
-        required: ['name', 'description'],
+        required: ['name', 'description', 'effort'],
       },
     },
     laterFeatures: {
@@ -131,8 +145,9 @@ const responseSchema = {
           name: { type: 'string' },
           purpose: { type: 'string' },
           method: { type: 'string', enum: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] },
+          effort: effortSchema,
         },
-        required: ['name', 'purpose', 'method'],
+        required: ['name', 'purpose', 'method', 'effort'],
       },
     },
     presentationOrder: {
@@ -380,7 +395,7 @@ Deno.serve(async (request) => {
   }
 
   const mvpPlan = normalizeMvpPlan(getDeepSeekToolInput(deepSeekBody), idea);
-  if (!mvpPlan) {
+  if (!mvpPlan || [...mvpPlan.mustHaveFeatures, ...mvpPlan.apis].some((item) => !item.effort)) {
     console.error('DeepSeek MVP tool input did not contain usable core sections.');
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI MVP 계획 형식이 올바르지 않습니다.' }, 502);
   }
