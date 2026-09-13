@@ -116,6 +116,14 @@ export function PresentationWorkflowPanel({
       projectConditions={conditions}
       selectedIdea={candidate}
       sampleMvpPlan={simplePlan}
+      exportDetails={{
+        aiAnalysis: (() => {
+          const analysis = flow?.blindanalysis?.analyses.find((item) => item.ideaId === idea.id);
+          return analysis ? { strengths: [...analysis.advantages], risks: [analysis.risk], difficulty: analysis.difficulty } : undefined;
+        })(),
+        teamRoles: plan.teamRoles.map((item) => `${item.role}: ${item.responsibilities.join(', ')}`),
+        presentationOrder: plan.presentationOrder,
+      }}
       initialData={hasCurrentPresentation ? flow?.presentationdata : null}
       onSave={savePresentationData}
     />
