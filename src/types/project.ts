@@ -1,6 +1,7 @@
 export type Project = {
   id: string;
   userid: string;
+  roomid?: string | null;
   title: string;
   description: string;
   deadline: string | null;

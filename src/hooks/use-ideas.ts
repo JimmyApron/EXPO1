@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import {
-  IdeaCategories,
   IdeaStatuses,
+  cleanIdeaCategory,
   normalizeIdeaCategory,
   normalizeIdeaStatus,
   normalizeMindMapSide,
@@ -19,7 +20,11 @@ type IdeaMutationResult = {
 };
 
 const ideaSelect =
-  'id, projectid, userid, title, content, status, category, isfavorite, parentnodeid, x, y, side, createdat, updatedat';
+  'id, projectid, userid, title, content, status, category, isfavorite, legacystructural, parentnodeid, x, y, side, sourceid, summary, problem, targetusers, solution, keywords, corefeatures, createdat, updatedat';
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
 
 function normalizeIdea(row: Partial<Idea>): Idea {
   return {
@@ -31,21 +36,40 @@ function normalizeIdea(row: Partial<Idea>): Idea {
     status: normalizeIdeaStatus(row.status),
     category: normalizeIdeaCategory(row.category),
     isfavorite: row.isfavorite === true,
+    legacystructural: row.legacystructural === true,
     parentnodeid: row.parentnodeid ?? null,
     x: typeof row.x === 'number' ? row.x : null,
     y: typeof row.y === 'number' ? row.y : null,
     side: normalizeMindMapSide(row.side),
+    sourceid: typeof row.sourceid === 'string' ? row.sourceid : null,
+    summary: typeof row.summary === 'string' ? row.summary : '',
+    problem: typeof row.problem === 'string' ? row.problem : '',
+    targetusers: normalizeStringArray(row.targetusers),
+    solution: typeof row.solution === 'string' ? row.solution : '',
+    keywords: normalizeStringArray(row.keywords),
+    corefeatures: normalizeStringArray(row.corefeatures),
     createdat: row.createdat ?? '',
     updatedat: row.updatedat ?? '',
   };
 }
 
 function cleanIdeaInput(input: IdeaInput) {
+  const structured = {
+    ...(input.sourceid !== undefined ? { sourceid: input.sourceid } : {}),
+    ...(input.summary !== undefined ? { summary: input.summary.trim() } : {}),
+    ...(input.problem !== undefined ? { problem: input.problem.trim() } : {}),
+    ...(input.targetusers !== undefined ? { targetusers: normalizeStringArray(input.targetusers) } : {}),
+    ...(input.solution !== undefined ? { solution: input.solution.trim() } : {}),
+    ...(input.keywords !== undefined ? { keywords: normalizeStringArray(input.keywords) } : {}),
+    ...(input.corefeatures !== undefined ? { corefeatures: normalizeStringArray(input.corefeatures) } : {}),
+  };
+
   return {
     title: input.title.trim(),
     content: input.content.trim(),
     status: input.status,
-    category: input.category,
+    category: normalizeIdeaCategory(input.category),
+    ...structured,
   };
 }
 
@@ -75,7 +99,7 @@ function validateIdeaInput(input: IdeaInput) {
     return '올바른 상태를 선택해 주세요.';
   }
 
-  if (!IdeaCategories.includes(input.category)) {
+  if (!cleanIdeaCategory(input.category)) {
     return '올바른 카테고리를 선택해 주세요.';
   }
 
@@ -101,8 +125,8 @@ export function useIdeas(projectId?: string) {
     const { data, error } = await supabase
       .from('ideas')
       .select(ideaSelect)
-      .eq('userid', user.id)
       .eq('projectid', projectId)
+      .eq('legacystructural', false)
       .order('createdat', { ascending: false });
 
     if (error) {
@@ -124,6 +148,13 @@ export function useIdeas(projectId?: string) {
       globalThis.clearTimeout(timeout);
     };
   }, [loadIdeas]);
+
+  useRealtimeRefresh({
+    channelName: `ideas:${projectId ?? 'none'}`,
+    enabled: Boolean(user && projectId),
+    onRefresh: loadIdeas,
+    tables: [{ table: 'ideas', filter: `projectid=eq.${projectId}` }],
+  });
 
   const createIdea = useCallback(
     async (input: IdeaInput, mindMapInput?: IdeaMindMapInput): Promise<IdeaMutationResult> => {

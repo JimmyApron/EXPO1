@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { Project, ProjectInput } from '@/types/project';
 
@@ -27,7 +28,9 @@ function validateProjectInput(input: ProjectInput) {
   return '';
 }
 
-export function useProjects() {
+const projectSelect = 'id, userid, roomid, title, description, deadline, createdat, updatedat';
+
+export function useProjects(roomid?: string) {
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isloadingprojects, setIsloadingprojects] = useState(true);
@@ -43,11 +46,18 @@ export function useProjects() {
     setIsloadingprojects(true);
     setProjecterror('');
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('projects')
-      .select('id, userid, title, description, deadline, createdat, updatedat')
-      .eq('userid', user.id)
+      .select(projectSelect)
       .order('createdat', { ascending: false });
+
+    if (roomid) {
+      query = query.eq('roomid', roomid);
+    } else {
+      query = query.eq('userid', user.id).is('roomid', null);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       setProjecterror(error.message);
@@ -57,7 +67,7 @@ export function useProjects() {
     }
 
     setIsloadingprojects(false);
-  }, [user]);
+  }, [roomid, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => {
@@ -68,6 +78,18 @@ export function useProjects() {
       globalThis.clearTimeout(timeout);
     };
   }, [loadProjects]);
+
+  useRealtimeRefresh({
+    channelName: `projects:${roomid ?? user?.id ?? 'signed-out'}`,
+    enabled: Boolean(user),
+    onRefresh: loadProjects,
+    tables: [{
+      table: 'projects',
+      filter: roomid
+        ? `roomid=eq.${roomid}`
+        : `userid=eq.${user?.id},roomid=is.null`,
+    }],
+  });
 
   const createProject = useCallback(
     async (input: ProjectInput): Promise<ProjectMutationResult> => {
@@ -85,11 +107,12 @@ export function useProjects() {
         .from('projects')
         .insert({
           userid: user.id,
+          roomid: roomid ?? null,
           ...cleanProjectInput(input),
           createdat: now,
           updatedat: now,
         })
-        .select('id, userid, title, description, deadline, createdat, updatedat')
+        .select(projectSelect)
         .single();
 
       if (error) {
@@ -101,7 +124,7 @@ export function useProjects() {
       setProjects((current) => [project, ...current]);
       return { project };
     },
-    [user],
+    [roomid, user],
   );
 
   const updateProject = useCallback(
@@ -115,16 +138,21 @@ export function useProjects() {
         return { error: validationerror };
       }
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('projects')
         .update({
           ...cleanProjectInput(input),
           updatedat: new Date().toISOString(),
         })
-        .eq('id', id)
-        .eq('userid', user.id)
-        .select('id, userid, title, description, deadline, createdat, updatedat')
-        .single();
+        .eq('id', id);
+
+      if (roomid) {
+        query = query.eq('roomid', roomid);
+      } else {
+        query = query.eq('userid', user.id).is('roomid', null);
+      }
+
+      const { data, error } = await query.select(projectSelect).single();
 
       if (error) {
         setProjecterror(error.message);
@@ -135,7 +163,7 @@ export function useProjects() {
       setProjects((current) => current.map((item) => (item.id === id ? project : item)));
       return { project };
     },
-    [user],
+    [roomid, user],
   );
 
   const deleteProject = useCallback(
@@ -144,7 +172,15 @@ export function useProjects() {
         return { error: '로그인이 필요합니다.' };
       }
 
-      const { error } = await supabase.from('projects').delete().eq('id', id).eq('userid', user.id);
+      let query = supabase.from('projects').delete().eq('id', id);
+
+      if (roomid) {
+        query = query.eq('roomid', roomid);
+      } else {
+        query = query.eq('userid', user.id).is('roomid', null);
+      }
+
+      const { error } = await query;
 
       if (error) {
         setProjecterror(error.message);
@@ -154,7 +190,7 @@ export function useProjects() {
       setProjects((current) => current.filter((project) => project.id !== id));
       return {};
     },
-    [user],
+    [roomid, user],
   );
 
   const getProjectById = useCallback(

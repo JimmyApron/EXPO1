@@ -1,0 +1,14 @@
+env: load .env
+env: export EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_PUBLIC_SUPABASE_URL
+Starting project at C:\Users\User\Documents\GitHub\EXPO1
+Using src/app as the root directory for Expo Router.
+React Compiler enabled
+Starting Metro Bundler
+
+ ERROR  An unknown error occurred while installing React Native DevTools. Details:
+
+spawn EPERM
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+Web Bundled 6265ms node_modules\expo-router\entry.js (1438 modules)
+λ Bundled 6334ms node_modules\expo\node_modules\@expo\cli\node_modules\@expo\router-server\node\render.js (1489 modules)

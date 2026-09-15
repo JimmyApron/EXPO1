@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { IdeaFeedback } from '@/types/feedback';
 
@@ -14,6 +15,7 @@ type FeedbackRow = {
   ideaid?: string;
   userid?: string;
   comment?: string;
+  isresolved?: boolean;
   createdat?: string;
   updatedat?: string;
 };
@@ -22,7 +24,8 @@ type IdeaIdRow = {
   id?: string;
 };
 
-const feedbackSelect = 'id, userid, ideaid, comment, createdat, updatedat';
+const feedbackSelect = 'id, userid, ideaid, comment, isresolved, createdat, updatedat';
+const feedbackRealtimeTables = ['ideas', 'feedbacks'] as const;
 
 function normalizeFeedback(row: FeedbackRow): IdeaFeedback {
   return {
@@ -30,6 +33,7 @@ function normalizeFeedback(row: FeedbackRow): IdeaFeedback {
     ideaid: row.ideaid ?? '',
     userid: row.userid ?? '',
     content: row.comment ?? '',
+    isresolved: row.isresolved === true,
     createdat: row.createdat ?? '',
     updatedat: row.updatedat ?? '',
   };
@@ -54,7 +58,7 @@ export function useIdeaFeedbacks(projectId?: string) {
     const { data: ideaRows, error: ideaError } = await supabase
       .from('ideas')
       .select('id')
-      .eq('userid', user.id)
+      .eq('legacystructural', false)
       .eq('projectid', projectId);
 
     if (ideaError) {
@@ -77,7 +81,6 @@ export function useIdeaFeedbacks(projectId?: string) {
     const { data, error } = await supabase
       .from('feedbacks')
       .select(feedbackSelect)
-      .eq('userid', user.id)
       .in('ideaid', ideaIds)
       .order('createdat', { ascending: false });
 
@@ -100,6 +103,13 @@ export function useIdeaFeedbacks(projectId?: string) {
       globalThis.clearTimeout(timeout);
     };
   }, [loadFeedbacks]);
+
+  useRealtimeRefresh({
+    channelName: `idea-feedbacks:${projectId ?? 'none'}`,
+    enabled: Boolean(user && projectId),
+    onRefresh: loadFeedbacks,
+    tables: feedbackRealtimeTables,
+  });
 
   const feedbacksByIdeaId = useMemo(() => {
     const grouped = new Map<string, IdeaFeedback[]>();
@@ -131,6 +141,7 @@ export function useIdeaFeedbacks(projectId?: string) {
           ideaid: ideaId,
           userid: user.id,
           comment: trimmedContent,
+          isresolved: false,
           createdat: now,
           updatedat: now,
         })
@@ -149,6 +160,34 @@ export function useIdeaFeedbacks(projectId?: string) {
     [projectId, user],
   );
 
+  const toggleFeedbackResolved = useCallback(
+    async (feedbackId: string, isresolved: boolean): Promise<FeedbackMutationResult> => {
+      if (!user || !projectId) {
+        return { error: '로그인이 필요합니다.' };
+      }
+
+      const { data, error } = await supabase
+        .from('feedbacks')
+        .update({
+          isresolved,
+          updatedat: new Date().toISOString(),
+        })
+        .eq('id', feedbackId)
+        .select(feedbackSelect)
+        .single();
+
+      if (error) {
+        setFeedbackError(error.message);
+        return { error: error.message };
+      }
+
+      const feedback = normalizeFeedback(data as FeedbackRow);
+      setFeedbacks((current) => current.map((item) => (item.id === feedbackId ? feedback : item)));
+      return { feedback };
+    },
+    [projectId, user],
+  );
+
   return {
     feedbacks,
     feedbacksByIdeaId,
@@ -156,5 +195,6 @@ export function useIdeaFeedbacks(projectId?: string) {
     feedbackError,
     loadFeedbacks,
     createFeedback,
+    toggleFeedbackResolved,
   };
 }

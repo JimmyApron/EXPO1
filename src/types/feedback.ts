@@ -3,6 +3,7 @@ export type IdeaFeedback = {
   ideaid: string;
   userid: string;
   content: string;
+  isresolved: boolean;
   createdat: string;
   updatedat: string;
 };
