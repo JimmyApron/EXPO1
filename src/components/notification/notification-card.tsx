@@ -13,6 +13,7 @@ const kindColors: Record<NotificationKind, { background: string; text: string }>
   stalledidea: { background: '#f1f5f9', text: '#475569' },
   feedback: { background: '#E7F8EF', text: '#168B51' },
   likesurge: { background: '#fce7f3', text: '#be185d' },
+  evaluation: { background: '#e0f2fe', text: '#0369a1' },
 };
 
 function formatRelativeTime(value: string) {
