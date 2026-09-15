@@ -20,6 +20,7 @@ import { IdeaStatusLabels, normalizeIdeaCategory, normalizeIdeaStatus, type Idea
 import type { IdeaField, MindMap, MindMapIdeaDetailsInput, MindMapNode } from '@/types/mind-map';
 
 type MutationResult = Promise<{ error?: string }>;
+type ViewMode = 'map' | 'list';
 
 type IdeaMindMapProps = {
   mindMap: MindMap | null;
@@ -201,6 +202,8 @@ export function IdeaMindMap({
   const [isAddAdvancedOpen, setIsAddAdvancedOpen] = useState(false);
   const [addError, setAddError] = useState('');
   const [isAddingNode, setIsAddingNode] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('map');
+  const [expandedBranchIds, setExpandedBranchIds] = useState<Set<string>>(new Set());
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const ideaById = useMemo(() => new Map(ideas.map((idea) => [idea.id, idea])), [ideas]);
   const selectedNode = selectedNodeId ? nodeById.get(selectedNodeId) ?? null : null;
@@ -210,12 +213,29 @@ export function IdeaMindMap({
   const selectedIdeaField = selectedNode?.nodetype === 'idea_field' ? selectedNode.ideafield : null;
   const branches = useMemo(() => nodes.filter((node) => node.nodetype === 'branch'), [nodes]);
   const customBranches = useMemo(() => branches.filter((branch) => !branch.branchfield), [branches]);
+  const rootNode = useMemo(() => nodes.find((node) => node.nodetype === 'root') ?? null, [nodes]);
   const bounds = useMemo(() => getBounds(nodes), [nodes]);
   const scaledMapWidth = bounds.width * mapZoom;
   const scaledMapHeight = bounds.height * mapZoom;
   const mapZoomPercent = Math.round(mapZoom * 100);
   const canZoomOut = mapZoom > minMapZoom;
   const canZoomIn = mapZoom < maxMapZoom;
+
+  const openAddNodeForm = (node: MindMapNode) => {
+    setAddTargetNodeId(node.id);
+    setAddForm(emptyIdeaDetailsDraft());
+    setIsAddAdvancedOpen(false);
+    setAddError('');
+  };
+
+  const toggleBranch = (branchId: string) => {
+    setExpandedBranchIds((current) => {
+      const next = new Set(current);
+      if (next.has(branchId)) next.delete(branchId);
+      else next.add(branchId);
+      return next;
+    });
+  };
 
   const updateMapZoom = (delta: number) => {
     setMapZoom((current) => Math.min(maxMapZoom, Math.max(minMapZoom, Math.round((current + delta) * 10) / 10)));
@@ -368,6 +388,95 @@ export function IdeaMindMap({
     );
   }
 
+  const renderListNode = (node: MindMapNode, compact = false) => {
+    const idea = node.ideaid ? ideaById.get(node.ideaid) : null;
+    const displayTitle = idea?.title || node.title;
+    const nodeLabel = node.nodetype === 'idea_field' && node.ideafield
+      ? getIdeaFieldLabel(node.ideafield)
+      : node.nodetype === 'idea'
+        ? IdeaStatusLabels[normalizeIdeaStatus(idea?.status)]
+        : node.title;
+
+    return (
+      <Pressable
+        key={node.id}
+        accessibilityRole="button"
+        accessibilityLabel={`${displayTitle} 상세 보기`}
+        onPress={() => openNode(node)}
+        style={({ pressed }) => [
+          styles.listNodeCard,
+          { borderColor: theme.border, backgroundColor: theme.surface },
+          compact && styles.listChildCard,
+          pressed && styles.pressed,
+        ]}>
+        <View style={styles.listNodeCopy}>
+          <ThemedText type="captionStrong" themeColor="textSecondary">{nodeLabel}</ThemedText>
+          <ThemedText type="smallBold" numberOfLines={2}>{displayTitle}</ThemedText>
+          <ThemedText type="caption" themeColor="textSecondary" numberOfLines={2}>
+            {node.nodetype === 'idea_field' ? node.summary : idea?.summary || node.summary}
+          </ThemedText>
+        </View>
+        <ThemedText type="button" themeColor="textSecondary">›</ThemedText>
+      </Pressable>
+    );
+  };
+
+  const renderListView = () => (
+    <View style={styles.listView}>
+      {rootNode ? (
+        <View style={styles.listRootSection}>
+          {renderListNode(rootNode)}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="중심 주제에 새 분류 가지 추가"
+            disabled={isBusy}
+            onPress={() => openAddNodeForm(rootNode)}
+            style={({ pressed }) => [styles.listAddButton, { borderColor: theme.primary }, (pressed || isBusy) && styles.pressed]}>
+            <ThemedText type="smallBold" style={{ color: theme.primary }}>+ 새 분류 가지 추가</ThemedText>
+          </Pressable>
+        </View>
+      ) : null}
+      <View style={styles.listBranches}>
+        {branches.map((branch) => {
+          const childNodes = nodes.filter((node) => node.parentnodeid === branch.id);
+          const isExpanded = expandedBranchIds.has(branch.id);
+          return (
+            <View key={branch.id} style={[styles.branchAccordion, { borderColor: theme.border }]}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${branch.title} 분류 ${isExpanded ? '접기' : '펼치기'}`}
+                accessibilityState={{ expanded: isExpanded }}
+                onPress={() => toggleBranch(branch.id)}
+                style={({ pressed }) => [styles.branchAccordionToggle, pressed && styles.pressed]}>
+                <View style={styles.listNodeCopy}>
+                  <ThemedText type="captionStrong" themeColor="textSecondary">{branch.branchfield ? '고정 필드' : '사용자 분류'}</ThemedText>
+                  <ThemedText type="smallBold">{branch.title}</ThemedText>
+                  <ThemedText type="caption" themeColor="textSecondary">아이디어 {childNodes.length}개</ThemedText>
+                </View>
+                <ThemedText type="button" style={{ color: theme.primary }}>{isExpanded ? '⌃' : '⌄'}</ThemedText>
+              </Pressable>
+              {isExpanded ? (
+                <View style={[styles.branchAccordionBody, { borderTopColor: theme.divider }]}>
+                  {childNodes.length > 0 ? childNodes.map((node) => renderListNode(node, true)) : (
+                    <ThemedText type="small" themeColor="textSecondary">아직 이 분류에 아이디어가 없습니다.</ThemedText>
+                  )}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${branch.title} 분류에 새 아이디어 추가`}
+                    disabled={isBusy}
+                    onPress={() => openAddNodeForm(branch)}
+                    style={({ pressed }) => [styles.listAddButton, { borderColor: theme.primary }, (pressed || isBusy) && styles.pressed]}>
+                    <ThemedText type="smallBold" style={{ color: theme.primary }}>+ 이 분류에 새 아이디어 추가</ThemedText>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+
   return (
     <ThemedView style={styles.container}>
       <View style={styles.toolbar}>
@@ -376,11 +485,30 @@ export function IdeaMindMap({
           <ThemedText type="small" themeColor="textSecondary">노드를 선택하면 전체 내용을 보고 수정할 수 있습니다.</ThemedText>
         </View>
         <View style={styles.toolbarActions}>
+          <View style={[styles.viewModeToggle, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            {(['map', 'list'] as const).map((mode) => (
+              <Pressable
+                key={mode}
+                accessibilityRole="button"
+                accessibilityLabel={mode === 'map' ? '마인드맵 뷰' : '리스트 뷰'}
+                accessibilityState={{ selected: viewMode === mode }}
+                onPress={() => setViewMode(mode)}
+                style={({ pressed }) => [
+                  styles.viewModeButton,
+                  viewMode === mode && { backgroundColor: theme.primary },
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold" style={{ color: viewMode === mode ? '#ffffff' : theme.textSecondary }}>
+                  {mode === 'map' ? '마인드맵' : '리스트 뷰'}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
           <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 재정렬" disabled={isBusy} onPress={() => void onReorganize()} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, (pressed || isBusy) && styles.pressed]}><ThemedText type="smallBold">재정렬</ThemedText></Pressable>
         </View>
       </View>
 
-      <View style={styles.mapFrame}>
+      {viewMode === 'list' ? renderListView() : <View style={styles.mapFrame}>
         <ScrollView horizontal style={[styles.viewport, { borderColor: theme.border, backgroundColor: theme.background }]} contentContainerStyle={{ minWidth: scaledMapWidth }}>
           <ScrollView nestedScrollEnabled contentContainerStyle={{ width: scaledMapWidth, height: scaledMapHeight }}>
             <View style={{ width: scaledMapWidth, height: scaledMapHeight, overflow: 'hidden' }}>
@@ -423,12 +551,7 @@ export function IdeaMindMap({
                     accessibilityRole="button"
                     accessibilityLabel={`${displayTitle}에 ${node.nodetype === 'root' ? '새 분류 가지' : '새 아이디어'} 추가`}
                     disabled={isBusy}
-                    onPress={() => {
-                      setAddTargetNodeId(node.id);
-                      setAddForm(emptyIdeaDetailsDraft());
-                      setIsAddAdvancedOpen(false);
-                      setAddError('');
-                    }}
+                    onPress={() => openAddNodeForm(node)}
                     style={({ pressed }) => [styles.addNodeButton, { backgroundColor: theme.surfaceElevated, borderColor: theme.primary }, Shadows.card, (pressed || isBusy) && styles.pressed]}>
                     <ThemedText type="button" style={{ color: theme.primary }}>+</ThemedText>
                   </Pressable>
@@ -444,7 +567,7 @@ export function IdeaMindMap({
           <View style={[styles.zoomBadge, { borderColor: theme.border, backgroundColor: theme.surface }]}><ThemedText type="smallBold">{mapZoomPercent}%</ThemedText></View>
           <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 확대" accessibilityState={{ disabled: !canZoomIn }} disabled={!canZoomIn} onPress={() => updateMapZoom(mapZoomStep)} style={({ pressed }) => [styles.zoomButton, { borderColor: theme.border }, (!canZoomIn || pressed) && styles.pressed]}><ThemedText type="button">+</ThemedText></Pressable>
         </View>
-      </View>
+      </View>}
 
       <Modal visible={Boolean(addTargetNode)} transparent animationType="fade" onRequestClose={() => setAddTargetNodeId(null)}>
         <View accessibilityViewIsModal style={[styles.overlay, { backgroundColor: theme.overlay }]}>
@@ -582,6 +705,8 @@ const styles = StyleSheet.create({
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.three },
   toolbarCopy: { flex: 1, minWidth: 240, gap: Spacing.half },
   toolbarActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  viewModeToggle: { flexDirection: 'row', borderWidth: 1, borderRadius: Radius.medium, padding: 2 },
+  viewModeButton: { minHeight: ControlHeight.touch - 4, justifyContent: 'center', borderRadius: Radius.small, paddingHorizontal: Spacing.two },
   mapFrame: { position: 'relative' },
   zoomControls: { minHeight: ControlHeight.touch, flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   fixedZoomControls: { position: 'absolute', zIndex: 10, elevation: 10, top: Spacing.three, right: Spacing.three, borderWidth: 1, borderRadius: Radius.large, padding: Spacing.one },
@@ -618,5 +743,15 @@ const styles = StyleSheet.create({
   multilineInput: { minHeight: 76, textAlignVertical: 'top' },
   branchChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
   branchChoice: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.pill, paddingHorizontal: Spacing.three },
+  listView: { gap: Spacing.three },
+  listRootSection: { gap: Spacing.two },
+  listBranches: { gap: Spacing.two },
+  listNodeCard: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  listChildCard: { minHeight: 76 },
+  listNodeCopy: { flex: 1, gap: Spacing.half },
+  listAddButton: { minHeight: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, borderStyle: 'dashed', paddingHorizontal: Spacing.three },
+  branchAccordion: { overflow: 'hidden', borderWidth: 1, borderRadius: Radius.medium },
+  branchAccordionToggle: { minHeight: 86, flexDirection: 'row', alignItems: 'center', gap: Spacing.two, padding: Spacing.three },
+  branchAccordionBody: { gap: Spacing.two, borderTopWidth: 1, padding: Spacing.two },
   pressed: { opacity: Platform.OS === 'web' ? 0.72 : 0.6 },
 });
