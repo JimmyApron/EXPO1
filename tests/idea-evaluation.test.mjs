@@ -114,6 +114,22 @@ test('result cards preserve blind analysis and add AI ranks only after compariso
   assert.equal(afterRecommendation.aiRecommendationReason, '아이디어 B를 우선 추천한 이유');
 });
 
+test('result cards reveal source titles and summaries after blind voting completes', () => {
+  const voteResults = calculateIdeaResults(analyses, [], 0);
+  const data = createIdeaResultData(voteResults, undefined, [
+    { id: 'idea-a', title: '사용자 문제 해결', summary: '반복 업무를 줄이는 협업 도구', content: '대체 요약' },
+    { id: 'idea-b', title: '팀 업무 정리', summary: '', content: '요약이 없을 때 보여 줄 본문' },
+  ]);
+
+  assert.deepEqual(
+    data.ideas.map((idea) => [idea.number, idea.label, idea.summary]),
+    [
+      [1, '사용자 문제 해결', '반복 업무를 줄이는 협업 도구'],
+      [2, '팀 업무 정리', '요약이 없을 때 보여 줄 본문'],
+    ],
+  );
+});
+
 test('result cards can be sorted by AI rank or team pass rate without mutating source data', () => {
   const ideas = [
     { id: 'a', label: '아이디어 A', passCount: 3, participantCount: 3, passRate: 100, aiRank: 2, aiAdvantages: [], aiRisk: '', difficulty: '보통' },

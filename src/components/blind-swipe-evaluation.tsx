@@ -133,8 +133,8 @@ export function BlindSwipeEvaluation({
     [analyses, currentParticipantCount, evaluations],
   );
   const resultData = useMemo(
-    () => createIdeaResultData(results, activeRecommendation),
-    [activeRecommendation, results],
+    () => createIdeaResultData(results, activeRecommendation, candidates),
+    [activeRecommendation, candidates, results],
   );
   const teamSize = Math.max(1, conditions.teamSize);
   const majorityCount = Math.floor(teamSize / 2) + 1;

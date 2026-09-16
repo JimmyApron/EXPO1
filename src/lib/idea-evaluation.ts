@@ -9,7 +9,7 @@ import type {
 import type { IdeaResult, IdeaResultData } from '@/types/result';
 
 function anonymousLabel(index: number) {
-  return `익명 아이디어 ${String.fromCharCode(65 + index)}`;
+  return `익명 아이디어 ${index + 1}`;
 }
 
 function shortText(value: string, fallback: string) {
@@ -150,6 +150,7 @@ function getVisibleRecommendationReason(
 export function createIdeaResultData(
   results: IdeaResultForComparison[],
   recommendation?: FinalIdeaAnalysisResult | null,
+  ideas: Pick<Idea, 'id' | 'title' | 'summary' | 'content'>[] = [],
 ): IdeaResultData {
   const resultIds = new Set(results.map((result) => result.ideaId));
   const recommendedIds = (recommendation?.overall.recommendedIdeaIds ?? [])
@@ -157,6 +158,7 @@ export function createIdeaResultData(
   const analysisById = new Map(
     recommendation?.analyses.map((analysis) => [analysis.ideaId, analysis]) ?? [],
   );
+  const ideaById = new Map(ideas.map((idea) => [idea.id, idea]));
   const remainingIds = results
     .map((result) => result.ideaId)
     .filter((ideaId) => !recommendedIds.includes(ideaId))
@@ -176,16 +178,21 @@ export function createIdeaResultData(
   return {
     currentParticipantCount: results[0]?.currentParticipantCount ?? 0,
     aiRecommendationReason: getVisibleRecommendationReason(results, recommendation),
-    ideas: results.map((result) => ({
-      id: result.ideaId,
-      label: result.anonymousLabel.replace(/^익명 /, ''),
-      passCount: result.pickCount,
-      participantCount: result.participantCount,
-      passRate: result.passRate,
-      aiRank: rankById.get(result.ideaId) ?? null,
-      aiAdvantages: result.aiAdvantages,
-      aiRisk: result.aiRisk,
-      difficulty: result.difficulty,
-    })),
+    ideas: results.map((result, index) => {
+      const sourceIdea = ideaById.get(result.ideaId);
+      return {
+        id: result.ideaId,
+        number: index + 1,
+        label: sourceIdea?.title.trim() || result.anonymousLabel.replace(/^익명 /, ''),
+        summary: sourceIdea?.summary.trim() || sourceIdea?.content.trim() || '',
+        passCount: result.pickCount,
+        participantCount: result.participantCount,
+        passRate: result.passRate,
+        aiRank: rankById.get(result.ideaId) ?? null,
+        aiAdvantages: result.aiAdvantages,
+        aiRisk: result.aiRisk,
+        difficulty: result.difficulty,
+      };
+    }),
   };
 }

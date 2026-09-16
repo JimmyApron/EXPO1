@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { CandidateIdeaCard } from '@/components/idea-extraction/candidate-idea-card';
@@ -19,6 +19,7 @@ import {
   validateCandidateIdea,
 } from '@/lib/candidate-idea';
 import type { CandidateIdea, CandidateIdeaSaveResult, CandidateIdeasPayload } from '@/types/candidate-idea';
+import type { CompleteProjectConditions } from '@/types/project-flow';
 
 type IdeaExtractionPanelProps = {
   projectId: string;
@@ -26,14 +27,44 @@ type IdeaExtractionPanelProps = {
   hasMindMap: boolean;
   onSave: (candidates: CandidateIdea[], extractionRunId: string, topic: string) => Promise<CandidateIdeaSaveResult>;
   onGoToMindMap: () => void;
+  onGoToSelection: () => void;
+  conditions: CompleteProjectConditions;
+  onSaveConditions: (conditions: CompleteProjectConditions) => Promise<{ error?: string }>;
   onPayloadChange?: (payload: CandidateIdeasPayload) => void;
 };
+
+type ConditionFieldKey = 'durationWeeks' | 'teamSize' | 'budget';
+type ConditionFieldValues = Record<ConditionFieldKey, string>;
+const skillLevels = ['초급', '중급', '고급'] as const;
+type SkillLevel = (typeof skillLevels)[number];
+
+function conditionInputValues(conditions: CompleteProjectConditions): ConditionFieldValues {
+  return {
+    durationWeeks: String(conditions.durationWeeks),
+    teamSize: String(conditions.teamSize),
+    budget: String(conditions.budget),
+  };
+}
+
+function conditionFieldError(key: ConditionFieldKey, value: string) {
+  if (!value) return '0 이상의 값을 입력해 주세요.';
+  const numericValue = Number(value);
+  if (key === 'durationWeeks' && (numericValue < 1 || numericValue > 104)) return '기간은 1~104주로 입력해 주세요.';
+  if (key === 'teamSize' && (numericValue < 1 || numericValue > 100)) return '팀 인원은 1~100명으로 입력해 주세요.';
+  return '';
+}
+
+function normalizedSkillLevel(value: string): SkillLevel {
+  if (value.includes('고급')) return '고급';
+  if (value.includes('중급')) return '중급';
+  return '초급';
+}
 
 function createRunId() {
   return `extraction-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSave, onGoToMindMap, onPayloadChange }: IdeaExtractionPanelProps) {
+export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSave, onGoToMindMap, onGoToSelection, conditions, onSaveConditions, onPayloadChange }: IdeaExtractionPanelProps) {
   const theme = useTheme();
   const [mode, setMode] = useState<ExtractionSourceMode>('text');
   const [sourceText, setSourceText] = useState('');
@@ -50,6 +81,13 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
   const [isSaving, setIsSaving] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [topic, setTopic] = useState(defaultTopic);
+  const [conditionValues, setConditionValues] = useState<ConditionFieldValues>(() => conditionInputValues(conditions));
+  const [conditionErrors, setConditionErrors] = useState<Partial<Record<ConditionFieldKey, string>>>({});
+  const conditionValuesRef = useRef<ConditionFieldValues>(conditionInputValues(conditions));
+  const [skillLevel, setSkillLevel] = useState<SkillLevel>(() => normalizedSkillLevel(conditions.skillLevel));
+  const [isSavingConditions, setIsSavingConditions] = useState(false);
+  const [conditionsSaveError, setConditionsSaveError] = useState('');
+  const [conditionsSaved, setConditionsSaved] = useState(false);
   const {
     images,
     imageSelectionId,
@@ -76,6 +114,61 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
     [candidates, memoIds, savedIds, selectedIds],
   );
 
+  const updateCondition = (key: ConditionFieldKey, value: string) => {
+    const sanitizedValue = value.replace(/\D/g, '');
+    setConditionValues((current) => {
+      const next = { ...current, [key]: sanitizedValue };
+      conditionValuesRef.current = next;
+      return next;
+    });
+    setConditionsSaveError('');
+    setConditionsSaved(false);
+    if (sanitizedValue) {
+      const error = conditionFieldError(key, sanitizedValue);
+      setConditionErrors((current) => ({ ...current, [key]: error }));
+    }
+  };
+
+  const validateConditionField = (key: ConditionFieldKey) => {
+    setConditionErrors((current) => ({ ...current, [key]: conditionFieldError(key, conditionValuesRef.current[key]) }));
+  };
+
+  const validateConditions = () => {
+    const currentValues = conditionValuesRef.current;
+    const nextErrors = Object.fromEntries(
+      (Object.keys(currentValues) as ConditionFieldKey[])
+        .map((key) => [key, conditionFieldError(key, currentValues[key])])
+        .filter(([, error]) => error),
+    ) as Partial<Record<ConditionFieldKey, string>>;
+    setConditionErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const currentConditions = (): CompleteProjectConditions => ({
+    ...conditions,
+    durationWeeks: Number(conditionValuesRef.current.durationWeeks),
+    teamSize: Number(conditionValuesRef.current.teamSize),
+    skillLevel,
+    budget: Number(conditionValuesRef.current.budget),
+  });
+
+  const selectSkillLevel = (nextSkillLevel: SkillLevel) => {
+    setSkillLevel(nextSkillLevel);
+    setConditionsSaveError('');
+    setConditionsSaved(false);
+  };
+
+  const saveConditions = async () => {
+    if (isSavingConditions || !validateConditions()) return;
+    setIsSavingConditions(true);
+    setConditionsSaveError('');
+    setConditionsSaved(false);
+    const result = await onSaveConditions(currentConditions());
+    if (result.error) setConditionsSaveError(result.error);
+    else setConditionsSaved(true);
+    setIsSavingConditions(false);
+  };
+
   const replaceCandidates = (nextCandidates: CandidateIdea[]) => {
     const normalized = normalizeCandidateIdeas(nextCandidates);
     setCandidates(normalized);
@@ -91,11 +184,13 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
     setSaveError('');
     setSavedIdeaCount(null);
     clearExtractionError();
+    if (!validateConditions()) return;
 
     const response = await extract(
       useEditedOcrText || mode === 'text'
         ? { type: 'text', text: useEditedOcrText ? extractedText : sourceText }
         : { type: 'image' },
+      currentConditions(),
     );
     if (!response) {
       return;
@@ -222,6 +317,93 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
             회의록이나 카카오톡 캡처에서 후보를 찾고, 검토한 항목만 아이디어 보드와 마인드맵에 저장합니다.
           </ThemedText>
         </View>
+
+        <ThemedView type="background" style={[styles.conditionsCard, { borderColor: theme.border }]}>
+          <View style={styles.conditionsHeading}>
+            <View style={styles.conditionsCopy}>
+              <ThemedText type="smallBold">프로젝트 조건</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">저장한 조건은 AI 추출과 이후 프로젝트 진행에 사용됩니다.</ThemedText>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="프로젝트 조건 저장"
+              disabled={isSavingConditions}
+              onPress={() => void saveConditions()}
+              style={({ pressed }) => [
+                styles.saveConditionsButton,
+                { backgroundColor: theme.primary },
+                (pressed || isSavingConditions) && styles.pressed,
+              ]}>
+              {isSavingConditions ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>조건 저장</ThemedText>}
+            </Pressable>
+          </View>
+          <View style={styles.conditionsFields}>
+            <View style={styles.conditionField}>
+              <ThemedText type="smallBold">기간(주)</ThemedText>
+              <TextInput
+                accessibilityLabel="프로젝트 기간(주)"
+                keyboardType="number-pad"
+                value={conditionValues.durationWeeks}
+                onBlur={() => validateConditionField('durationWeeks')}
+                onChangeText={(value) => updateCondition('durationWeeks', value)}
+                style={[styles.conditionInput, { color: theme.text, borderColor: conditionErrors.durationWeeks ? theme.danger : theme.border, backgroundColor: theme.background }]}
+              />
+              {conditionErrors.durationWeeks ? <ThemedText accessibilityRole="alert" type="small" style={[styles.conditionErrorText, { color: theme.danger }]}>{conditionErrors.durationWeeks}</ThemedText> : null}
+            </View>
+            <View style={styles.conditionField}>
+              <ThemedText type="smallBold">팀 인원</ThemedText>
+              <TextInput
+                accessibilityLabel="프로젝트 팀 인원"
+                keyboardType="number-pad"
+                value={conditionValues.teamSize}
+                onBlur={() => validateConditionField('teamSize')}
+                onChangeText={(value) => updateCondition('teamSize', value)}
+                style={[styles.conditionInput, { color: theme.text, borderColor: conditionErrors.teamSize ? theme.danger : theme.border, backgroundColor: theme.background }]}
+              />
+              {conditionErrors.teamSize ? <ThemedText accessibilityRole="alert" type="small" style={[styles.conditionErrorText, { color: theme.danger }]}>{conditionErrors.teamSize}</ThemedText> : null}
+            </View>
+            <View style={styles.conditionField}>
+              <ThemedText type="smallBold">예산(원)</ThemedText>
+              <TextInput
+                accessibilityLabel="프로젝트 예산(원)"
+                keyboardType="number-pad"
+                value={conditionValues.budget}
+                onBlur={() => validateConditionField('budget')}
+                onChangeText={(value) => updateCondition('budget', value)}
+                style={[styles.conditionInput, { color: theme.text, borderColor: conditionErrors.budget ? theme.danger : theme.border, backgroundColor: theme.background }]}
+              />
+              {conditionErrors.budget ? <ThemedText accessibilityRole="alert" type="small" style={[styles.conditionErrorText, { color: theme.danger }]}>{conditionErrors.budget}</ThemedText> : null}
+            </View>
+          </View>
+          <View style={styles.skillLevelField}>
+            <ThemedText type="smallBold">기술 수준</ThemedText>
+            <View style={styles.skillLevelOptions} accessibilityLabel="프로젝트 기술 수준">
+              {skillLevels.map((level) => {
+                const isSelected = skillLevel === level;
+                return (
+                  <Pressable
+                    key={level}
+                    accessibilityRole="button"
+                    accessibilityLabel={`기술 수준 ${level}`}
+                    accessibilityState={{ selected: isSelected }}
+                    onPress={() => selectSkillLevel(level)}
+                    style={({ pressed }) => [
+                      styles.skillLevelOption,
+                      {
+                        borderColor: isSelected ? theme.primary : theme.border,
+                        backgroundColor: isSelected ? theme.primarySoft : theme.background,
+                      },
+                      pressed && styles.pressed,
+                    ]}>
+                    <ThemedText type="smallBold" style={{ color: isSelected ? theme.primary : theme.text }}>{level}</ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          {conditionsSaveError ? <ThemedText accessibilityRole="alert" type="small" style={[styles.errorText, { color: theme.danger }]}>{conditionsSaveError}</ThemedText> : null}
+          {conditionsSaved ? <ThemedText accessibilityLiveRegion="polite" type="small" style={{ color: theme.success }}>프로젝트 조건을 저장했습니다.</ThemedText> : null}
+        </ThemedView>
 
         <View style={styles.flowRow} accessibilityLabel="아이디어 추출 단계">
           {flowSteps.map((step, index) => (
@@ -394,6 +576,20 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
             <ThemedText type="small" themeColor="textSecondary">원문을 보완한 뒤 다시 추출해 보세요. `candidateIdeas: []`는 정상 결과입니다.</ThemedText>
           </ThemedView>
         ) : null}
+
+        {savedIds.size > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="AI 비교·선정으로 이동"
+            onPress={onGoToSelection}
+            style={({ pressed }) => [
+              styles.goToSelectionButton,
+              { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText type="smallBold" style={{ color: theme.primary }}>AI 비교·선정으로 이동</ThemedText>
+          </Pressable>
+        ) : null}
       </ThemedView>
 
       <Modal
@@ -500,10 +696,22 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
 const styles = StyleSheet.create({
   panel: { gap: Spacing.four, borderRadius: Radius.large, borderWidth: 1, padding: Spacing.four },
   heading: { gap: Spacing.one },
+  conditionsCard: { gap: Spacing.three, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  conditionsHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.two },
+  conditionsCopy: { flex: 1, minWidth: 200, gap: Spacing.half },
+  conditionsFields: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  conditionField: { flex: 1, minWidth: 120, gap: Spacing.one },
+  conditionInput: { minHeight: ControlHeight.input, borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  conditionErrorText: { marginTop: -Spacing.half },
+  skillLevelField: { gap: Spacing.one },
+  skillLevelOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  skillLevelOption: { flexGrow: 1, minWidth: 84, minHeight: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  saveConditionsButton: { minHeight: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   flowRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   flowStep: { flexGrow: 1, flexBasis: 150, minHeight: 42, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   extractButton: { minHeight: ControlHeight.input, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   saveButton: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  goToSelectionButton: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   primaryButtonText: { color: '#ffffff', textAlign: 'center' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   section: { gap: Spacing.three },

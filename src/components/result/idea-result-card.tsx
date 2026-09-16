@@ -41,7 +41,9 @@ export function IdeaResultCard({
       ]}>
       <View style={styles.header}>
         <View style={styles.grow}>
+          {idea.number ? <ThemedText type="smallBold" style={{ color: theme.primary }}>아이디어 {idea.number}</ThemedText> : null}
           <ThemedText type="cardTitle">{idea.label}</ThemedText>
+          {idea.summary ? <ThemedText type="small" themeColor="textSecondary">{idea.summary}</ThemedText> : null}
           <ThemedText type="small" themeColor="textSecondary">
             팀 통과율 {idea.passRate}% ({idea.passCount}명/{idea.participantCount}명)
           </ThemedText>

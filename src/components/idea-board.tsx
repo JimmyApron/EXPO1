@@ -1865,6 +1865,9 @@ export function IdeaBoard({
               hasMindMap={mindMapNodes.some((node) => node.nodetype === 'idea' || node.nodetype === 'idea_field')}
               onSave={handleSaveExtractedCandidates}
               onGoToMindMap={() => navigateTo('mindmap')}
+              onGoToSelection={() => handleFlowStepPress('selection')}
+              conditions={flowController.conditions}
+              onSaveConditions={flowController.saveConditions}
             />
           ) : null}
 

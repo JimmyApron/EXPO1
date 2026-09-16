@@ -8,7 +8,9 @@ export type MvpSummary = {
 
 export type IdeaResult = {
   id: string;
+  number?: number;
   label: string;
+  summary?: string;
   passCount: number;
   participantCount: number;
   passRate: number;

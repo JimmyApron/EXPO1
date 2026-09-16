@@ -297,8 +297,8 @@ function getToolInput(responseBody: unknown) {
 
 function buildMessageContent(source: ExtractSource, projectConditions: ReturnType<typeof normalizeProjectConditions>) {
   const conditionText = projectConditions
-    ? `프로젝트 조건: ${JSON.stringify(projectConditions)}`
-    : '별도의 프로젝트 조건은 없습니다.';
+    ? `Project constraints: ${JSON.stringify(projectConditions)}. Treat them as feasibility constraints: favor ideas that can be built within the stated duration, team size, and budget, and scale the scope and core features accordingly. Do not invent missing schedule, cost, or capability details.`
+    : 'No project constraints were provided.';
 
   if (source.type === 'text') {
     return [
