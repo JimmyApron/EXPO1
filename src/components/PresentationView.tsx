@@ -9,13 +9,15 @@ import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { usePresentationGeneration } from '@/hooks/use-presentation-generation';
 import { useTheme } from '@/hooks/use-theme';
 import type { CandidateIdea, PresentationData, ProjectConditions, SampleMvpPlan } from '@/types/presentation';
-import { copyToClipboard, downloadAsDocx } from '@/utils/fileExport';
+import { ExportPanel } from '@/components/export/ExportPanel';
+import type { ExportData } from '@/types/export';
 
 type PresentationViewProps = {
   projectId: string;
   projectConditions: ProjectConditions;
   selectedIdea: CandidateIdea;
   sampleMvpPlan: SampleMvpPlan;
+  exportDetails?: Pick<ExportData, 'aiAnalysis' | 'teamRoles' | 'presentationOrder'>;
   initialData?: PresentationData | null;
   onSave?: (data: PresentationData, expected?: PresentationData) => Promise<unknown>;
 };
@@ -30,6 +32,7 @@ export function PresentationView({
   selectedIdea,
   sampleMvpPlan,
   initialData,
+  exportDetails,
   onSave,
 }: PresentationViewProps) {
   const theme = useTheme();
@@ -222,37 +225,18 @@ export function PresentationView({
             </View>
           ) : null}
 
-          <View style={styles.actionRow}>
-            <Pressable
-              onPress={() => copyToClipboard(JSON.stringify(presentationData, null, 2))}
-              style={[styles.secondaryButton, { borderColor: theme.border }]}>
-              <ThemedText type="smallBold">전체 결과 복사</ThemedText>
-            </Pressable>
-            <Pressable
-              onPress={() =>
-                void downloadAsDocx(
-                  presentationData.businessPlanDraft,
-                  `${selectedIdea.title}_사업계획서.docx`,
-                  { documentType: '사업계획서', projectTitle: selectedIdea.title },
-                )
-              }
-              style={[styles.secondaryButton, { borderColor: theme.border }]}>
-              <ThemedText type="smallBold">사업계획서 다운로드</ThemedText>
-            </Pressable>
-            <Pressable
-              onPress={() =>
-                void downloadAsDocx(
-                  presentationData.finalReport,
-                  `${selectedIdea.title}_최종보고서.docx`,
-                  { documentType: '최종 결과 보고서', projectTitle: selectedIdea.title },
-                )
-              }
-              style={[styles.secondaryButton, { borderColor: theme.border }]}>
-              <ThemedText type="smallBold">최종 보고서 다운로드</ThemedText>
-            </Pressable>
-          </View>
+
         </View>
       ) : null}
+      <ExportPanel data={{
+        projectTitle: presentationData?.presentationTitle || selectedIdea.title,
+        idea: selectedIdea,
+        mvpPlan: sampleMvpPlan,
+        presentation: presentationData,
+        aiAnalysis: exportDetails?.aiAnalysis,
+        teamRoles: exportDetails?.teamRoles ?? [],
+        presentationOrder: exportDetails?.presentationOrder ?? [],
+      }} />
     </ThemedView>
   );
 }

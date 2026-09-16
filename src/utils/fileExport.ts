@@ -1,4 +1,5 @@
 import { Alert, Clipboard, Platform } from 'react-native';
+import { saveFile } from './export/saveFile';
 
 const sanitizeFileName = (fileName: string) =>
   fileName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/g, '');
@@ -51,11 +52,6 @@ export const downloadAsDocx = async (
   fileName: string,
   { documentType, projectTitle }: DocxDocumentOptions,
 ) => {
-  if (Platform.OS !== 'web') {
-    Alert.alert('다운로드 지원', '현재 Word 문서 다운로드는 웹에서 지원됩니다.');
-    return;
-  }
-
   try {
     const {
       AlignmentType,
@@ -327,10 +323,10 @@ export const downloadAsDocx = async (
         },
       ],
     });
-    const blob = await Packer.toBlob(document);
-    downloadBlob(blob, fileName.endsWith('.docx') ? fileName : `${fileName}.docx`);
+    const buffer = await Packer.toArrayBuffer(document);
+    await saveFile(new Uint8Array(buffer), fileName.endsWith('.docx') ? fileName : `${fileName}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   } catch (error) {
     console.error('Word 문서 생성 실패:', error);
-    Alert.alert('다운로드 실패', 'Word 문서를 생성하지 못했습니다. 다시 시도해 주세요.');
+    throw new Error('Word 문서를 생성하거나 공유하지 못했습니다. 다시 시도해 주세요.');
   }
 };
