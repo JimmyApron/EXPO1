@@ -3,34 +3,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNotificationToasts } from '@/components/notification/notification-toast-provider';
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
+import { completedEvaluatorIds } from '@/lib/team-evaluation-progress';
 import { supabase } from '@/lib/supabase';
 import type { RoomMember } from '@/types/room';
-
-type EvaluationParticipant = {
-  id: string;
-  name: string;
-};
 
 type TeamEvaluationProgress = {
   completedCount: number;
   totalCount: number;
   isLoading: boolean;
   isCurrentUserCompleted: boolean;
-  completeEvaluation: () => Promise<void>;
 };
 
 type EvaluationRow = {
   userid: string;
-  completedat: string;
+  ideaid: string;
 };
-
-function getParticipantName(member: RoomMember) {
-  return member.nickname || member.email || '팀원';
-}
 
 export function useTeamEvaluationProgress(
   projectId: string | undefined,
   members: RoomMember[] | undefined,
+  ideaIds: string[],
+  evaluationRound: number,
   fallbackTeamSize = 4,
 ): TeamEvaluationProgress {
   const { user } = useAuth();
@@ -38,22 +31,18 @@ export function useTeamEvaluationProgress(
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const previousCompletedCount = useRef<number | null>(null);
-  const participants = useMemo<EvaluationParticipant[]>(() => {
-    if (members && members.length > 0) {
-      return members.map((member) => ({ id: member.userid, name: getParticipantName(member) }));
-    }
-
-    const totalCount = Math.max(1, fallbackTeamSize);
-    return Array.from({ length: totalCount }, (_, index) => ({
-      id: index === 0 && user?.id ? user.id : `mock-member-${index + 1}`,
-      name: index === 0 ? '나' : `팀원 ${index + 1}`,
-    }));
-  }, [fallbackTeamSize, members, user]);
-  const completedCount = participants.filter((participant) => completedIds.has(participant.id)).length;
-  const currentParticipant = participants.find((participant) => participant.id === user?.id);
+  const requiredIdeaIds = useMemo(() => [...new Set(ideaIds)].sort(), [ideaIds]);
+  const participantIds = useMemo(
+    () => new Set((members ?? []).map((member) => member.userid)),
+    [members],
+  );
+  const totalCount = members && members.length > 0 ? members.length : Math.max(1, fallbackTeamSize);
+  const completedCount = participantIds.size > 0
+    ? [...participantIds].filter((participantId) => completedIds.has(participantId)).length
+    : Math.min(totalCount, completedIds.size);
 
   const loadProgress = useCallback(async () => {
-    if (!projectId || !user) {
+    if (!projectId || !user || requiredIdeaIds.length === 0) {
       setCompletedIds(new Set());
       previousCompletedCount.current = null;
       setIsLoading(false);
@@ -62,19 +51,22 @@ export function useTeamEvaluationProgress(
 
     setIsLoading(true);
     const { data, error } = await supabase
-      .from('project_evaluation_participants')
-      .select('userid, completedat')
-      .eq('projectid', projectId);
+      .from('ideaevaluations')
+      .select('userid, ideaid')
+      .eq('projectid', projectId)
+      .eq('evaluationround', evaluationRound);
 
     if (!error) {
-      const nextCompletedIds = new Set((data ?? []).map((row) => (row as EvaluationRow).userid));
-      const nextCompletedCount = participants.filter((participant) => nextCompletedIds.has(participant.id)).length;
+      const nextCompletedIds = completedEvaluatorIds((data ?? []) as EvaluationRow[], requiredIdeaIds);
+      const nextCompletedCount = participantIds.size > 0
+        ? [...participantIds].filter((participantId) => nextCompletedIds.has(participantId)).length
+        : Math.min(totalCount, nextCompletedIds.size);
       if (previousCompletedCount.current !== null && nextCompletedCount > previousCompletedCount.current) {
         showNotificationToast({
-          id: `evaluation:${projectId}:${nextCompletedCount}`,
+          id: `evaluation:${projectId}:${evaluationRound}:${nextCompletedCount}`,
           projectid: projectId,
           title: '팀 평가 참여 현황',
-          message: `현재 ${nextCompletedCount}/${participants.length}명 평가 완료`,
+          message: `현재 ${nextCompletedCount}/${totalCount}명 평가 완료`,
           kind: 'evaluation',
           createdat: new Date().toISOString(),
           isread: false,
@@ -84,40 +76,24 @@ export function useTeamEvaluationProgress(
       setCompletedIds(nextCompletedIds);
     }
     setIsLoading(false);
-  }, [participants, projectId, showNotificationToast, user]);
+  }, [evaluationRound, participantIds, projectId, requiredIdeaIds, showNotificationToast, totalCount, user]);
 
   useEffect(() => {
-    void loadProgress();
+    const timeout = globalThis.setTimeout(() => void loadProgress(), 0);
+    return () => globalThis.clearTimeout(timeout);
   }, [loadProgress]);
 
   useRealtimeRefresh({
-    channelName: `evaluation-progress:${projectId ?? 'none'}`,
+    channelName: `evaluation-progress:${projectId ?? 'none'}:${evaluationRound}`,
     enabled: Boolean(projectId && user),
     onRefresh: loadProgress,
-    tables: [{ table: 'project_evaluation_participants', filter: `projectid=eq.${projectId}` }],
+    tables: [{ table: 'ideaevaluations', filter: `projectid=eq.${projectId}` }],
   });
-
-  const completeEvaluation = useCallback(async () => {
-    if (!projectId || !user || !currentParticipant || completedIds.has(currentParticipant.id)) {
-      return;
-    }
-
-    const { error } = await supabase.from('project_evaluation_participants').upsert({
-      projectid: projectId,
-      userid: user.id,
-      completedat: new Date().toISOString(),
-      updatedat: new Date().toISOString(),
-    }, { onConflict: 'projectid,userid' });
-    if (error) return;
-
-    await loadProgress();
-  }, [completedIds, currentParticipant, loadProgress, projectId, user]);
 
   return {
     completedCount,
-    totalCount: participants.length,
+    totalCount,
     isLoading,
     isCurrentUserCompleted: Boolean(user && completedIds.has(user.id)),
-    completeEvaluation,
   };
 }

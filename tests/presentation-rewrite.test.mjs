@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyPresentationRewrite, documentBlocks, isRewriteTarget } from '../supabase/functions/_shared/presentation-rewrite.ts';
+import {
+  applyPresentationRewrite,
+  createPresentationRewritePrompt,
+  documentBlocks,
+  isRewriteTarget,
+} from '../supabase/functions/_shared/presentation-rewrite.ts';
 
 const presentation = {
   ideaId: 'idea-1',
@@ -37,4 +42,19 @@ test('document rewrite replaces only the selected block and validates exact boun
   assert.equal(next.slides, presentation.slides);
   assert.equal(next.expectedQna, presentation.expectedQna);
   assert.equal(next.finalReport, presentation.finalReport);
+});
+
+test('rewrite prompt includes only the target and compact presentation context', () => {
+  const target = { kind: 'slide', index: 0 };
+  const prompt = createPresentationRewritePrompt(presentation, target, '전문적으로');
+
+  assert.deepEqual(prompt?.source, {
+    title: presentation.slides[0].title,
+    bulletPoints: presentation.slides[0].bulletPoints,
+    speakerScript: presentation.slides[0].speakerScript,
+  });
+  assert.deepEqual(prompt?.context.slideTitles, presentation.slides.map((slide) => slide.title));
+  assert.equal(prompt?.instruction, '전문적으로');
+  assert.equal('businessPlanDraft' in (prompt ?? {}), false);
+  assert.doesNotMatch(JSON.stringify(prompt), /원본 해결 대본|기존 결과/);
 });

@@ -6,7 +6,7 @@ import type {
   IdeaEvaluation,
   IdeaResultForComparison,
 } from '@/types/idea-evaluation';
-import type { IdeaResultData } from '@/types/result';
+import type { IdeaResult, IdeaResultData } from '@/types/result';
 
 function anonymousLabel(index: number) {
   return `익명 아이디어 ${String.fromCharCode(65 + index)}`;
@@ -102,6 +102,50 @@ function analysisLevelScore(level: FinalAnalysisLevel | undefined) {
   return 0;
 }
 
+export type IdeaResultSortMode = 'ai' | 'team';
+
+export function sortIdeaResults(ideas: IdeaResult[], mode: IdeaResultSortMode) {
+  return [...ideas].sort((left, right) => {
+    const aiRankDifference =
+      (left.aiRank ?? Number.MAX_SAFE_INTEGER) - (right.aiRank ?? Number.MAX_SAFE_INTEGER);
+
+    if (mode === 'team') {
+      return right.passRate - left.passRate
+        || right.passCount - left.passCount
+        || aiRankDifference
+        || left.label.localeCompare(right.label, 'ko');
+    }
+
+    return aiRankDifference
+      || right.passRate - left.passRate
+      || right.passCount - left.passCount
+      || left.label.localeCompare(right.label, 'ko');
+  });
+}
+
+function getVisibleRecommendationReason(
+  results: IdeaResultForComparison[],
+  recommendation?: FinalIdeaAnalysisResult | null,
+) {
+  let reason = recommendation?.overall.recommendationReason.trim() ?? '';
+  if (!reason || !recommendation) return reason;
+
+  const labelsById = new Map(results.map((result) => [
+    result.ideaId,
+    result.anonymousLabel.replace(/^익명 /, ''),
+  ]));
+  const titledAnalyses = [...recommendation.analyses]
+    .filter((analysis) => analysis.title.trim())
+    .sort((left, right) => right.title.length - left.title.length);
+
+  titledAnalyses.forEach((analysis) => {
+    const label = labelsById.get(analysis.ideaId);
+    if (label) reason = reason.split(analysis.title.trim()).join(label);
+  });
+
+  return reason;
+}
+
 /** Joins locked team votes with the same anonymous AI analysis shown while swiping. */
 export function createIdeaResultData(
   results: IdeaResultForComparison[],
@@ -131,6 +175,7 @@ export function createIdeaResultData(
 
   return {
     currentParticipantCount: results[0]?.currentParticipantCount ?? 0,
+    aiRecommendationReason: getVisibleRecommendationReason(results, recommendation),
     ideas: results.map((result) => ({
       id: result.ideaId,
       label: result.anonymousLabel.replace(/^익명 /, ''),

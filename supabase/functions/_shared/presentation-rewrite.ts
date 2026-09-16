@@ -15,6 +15,16 @@ export type PresentationRewriteContent =
   | { title: string; bulletPoints: string[]; speakerScript: string }
   | { text: string };
 
+export type PresentationRewritePrompt = {
+  target: PresentationRewriteTarget;
+  instruction: string;
+  source: PresentationRewriteContent;
+  context: {
+    presentationTitle: string;
+    slideTitles: string[];
+  };
+};
+
 export function documentBlocks(text: string) {
   const starts = [...text.matchAll(/^##\s+.+$/gm)].map((match) => match.index);
   if (starts[0] !== 0) starts.unshift(0);
@@ -30,6 +40,37 @@ export function isRewriteTarget(value: unknown, data: PresentationData): value i
   }
   if (target.kind !== 'document' || (target.field !== 'businessPlanDraft' && target.field !== 'finalReport')) return false;
   return documentBlocks(data[target.field]).some(({ start, end }) => target.start === start && target.end === end);
+}
+
+/**
+ * Keeps partial rewrites fast by sending only the selected content and a small
+ * amount of structural context to the model, never the full saved documents.
+ */
+export function createPresentationRewritePrompt(
+  data: PresentationData,
+  target: PresentationRewriteTarget,
+  instruction: string,
+): PresentationRewritePrompt | null {
+  const cleanedInstruction = instruction.trim();
+  if (!cleanedInstruction || cleanedInstruction.length > 1000 || !isRewriteTarget(target, data)) return null;
+
+  const source: PresentationRewriteContent = target.kind === 'slide'
+    ? {
+        title: data.slides[target.index].title,
+        bulletPoints: [...data.slides[target.index].bulletPoints],
+        speakerScript: data.slides[target.index].speakerScript,
+      }
+    : { text: data[target.field].slice(target.start, target.end) };
+
+  return {
+    target,
+    instruction: cleanedInstruction,
+    source,
+    context: {
+      presentationTitle: data.presentationTitle,
+      slideTitles: data.slides.map((slide) => slide.title),
+    },
+  };
 }
 
 function nonemptyText(value: unknown, limit: number): value is string {

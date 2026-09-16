@@ -55,6 +55,7 @@ export function PresentationWorkflowPanel({
   const { flow, conditions, savePresentationData } = flowController;
   const plan = isMvpPlanCurrent(flow?.mvpplan, idea?.id) ? flow?.mvpplan ?? null : null;
   const hasCurrentPresentation = isPresentationCurrent(flow?.presentationdata, idea?.id, plan);
+  const hasPreviousPresentation = Boolean(flow?.presentationdata && !hasCurrentPresentation);
 
   const candidate: CandidateIdea | null = useMemo(() => idea ? ({
     id: idea.id,
@@ -125,6 +126,7 @@ export function PresentationWorkflowPanel({
         presentationOrder: plan.presentationOrder,
       }}
       initialData={hasCurrentPresentation ? flow?.presentationdata : null}
+      hasPreviousPresentation={hasPreviousPresentation}
       onSave={savePresentationData}
     />
   );

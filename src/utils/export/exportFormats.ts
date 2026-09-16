@@ -36,10 +36,15 @@ export function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
 
-export function reportHtml(data: ExportData) {
+export type PdfDocumentKind = 'business-plan' | 'final-report';
+
+export function reportHtml(data: ExportData, kind: PdfDocumentKind = 'final-report') {
+  const isBusinessPlan = kind === 'business-plan';
+  const documentTitle = isBusinessPlan ? '사업계획서' : '최종보고서';
+  const generatedDocument = isBusinessPlan ? data.presentation?.businessPlanDraft : data.presentation?.finalReport;
   const sections = exportSections(data);
-  if (data.presentation?.finalReport) sections.push({ title: '최종 결과 보고서', content: data.presentation.finalReport });
-  return `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(data.projectTitle)}_final_report</title><style>@page{size:A4;margin:18mm}body{font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#172033;font-size:11pt;line-height:1.7}h1{font-size:24pt;color:#2563eb}h2{font-size:15pt;break-after:avoid}p{white-space:pre-wrap;overflow-wrap:anywhere;orphans:3;widows:3}</style></head><body><h1>${escapeHtml(data.projectTitle)} · 최종보고서</h1>${sections.map((section) => `<h2>${escapeHtml(section.title)}</h2><p>${escapeHtml(section.content)}</p>`).join('')}</body></html>`;
+  if (generatedDocument) sections.push({ title: documentTitle, content: generatedDocument });
+  return `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(data.projectTitle)}_${kind}</title><style>@page{size:A4;margin:18mm}body{font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#172033;font-size:11pt;line-height:1.7}h1{font-size:24pt;color:#2563eb}h2{font-size:15pt;break-after:avoid}p{white-space:pre-wrap;overflow-wrap:anywhere;orphans:3;widows:3}</style></head><body><h1>${escapeHtml(data.projectTitle)} · ${documentTitle}</h1>${sections.map((section) => `<h2>${escapeHtml(section.title)}</h2><p>${escapeHtml(section.content)}</p>`).join('')}</body></html>`;
 }
 
 export function presentationPages(data: ExportData) {

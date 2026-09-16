@@ -1,10 +1,9 @@
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/app-icon';
-import { BlindEvaluationPanel } from '@/components/blind-evaluation-panel';
 import { IdeaBoard } from '@/components/idea-board';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
 import { ProjectForm } from '@/components/project-form';
@@ -43,11 +42,21 @@ export default function ProjectDetailScreen() {
   const projectId = Array.isArray(id) ? id[0] : id;
   const initialLocation = resolveProjectWorkspaceLocation({ ideaTab, projectView, flowStep });
   const { project, isloadingproject, projecterror, updateProject, deleteProject } = useProject(projectId);
-  const { conditions } = useProjectFlow(projectId);
+  const { conditions, flow } = useProjectFlow(projectId);
   const { ideas } = useIdeas(projectId);
   const { rooms } = useRooms();
   const projectRoom = rooms.find((item) => item.room.id === project?.roomid);
-  const evaluationProgress = useTeamEvaluationProgress(projectId, projectRoom?.members, conditions.teamSize);
+  const evaluationIdeaIds = useMemo(
+    () => ideas.filter((idea) => !idea.legacystructural && Boolean(idea.title.trim() || idea.content.trim())).map((idea) => idea.id),
+    [ideas],
+  );
+  const evaluationProgress = useTeamEvaluationProgress(
+    projectId,
+    projectRoom?.members,
+    evaluationIdeaIds,
+    flow?.evaluationround ?? 1,
+    conditions.teamSize,
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [mutationError, setMutationError] = useState('');
@@ -154,13 +163,6 @@ export default function ProjectDetailScreen() {
               {mutationError ? <ThemedText type="caption" style={{ color: theme.danger }}>{mutationError} 다시 시도해 주세요.</ThemedText> : null}
             </View>
           )}
-
-          <BlindEvaluationPanel
-            projectId={project.id}
-            ideas={ideas}
-            criteria={conditions.evaluationCriteria}
-            onSubmitted={() => void evaluationProgress.completeEvaluation()}
-          />
 
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
           <IdeaBoard

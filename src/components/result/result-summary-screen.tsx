@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { IdeaResultCard } from '@/components/result/idea-result-card';
@@ -6,6 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { sortIdeaResults, type IdeaResultSortMode } from '@/lib/idea-evaluation';
 import type { IdeaResultData } from '@/types/result';
 
 type ResultSummaryScreenProps = {
@@ -32,10 +33,9 @@ export function ResultSummaryScreen({
   onGoToMvp,
 }: ResultSummaryScreenProps) {
   const [selectingId, setSelectingId] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<IdeaResultSortMode>('ai');
   const theme = useTheme();
-  const sortedIdeas = [...data.ideas].sort(
-    (left, right) => (left.aiRank ?? Number.MAX_SAFE_INTEGER) - (right.aiRank ?? Number.MAX_SAFE_INTEGER),
-  );
+  const sortedIdeas = useMemo(() => sortIdeaResults(data.ideas, sortMode), [data.ideas, sortMode]);
 
   const select = async (ideaId: string) => {
     if (selectingId) return;
@@ -75,6 +75,44 @@ export function ResultSummaryScreen({
           <Pressable accessibilityRole="button" onPress={onRetryRanking} style={[styles.retryButton, { borderColor: theme.danger }]}>
             <ThemedText type="smallBold">AI 순위 다시 분석</ThemedText>
           </Pressable>
+        </ThemedView>
+      ) : null}
+
+      <View style={styles.sortSection}>
+        <ThemedText type="smallBold">정렬 기준</ThemedText>
+        <View style={styles.sortControls}>
+          {([
+            ['ai', 'AI 추천 순으로 보기'],
+            ['team', '팀 통과율 순으로 보기'],
+          ] as const).map(([mode, label]) => {
+            const selected = sortMode === mode;
+            return (
+              <Pressable
+                key={mode}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => setSortMode(mode)}
+                style={({ pressed }) => [
+                  styles.sortButton,
+                  {
+                    backgroundColor: selected ? theme.primary : theme.background,
+                    borderColor: selected ? theme.primary : theme.border,
+                  },
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold" style={selected ? styles.selectedSortText : undefined}>
+                  {selected ? `✓ ${label}` : label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      {data.aiRecommendationReason ? (
+        <ThemedView type="primarySoft" style={[styles.recommendationReason, { borderColor: theme.primary }]}>
+          <ThemedText type="smallBold" style={{ color: theme.primary }}>AI 추천 이유</ThemedText>
+          <ThemedText type="small">{data.aiRecommendationReason}</ThemedText>
         </ThemedView>
       ) : null}
 
@@ -130,5 +168,25 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     paddingHorizontal: Spacing.three,
   },
+  sortSection: { gap: Spacing.two },
+  sortControls: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  sortButton: {
+    flexGrow: 1,
+    flexBasis: 180,
+    minHeight: ControlHeight.button,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.two,
+  },
+  selectedSortText: { color: '#FFFFFF' },
+  recommendationReason: {
+    gap: Spacing.one,
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    padding: Spacing.three,
+  },
   list: { gap: Spacing.three },
+  pressed: { opacity: 0.65 },
 });

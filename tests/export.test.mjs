@@ -33,6 +33,16 @@ test('PDF escapes generated HTML and preserves the report', () => {
   assert.ok(html.includes('기대 효과: 시간 절약'));
 });
 
+test('PDF creates separate business-plan and final-report documents', () => {
+  const presentation = { businessPlanDraft: '사업 계획 전용 내용', finalReport: '최종 보고 전용 내용' };
+  const businessPlan = reportHtml({ ...data, presentation }, 'business-plan');
+  const finalReport = reportHtml({ ...data, presentation }, 'final-report');
+  assert.ok(businessPlan.includes('사업 계획 전용 내용'));
+  assert.ok(!businessPlan.includes('최종 보고 전용 내용'));
+  assert.ok(finalReport.includes('최종 보고 전용 내용'));
+  assert.ok(!finalReport.includes('사업 계획 전용 내용'));
+});
+
 test('Continuation slides preserve Unicode and speaker notes', () => {
   const content = '한글😀'.repeat(400);
   const pages = presentationPages({ ...data, presentation: { slides: [{ title: '슬라이드', bulletPoints: [content], speakerScript: '발표 대본' }] } });

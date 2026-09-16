@@ -1,8 +1,7 @@
 import type { CandidateIdeaImage } from '@/types/candidate-idea';
-import { redactionPixels, type RedactionRect } from './image-redaction';
 
-/** Canvas flattens opaque masks into the bytes that will be sent to OCR. */
-export async function renderWebImage(uri: string, rectangles: RedactionRect[] = []): Promise<CandidateIdeaImage> {
+/** Canvas normalizes browser-selected images into upload-safe JPEG bytes. */
+export async function renderWebImage(uri: string): Promise<CandidateIdeaImage> {
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const source = new window.Image();
     const timer = globalThis.setTimeout(() => reject(new Error('이미지 읽기 시간이 초과되었습니다.')), 15_000);
@@ -18,15 +17,10 @@ export async function renderWebImage(uri: string, rectangles: RedactionRect[] = 
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext('2d');
-  if (!context) throw new Error('이 브라우저에서는 이미지 가림을 처리할 수 없습니다.');
+  if (!context) throw new Error('이 브라우저에서는 이미지를 처리할 수 없습니다.');
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, width, height);
   context.drawImage(image, 0, 0, width, height);
-  context.fillStyle = '#000000';
-  rectangles.forEach((rect) => {
-    const pixels = redactionPixels(rect, width, height);
-    context.fillRect(pixels.x, pixels.y, pixels.width, pixels.height);
-  });
   const result = canvas.toDataURL('image/jpeg', 0.9);
   const data = result.split(',')[1];
   canvas.width = canvas.height = 0;

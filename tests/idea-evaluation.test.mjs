@@ -6,6 +6,7 @@ import {
   createBlindIdeaAnalyses,
   createIdeaResultData,
   formatBlindAnalysisText,
+  sortIdeaResults,
 } from '../src/lib/idea-evaluation.ts';
 
 const analyses = [
@@ -96,17 +97,30 @@ test('result cards preserve blind analysis and add AI ranks only after compariso
     overall: {
       comparison: '비교',
       recommendedIdeaIds: ['idea-b'],
-      recommendationReason: '추천 이유',
+      recommendationReason: 'B를 우선 추천한 이유',
       combinationSuggestion: '조합 제안',
     },
     notice: '참고',
   });
 
   assert.equal(beforeRecommendation.ideas[0].aiRank, null);
+  assert.equal(beforeRecommendation.aiRecommendationReason, '');
   assert.deepEqual(afterRecommendation.ideas.map((idea) => [idea.label, idea.aiRank]), [
     ['아이디어 A', 2],
     ['아이디어 B', 1],
   ]);
   assert.deepEqual(afterRecommendation.ideas[0].aiAdvantages, analyses[0].advantages);
   assert.equal(afterRecommendation.ideas[0].passRate, 100);
+  assert.equal(afterRecommendation.aiRecommendationReason, '아이디어 B를 우선 추천한 이유');
+});
+
+test('result cards can be sorted by AI rank or team pass rate without mutating source data', () => {
+  const ideas = [
+    { id: 'a', label: '아이디어 A', passCount: 3, participantCount: 3, passRate: 100, aiRank: 2, aiAdvantages: [], aiRisk: '', difficulty: '보통' },
+    { id: 'b', label: '아이디어 B', passCount: 2, participantCount: 3, passRate: 67, aiRank: 1, aiAdvantages: [], aiRisk: '', difficulty: '쉬움' },
+  ];
+
+  assert.deepEqual(sortIdeaResults(ideas, 'ai').map((idea) => idea.id), ['b', 'a']);
+  assert.deepEqual(sortIdeaResults(ideas, 'team').map((idea) => idea.id), ['a', 'b']);
+  assert.deepEqual(ideas.map((idea) => idea.id), ['a', 'b']);
 });

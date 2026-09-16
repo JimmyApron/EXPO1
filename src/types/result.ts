@@ -20,5 +20,6 @@ export type IdeaResult = {
 
 export type IdeaResultData = {
   currentParticipantCount: number;
+  aiRecommendationReason: string;
   ideas: IdeaResult[];
 };

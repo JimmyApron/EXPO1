@@ -59,7 +59,6 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
     extractionError,
     pickImages,
     clearImages,
-    prepareImage,
     canExtractImages,
     clearExtractionError,
     extract,
@@ -254,7 +253,6 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
           onChangeText={setSourceText}
           onPickImages={() => void pickImages()}
           onClearImages={clearImages}
-          onPrepareImage={prepareImage}
         />
 
         <Pressable
@@ -275,7 +273,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
               </ThemedText>
             </View>
           ) : (
-            <ThemedText type="smallBold" style={styles.primaryButtonText}>{mode === 'image' ? '확인한 전송본으로 OCR · 아이디어 추출' : '텍스트를 DeepSeek로 보내 아이디어 추출'}</ThemedText>
+            <ThemedText type="smallBold" style={styles.primaryButtonText}>{mode === 'image' ? '선택한 이미지로 OCR · 아이디어 추출' : '텍스트를 DeepSeek로 보내 아이디어 추출'}</ThemedText>
           )}
         </Pressable>
 

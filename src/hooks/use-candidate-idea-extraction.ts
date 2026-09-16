@@ -97,7 +97,6 @@ export function useCandidateIdeaExtraction(projectId: string) {
   const userId = user?.id ?? '';
   const [images, setImages] = useState<CandidateIdeaImage[]>([]);
   const [imageSelectionId, setImageSelectionId] = useState(0);
-  const [preparedImages, setPreparedImages] = useState<Record<string, CandidateIdeaImage | undefined>>({});
   const [isPickingImages, setIsPickingImages] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [permissionError, setPermissionError] = useState('');
@@ -143,7 +142,6 @@ export function useCandidateIdeaExtraction(projectId: string) {
       }
 
       const optimized = await Promise.all(result.assets.map(optimizeImage));
-      setPreparedImages({});
       setImageSelectionId((current) => current + 1);
       setImages(optimized);
     } catch (error) {
@@ -153,11 +151,8 @@ export function useCandidateIdeaExtraction(projectId: string) {
     }
   }, [isExtracting, isPickingImages]);
 
-  const clearImages = useCallback(() => { setImages([]); setPreparedImages({}); }, []);
-  const prepareImage = useCallback((uri: string, prepared?: CandidateIdeaImage) => {
-    setPreparedImages((current) => ({ ...current, [uri]: prepared }));
-  }, []);
-  const canExtractImages = images.length > 0 && images.every((image) => Boolean(preparedImages[image.uri]));
+  const clearImages = useCallback(() => setImages([]), []);
+  const canExtractImages = images.length > 0;
 
   const extract = useCallback(
     async (
@@ -172,7 +167,7 @@ export function useCandidateIdeaExtraction(projectId: string) {
         return null;
       }
       if (source.type === 'image' && !canExtractImages) {
-        setExtractionError('모든 캡처의 실제 전송본을 확인해 주세요. 가림본 또는 가림 없는 이미지의 전송 준비가 필요합니다.');
+        setExtractionError('캡처 이미지를 선택해 주세요.');
         return null;
       }
 
@@ -181,10 +176,7 @@ export function useCandidateIdeaExtraction(projectId: string) {
           ? { type: 'text', text: source.text.trim().slice(0, maxCandidateTextLength) }
           : {
               type: 'image',
-              images: images.map((image) => {
-                const prepared = preparedImages[image.uri]!;
-                return { mediaType: prepared.mediaType, data: prepared.data };
-              }),
+              images: images.map((image) => ({ mediaType: image.mediaType, data: image.data })),
             };
 
       if (requestSource.type === 'text' && !requestSource.text) {
@@ -219,7 +211,6 @@ export function useCandidateIdeaExtraction(projectId: string) {
 
         if (requestSource.type === 'image') {
           setImages([]);
-          setPreparedImages({});
         }
         return normalized;
       } catch {
@@ -229,7 +220,7 @@ export function useCandidateIdeaExtraction(projectId: string) {
         setIsExtracting(false);
       }
     },
-    [accessToken, canExtractImages, images, isExtracting, preparedImages, projectId, userId],
+    [accessToken, canExtractImages, images, isExtracting, projectId, userId],
   );
 
   return {
@@ -241,7 +232,6 @@ export function useCandidateIdeaExtraction(projectId: string) {
     extractionError,
     pickImages,
     clearImages,
-    prepareImage,
     canExtractImages,
     clearExtractionError: () => setExtractionError(''),
     extract,

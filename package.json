@@ -56,7 +56,7 @@
     "test:export": "node --experimental-strip-types --test --test-isolation=none tests/export.test.mjs",
     "test:mind-map": "node --experimental-strip-types --test tests/mind-map.test.mjs",
     "test:project-flow": "node --experimental-strip-types --test tests/project-flow.test.mjs",
-    "test": "node --experimental-strip-types --test tests/deepseek-config.test.mjs tests/final-idea-analysis.test.mjs tests/idea-evaluation.test.mjs tests/image-redaction.test.mjs tests/mind-map.test.mjs tests/mvp-plan.test.mjs tests/presentation-rewrite.test.mjs tests/project-flow.test.mjs"
+    "test": "node --experimental-strip-types --test --test-isolation=none tests/deepseek-config.test.mjs tests/final-idea-analysis.test.mjs tests/idea-evaluation.test.mjs tests/mind-map.test.mjs tests/mvp-plan.test.mjs tests/presentation-rewrite.test.mjs tests/project-flow.test.mjs tests/team-evaluation-progress.test.mjs"
   },
   "private": true
 }

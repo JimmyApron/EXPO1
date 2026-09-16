@@ -6,7 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { PresentationRewriteControls } from '@/components/presentation-rewrite-controls';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
-import { usePresentationGeneration } from '@/hooks/use-presentation-generation';
+import { presentationRewriteErrorMessage, usePresentationGeneration } from '@/hooks/use-presentation-generation';
 import { useTheme } from '@/hooks/use-theme';
 import type { CandidateIdea, PresentationData, ProjectConditions, SampleMvpPlan } from '@/types/presentation';
 import { ExportPanel } from '@/components/export/ExportPanel';
@@ -19,6 +19,7 @@ type PresentationViewProps = {
   sampleMvpPlan: SampleMvpPlan;
   exportDetails?: Pick<ExportData, 'aiAnalysis' | 'teamRoles' | 'presentationOrder'>;
   initialData?: PresentationData | null;
+  hasPreviousPresentation?: boolean;
   onSave?: (data: PresentationData, expected?: PresentationData) => Promise<unknown>;
 };
 
@@ -32,6 +33,7 @@ export function PresentationView({
   selectedIdea,
   sampleMvpPlan,
   initialData,
+  hasPreviousPresentation = false,
   exportDetails,
   onSave,
 }: PresentationViewProps) {
@@ -60,7 +62,11 @@ export function PresentationView({
       setPresentationData(next);
       setRewriteStatus({ key, message: onSave ? '이 부분을 재작성하고 저장했습니다.' : '이 부분을 화면에 반영했습니다.' });
     } catch (caught) {
-      setRewriteStatus({ key, message: `${caught instanceof Error ? caught.message : '재작성에 실패했습니다.'} 기존 내용은 유지됩니다.` });
+      const message = presentationRewriteErrorMessage(caught);
+      setRewriteStatus({
+        key,
+        message: message.includes('기존 내용은 유지됩니다.') ? message : `${message} 기존 내용은 유지됩니다.`,
+      });
     } finally {
       operationRef.current = false;
       setRewriting(null);
@@ -127,9 +133,27 @@ export function PresentationView({
         <ThemedText type="smallBold">{selectedIdea.title}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">{selectedIdea.summary}</ThemedText>
       </ThemedView>
+      {hasPreviousPresentation && !presentationData ? (
+        <ThemedView
+          type="warningSoft"
+          style={[styles.previousPresentationNotice, { borderColor: theme.warning }]}>
+          <ThemedText type="smallBold" style={{ color: theme.warning }}>
+            저장된 발표자료는 이전 아이디어 기준이에요.
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            현재 선정 아이디어와 MVP를 기준으로 새 발표자료를 만들 수 있습니다. 새 자료를 저장하면 기존 발표자료가 교체됩니다.
+          </ThemedText>
+        </ThemedView>
+      ) : null}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={presentationData ? '발표자료 다시 생성' : '발표자료 생성 및 저장'}
+        accessibilityLabel={
+          presentationData
+            ? '발표자료 다시 생성'
+            : hasPreviousPresentation
+              ? '현재 아이디어로 새 발표자료 만들기'
+              : '발표자료 생성 및 저장'
+        }
         accessibilityState={{ disabled: loading || rewriting !== null || !canGenerate }}
         onPress={handleGeneratePresentation}
         disabled={loading || rewriting !== null || !canGenerate}
@@ -142,7 +166,11 @@ export function PresentationView({
           <ActivityIndicator color="#fff" />
         ) : (
           <ThemedText type="smallBold" style={styles.primaryButtonText}>
-            {presentationData ? '발표자료 다시 생성' : '발표자료 생성·저장'}
+            {presentationData
+              ? '발표자료 다시 생성'
+              : hasPreviousPresentation
+                ? '현재 아이디어로 새 발표자료 만들기'
+                : '발표자료 생성·저장'}
           </ThemedText>
         )}
       </Pressable>
@@ -244,6 +272,7 @@ export function PresentationView({
 const styles = StyleSheet.create({
   container: { gap: Spacing.three },
   basisCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  previousPresentationNotice: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
   contentWrapper: { gap: Spacing.three },
   tabRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   tabButton: {

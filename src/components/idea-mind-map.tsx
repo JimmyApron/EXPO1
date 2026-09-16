@@ -249,6 +249,7 @@ export function IdeaMindMap({
   const [isAddingNode, setIsAddingNode] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('map');
   const [expandedBranchIds, setExpandedBranchIds] = useState<Set<string>>(new Set());
+  const [mapStatus, setMapStatus] = useState('');
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
@@ -284,7 +285,10 @@ export function IdeaMindMap({
         .map((branch) => ({ branch, distance: Math.hypot(branch.x - currentX, branch.y - currentY) }))
         .sort((left, right) => left.distance - right.distance)[0];
       if (target && target.distance < 280 && target.branch.id !== node.parentnodeid) {
-        await onMoveNode(node.id, target.branch.id);
+        const result = await onMoveNode(node.id, target.branch.id);
+        setMapStatus(result.error ? `재분류 실패: ${result.error}` : `“${node.title}”을 “${target.branch.title}” 가지로 이동했습니다.`);
+      } else if (!target || target.distance >= 280) {
+        setMapStatus('이동할 가지 가까이에 노드를 놓아 주세요. 기존 위치를 유지했습니다.');
       }
     },
     onPanResponderTerminate: () => {
@@ -313,7 +317,7 @@ export function IdeaMindMap({
     setMapZoom((current) => Math.min(maxMapZoom, Math.max(minMapZoom, Math.round((current + delta) * 10) / 10)));
   };
 
-  const openNode = (node: MindMapNode) => {
+  const openNode = (node: MindMapNode, showReclassification = false) => {
     const idea = node.ideaid ? ideaById.get(node.ideaid) ?? null : null;
     setTopicDraft(node.title);
     setBranchSummaryDraft(node.summary);
@@ -329,8 +333,21 @@ export function IdeaMindMap({
       });
     }
     setLocalError('');
-    setIsFullIdeaEditorOpen(node.nodetype === 'idea');
+    setIsFullIdeaEditorOpen(node.nodetype === 'idea' || showReclassification);
     setSelectedNodeId(node.id);
+  };
+
+  const moveNodeToBranch = async (node: MindMapNode, branch: MindMapNode) => {
+    setIsSaving(true);
+    setLocalError('');
+    const result = await onMoveNode(node.id, branch.id);
+    setIsSaving(false);
+    if (result.error) {
+      setLocalError(result.error);
+      return;
+    }
+    setMapStatus(`“${node.title}”을 “${branch.title}” 가지로 이동했습니다.`);
+    setSelectedNodeId(null);
   };
 
   const saveDetails = async () => {
@@ -487,7 +504,7 @@ export function IdeaMindMap({
         accessibilityLabel={`${displayTitle} 상세 보기`}
         accessibilityHint={node.nodetype === 'idea' || node.nodetype === 'idea_field' ? '상세 화면에서 다른 가지로 재분류할 수 있습니다.' : undefined}
         onPress={() => openNode(node)}
-        onLongPress={node.nodetype === 'idea' || node.nodetype === 'idea_field' ? () => openNode(node) : undefined}
+        onLongPress={node.nodetype === 'idea' || node.nodetype === 'idea_field' ? () => openNode(node, true) : undefined}
         delayLongPress={450}
         style={({ pressed }) => [
           styles.listNodeCard,
@@ -569,7 +586,8 @@ export function IdeaMindMap({
       <View style={styles.toolbar}>
         <View style={styles.toolbarCopy}>
           <ThemedText style={styles.mapHeaderTitle}>{mindMap.title}</ThemedText>
-          <ThemedText style={styles.mapHeaderSub}>노드를 선택하면 전체 내용을 보고 수정할 수 있습니다.</ThemedText>
+          <ThemedText style={styles.mapHeaderSub}>노드를 선택하면 수정할 수 있고, 길게 누르면 바로 다른 가지로 재분류할 수 있습니다.</ThemedText>
+          {mapStatus ? <ThemedText accessibilityLiveRegion="polite" style={styles.mapStatus}>{mapStatus}</ThemedText> : null}
         </View>
         <View style={styles.toolbarActions}>
           <View style={styles.viewModeToggle}>
@@ -944,7 +962,7 @@ export function IdeaMindMap({
                                 accessibilityLabel={`${branch.title} 가지로 이동`}
                                 accessibilityState={{ selected: selectedNode?.parentnodeid === branch.id }}
                                 disabled={selectedNode?.parentnodeid === branch.id}
-                                onPress={() => (selectedNode ? void onMoveNode(selectedNode.id, branch.id) : undefined)}
+                                onPress={() => (selectedNode ? void moveNodeToBranch(selectedNode, branch) : undefined)}
                                 style={({ pressed }) => [
                                   styles.branchChoice,
                                   selectedNode?.parentnodeid === branch.id && styles.activeBranchChoice,
@@ -1031,6 +1049,12 @@ const styles = StyleSheet.create({
   mapHeaderSub: {
     fontSize: 13,
     color: PALETTE.textSecondary,
+  },
+  mapStatus: {
+    marginTop: Spacing.one,
+    fontSize: 12,
+    fontWeight: '600',
+    color: PALETTE.primaryDark,
   },
   toolbarActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   viewModeToggle: { flexDirection: 'row', borderWidth: 1, borderColor: PALETTE.cardBorder, backgroundColor: PALETTE.card, borderRadius: Radius.medium, padding: 2 },
