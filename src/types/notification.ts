@@ -5,6 +5,7 @@ export const NotificationKinds = [
   'stalledidea',
   'feedback',
   'likesurge',
+  'evaluation',
 ] as const;
 
 export type NotificationKind = (typeof NotificationKinds)[number];
@@ -28,6 +29,7 @@ export const NotificationKindLabels: Record<NotificationKind, string> = {
   stalledidea: '진행 정체',
   feedback: '피드백 도착',
   likesurge: '공감 증가',
+  evaluation: '평가 참여',
 };
 
 export type AppNotification = {

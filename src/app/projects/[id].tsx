@@ -4,13 +4,18 @@ import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/app-icon';
+import { BlindEvaluationPanel } from '@/components/blind-evaluation-panel';
 import { IdeaBoard } from '@/components/idea-board';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
 import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useIdeas } from '@/hooks/use-ideas';
 import { useProject } from '@/hooks/use-project';
+import { useProjectFlow } from '@/hooks/use-project-flow';
+import { useRooms } from '@/hooks/use-rooms';
+import { useTeamEvaluationProgress } from '@/hooks/use-team-evaluation-progress';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import { resolveProjectWorkspaceLocation, type ProjectWorkspaceLocation } from '@/lib/project-workspace';
@@ -38,10 +43,16 @@ export default function ProjectDetailScreen() {
   const projectId = Array.isArray(id) ? id[0] : id;
   const initialLocation = resolveProjectWorkspaceLocation({ ideaTab, projectView, flowStep });
   const { project, isloadingproject, projecterror, updateProject, deleteProject } = useProject(projectId);
+  const { conditions } = useProjectFlow(projectId);
+  const { ideas } = useIdeas(projectId);
+  const { rooms } = useRooms();
+  const projectRoom = rooms.find((item) => item.room.id === project?.roomid);
+  const evaluationProgress = useTeamEvaluationProgress(projectId, projectRoom?.members, conditions.teamSize);
   const [isEditing, setIsEditing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [mutationError, setMutationError] = useState('');
   const theme = useTheme();
+  const hasCompletedEvaluations = evaluationProgress.completedCount >= evaluationProgress.totalCount;
 
   const goToList = () => router.replace('/projects' as Href);
   const handleLocationChange = useCallback((location: ProjectWorkspaceLocation) => {
@@ -113,6 +124,23 @@ export default function ProjectDetailScreen() {
                   </View>
                   <ThemedText type="screenTitle">{project.title}</ThemedText>
                   <ThemedText type="body" themeColor="textSecondary">{project.description || '과제 설명이 아직 없어요. 목표나 조건을 추가해 보세요.'}</ThemedText>
+                  <View style={styles.evaluationRow}>
+                    <View
+                      accessibilityLabel={`평가 진행률 ${evaluationProgress.completedCount}/${evaluationProgress.totalCount}명 완료`}
+                      style={[
+                        styles.evaluationBadge,
+                        {
+                          backgroundColor: hasCompletedEvaluations ? theme.successSoft : theme.primarySoft,
+                          borderColor: hasCompletedEvaluations ? theme.success : theme.primary,
+                        },
+                      ]}>
+                      <ThemedText
+                        type="smallBold"
+                        style={{ color: hasCompletedEvaluations ? theme.success : theme.primary }}>
+                        평가 진행률 {evaluationProgress.completedCount}/{evaluationProgress.totalCount}명 완료
+                      </ThemedText>
+                    </View>
+                  </View>
                 </View>
                 <View style={styles.actions}>
                   <Pressable disabled={isBusy} onPress={() => setIsEditing(true)} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, (pressed || isBusy) && styles.pressed]}>
@@ -126,6 +154,13 @@ export default function ProjectDetailScreen() {
               {mutationError ? <ThemedText type="caption" style={{ color: theme.danger }}>{mutationError} 다시 시도해 주세요.</ThemedText> : null}
             </View>
           )}
+
+          <BlindEvaluationPanel
+            projectId={project.id}
+            ideas={ideas}
+            criteria={conditions.evaluationCriteria}
+            onSubmitted={() => void evaluationProgress.completeEvaluation()}
+          />
 
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
           <IdeaBoard
@@ -157,6 +192,8 @@ const styles = StyleSheet.create({
   titleBlock: { flex: 1, minWidth: 260, gap: Spacing.two },
   deadlineRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   dayChip: { borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 5 },
+  evaluationBadge: { alignSelf: 'flex-start', borderWidth: 1, borderRadius: Radius.pill, paddingHorizontal: Spacing.two, paddingVertical: Spacing.one },
+  evaluationRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two },
   actions: { flexDirection: 'row', alignSelf: 'flex-start', gap: Spacing.two },
   secondaryButton: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   deleteButton: { minHeight: ControlHeight.touch, justifyContent: 'center', paddingHorizontal: Spacing.two },

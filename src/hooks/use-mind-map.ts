@@ -12,7 +12,7 @@ import type { Idea } from '@/types/idea';
 import type { MindMap, MindMapNode } from '@/types/mind-map';
 
 const mapSelect = 'id, projectid, userid, title, createdat, updatedat';
-const nodeSelect = 'id, mindmapid, parentnodeid, ideaid, ideafield, branchfield, nodetype, title, summary, x, y, sortorder, createdat, updatedat';
+const nodeSelect = 'id, mindmapid, parentnodeid, ideaid, ideafield, branchfield, nodetype, title, summary, x, y, sortorder, ismanualposition, createdat, updatedat';
 
 export function useMindMap(projectId?: string, defaultTopic = '') {
   const { user } = useAuth();
@@ -198,7 +198,7 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
         const result = await supabase.from('mind_map_nodes').upsert({
           mindmapid: map.id,
           userid: user.id,
-          parentnodeid: branch.id,
+          parentnodeid: existingFieldNode?.ismanualposition ? existingFieldNode.parentnodeid : branch.id,
           ideaid: desired.ideaid,
           ideafield: desired.ideafield,
           nodetype: 'idea_field',
@@ -207,6 +207,7 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
           x: 720,
           y: 0,
           sortorder: existingFieldNode?.sortorder ?? current.filter((node) => node.parentnodeid === branch.id).length,
+          ismanualposition: existingFieldNode?.ismanualposition ?? false,
           updatedat: new Date().toISOString(),
         }, { onConflict: 'mindmapid,ideaid,ideafield' }).select(nodeSelect).single();
         if (result.error) return { error: result.error.message };
@@ -243,9 +244,8 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
     const node = nodes.find((item) => item.id === nodeId);
     const branch = nodes.find((item) => item.id === branchId && item.nodetype === 'branch');
     if (!node || !branch) return { error: '이동할 노드 또는 가지를 찾을 수 없습니다.' };
-    if (node.nodetype === 'idea_field') return { error: '필드 노드는 지정된 고정 가지에서 이동할 수 없습니다.' };
-    if (branch.branchfield) return { error: '수동 아이디어 노드는 사용자 정의 가지로만 이동할 수 있습니다.' };
-    const result = await supabase.from('mind_map_nodes').update({ parentnodeid: branchId, updatedat: new Date().toISOString() }).eq('id', nodeId).eq('nodetype', 'idea');
+    if (node.nodetype !== 'idea' && node.nodetype !== 'idea_field') return { error: '이 노드는 재분류할 수 없습니다.' };
+    const result = await supabase.from('mind_map_nodes').update({ parentnodeid: branchId, ismanualposition: true, updatedat: new Date().toISOString() }).eq('id', nodeId).in('nodetype', ['idea', 'idea_field']);
     if (result.error) return { error: result.error.message };
     if (mindMap) {
       const refreshed = await supabase.from('mind_map_nodes').select(nodeSelect).eq('mindmapid', mindMap.id);

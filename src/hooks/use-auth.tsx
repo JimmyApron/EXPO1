@@ -28,13 +28,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        setAutherror(error.message);
-      }
-      setSession(data.session);
-      setIsauthloading(false);
+    let iscancelled = false;
+    const sessiontimeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('인증 서버에 연결할 수 없습니다.')), 8000);
     });
+
+    Promise.race([supabase.auth.getSession(), sessiontimeout])
+      .then(({ data, error }) => {
+        if (iscancelled) return;
+        if (error) setAutherror(error.message);
+        setSession(data.session);
+        setIsauthloading(false);
+      })
+      .catch((error: Error) => {
+        if (iscancelled) return;
+        setAutherror(error.message);
+        setIsauthloading(false);
+      });
 
     const { data } = supabase.auth.onAuthStateChange((_event, nextsession) => {
       setSession(nextsession);
@@ -43,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      iscancelled = true;
       data.subscription.unsubscribe();
     };
   }, []);
