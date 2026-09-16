@@ -29,20 +29,29 @@ type CandidateIdeaCardProps = {
   candidate: CandidateIdea;
   isSelected: boolean;
   isSaved: boolean;
+  isMemo: boolean;
   isBusy: boolean;
+  duplicateOfTitle?: string;
   onToggle: () => void;
   onChange: (candidate: CandidateIdea) => void;
+  onDelete: () => void;
+  onToggleMemo: () => void;
 };
 
 export function CandidateIdeaCard({
   candidate,
   isSelected,
   isSaved,
+  isMemo,
   isBusy,
+  duplicateOfTitle,
   onToggle,
   onChange,
+  onDelete,
+  onToggleMemo,
 }: CandidateIdeaCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const displayKeywords = candidate.keywords.map((keyword) => keyword.trim()).filter(Boolean);
 
   return (
@@ -51,26 +60,28 @@ export function CandidateIdeaCard({
         styles.card,
         isSelected && styles.selectedCard,
         isSaved && styles.savedCard,
+        isMemo && styles.memoCard,
         Shadows.card,
       ]}>
       <View style={styles.header}>
         <Pressable
           accessibilityRole="checkbox"
           accessibilityLabel={`${candidate.title || '제목 없는 아이디어'} 선택`}
-          accessibilityState={{ checked: isSelected, disabled: isBusy || isSaved }}
-          disabled={isBusy || isSaved}
+          accessibilityState={{ checked: isSelected, disabled: isBusy || isSaved || isMemo }}
+          disabled={isBusy || isSaved || isMemo}
           onPress={onToggle}
           style={({ pressed }) => [
             styles.checkboxButton,
-            (pressed || isBusy || isSaved) && styles.pressed,
+            (pressed || isBusy || isSaved || isMemo) && styles.pressed,
           ]}>
           <View
             style={[
               styles.checkbox,
               isSelected && styles.checkedBox,
               isSaved && styles.savedBox,
+              isMemo && styles.memoBox,
             ]}>
-            {isSelected || isSaved ? <ThemedText style={styles.checkmark}>✓</ThemedText> : null}
+            {isSelected || isSaved ? <ThemedText style={styles.checkmark}>✓</ThemedText> : isMemo ? <ThemedText style={styles.memoMark}>M</ThemedText> : null}
           </View>
           <ThemedText
             style={[
@@ -78,13 +89,45 @@ export function CandidateIdeaCard({
               isSelected && styles.selectedStatusText,
               isSaved && styles.savedStatusText,
             ]}>
-            {isSaved ? '저장됨' : isSelected ? '선택됨' : '선택'}
+            {isSaved ? '저장됨' : isMemo ? '메모' : isSelected ? '선택됨' : '선택' }
           </ThemedText>
         </Pressable>
         <ThemedText style={styles.idText}>
           {candidate.id}
         </ThemedText>
       </View>
+
+      {duplicateOfTitle ? (
+        <View style={styles.duplicateNotice}>
+          <ThemedText style={styles.duplicateText}>중복 의심 · “{duplicateOfTitle}” 후보와 내용이 비슷합니다.</ThemedText>
+        </View>
+      ) : null}
+
+      {!isSaved ? (
+        <View style={styles.reviewActions}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={isBusy}
+            onPress={() => {
+              setIsConfirmingDelete(false);
+              onToggleMemo();
+            }}
+            style={({ pressed }) => [styles.reviewButton, (pressed || isBusy) && styles.pressed]}>
+            <ThemedText style={styles.reviewButtonText}>{isMemo ? '아이디어 후보로 복원' : '잡담/메모로 전환'}</ThemedText>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={isConfirmingDelete ? `${candidate.title} 후보 삭제 확인` : `${candidate.title} 후보 삭제`}
+            disabled={isBusy}
+            onPress={() => {
+              if (isConfirmingDelete) onDelete();
+              else setIsConfirmingDelete(true);
+            }}
+            style={({ pressed }) => [styles.reviewButton, styles.deleteButton, (pressed || isBusy) && styles.pressed]}>
+            <ThemedText style={styles.deleteButtonText}>{isConfirmingDelete ? '한 번 더 눌러 삭제' : '삭제'}</ThemedText>
+          </Pressable>
+        </View>
+      ) : null}
 
       <View style={styles.field}>
         <ThemedText style={styles.fieldLabel}>제목</ThemedText>
@@ -253,6 +296,10 @@ const styles = StyleSheet.create({
     borderColor: PALETTE.success,
     backgroundColor: PALETTE.card,
   },
+  memoCard: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#94A3B8',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -283,6 +330,15 @@ const styles = StyleSheet.create({
     borderColor: PALETTE.success,
     backgroundColor: PALETTE.success,
   },
+  memoBox: {
+    borderColor: PALETTE.textSecondary,
+    backgroundColor: '#E2E8F0',
+  },
+  memoMark: {
+    color: PALETTE.textSecondary,
+    fontSize: 11,
+    fontWeight: '800',
+  },
   checkmark: {
     color: '#FFFFFF',
     fontSize: 13,
@@ -303,6 +359,43 @@ const styles = StyleSheet.create({
   idText: {
     fontSize: 12,
     color: PALETTE.textSecondary,
+  },
+  duplicateNotice: {
+    borderRadius: Radius.medium,
+    backgroundColor: '#FFF7ED',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  duplicateText: {
+    color: '#C2410C',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  reviewActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  reviewButton: {
+    minHeight: 38,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
+  },
+  reviewButtonText: {
+    color: PALETTE.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  deleteButton: {
+    borderColor: '#FCA5A5',
+  },
+  deleteButtonText: {
+    color: '#B91C1C',
+    fontSize: 13,
+    fontWeight: '700',
   },
   field: {
     gap: 6,

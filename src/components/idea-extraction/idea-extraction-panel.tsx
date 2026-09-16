@@ -11,7 +11,13 @@ import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useCandidateIdeaExtraction } from '@/hooks/use-candidate-idea-extraction';
 import { useTheme } from '@/hooks/use-theme';
-import { normalizeCandidateIdeas, toCandidateIdeasPayload, validateCandidateIdea } from '@/lib/candidate-idea';
+import {
+  findCandidateDuplicateReferences,
+  mergeCandidateIdeas,
+  normalizeCandidateIdeas,
+  toCandidateIdeasPayload,
+  validateCandidateIdea,
+} from '@/lib/candidate-idea';
 import type { CandidateIdea, CandidateIdeaSaveResult, CandidateIdeasPayload } from '@/types/candidate-idea';
 
 type IdeaExtractionPanelProps = {
@@ -35,6 +41,8 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
   const [candidates, setCandidates] = useState<CandidateIdea[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [memoIds, setMemoIds] = useState<Set<string>>(new Set());
+  const [reviewMessage, setReviewMessage] = useState('');
   const [extractionRunId, setExtractionRunId] = useState('');
   const [hasExtractionResult, setHasExtractionResult] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -60,8 +68,13 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
   const activeFlowStep = isSaving || savedIds.size > 0 ? 3 : candidates.length > 0 ? 2 : isExtracting ? 1 : 0;
   const flowSteps = ['1  자료 입력', '2  AI 추출', '3  후보 검토', '4  마인드맵 구성'];
   const unsavedCandidates = useMemo(
-    () => candidates.filter((candidate) => selectedIds.has(candidate.id) && !savedIds.has(candidate.id)),
-    [candidates, savedIds, selectedIds],
+    () => candidates.filter((candidate) => selectedIds.has(candidate.id) && !savedIds.has(candidate.id) && !memoIds.has(candidate.id)),
+    [candidates, memoIds, savedIds, selectedIds],
+  );
+  const duplicateReferences = useMemo(() => findCandidateDuplicateReferences(candidates), [candidates]);
+  const mergeCandidates = useMemo(
+    () => candidates.filter((candidate) => selectedIds.has(candidate.id) && !savedIds.has(candidate.id) && !memoIds.has(candidate.id)),
+    [candidates, memoIds, savedIds, selectedIds],
   );
 
   const replaceCandidates = (nextCandidates: CandidateIdea[]) => {
@@ -69,6 +82,8 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
     setCandidates(normalized);
     setSelectedIds(new Set(normalized.map((candidate) => candidate.id)));
     setSavedIds(new Set());
+    setMemoIds(new Set());
+    setReviewMessage('');
     const payload = toCandidateIdeasPayload(normalized);
     onPayloadChange?.(payload);
   };
@@ -98,6 +113,50 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
     setCandidates(nextCandidates);
     onPayloadChange?.(toCandidateIdeasPayload(nextCandidates));
     setSaveError('');
+  };
+
+  const deleteCandidate = (candidateId: string) => {
+    const nextCandidates = candidates.filter((candidate) => candidate.id !== candidateId);
+    setCandidates(nextCandidates);
+    setSelectedIds((current) => new Set([...current].filter((id) => id !== candidateId)));
+    setMemoIds((current) => new Set([...current].filter((id) => id !== candidateId)));
+    onPayloadChange?.(toCandidateIdeasPayload(nextCandidates));
+    setSaveError('');
+    setReviewMessage('후보를 삭제했습니다.');
+  };
+
+  const toggleMemo = (candidateId: string) => {
+    const willBecomeMemo = !memoIds.has(candidateId);
+    setMemoIds((current) => {
+      const next = new Set(current);
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
+      return next;
+    });
+    if (willBecomeMemo) {
+      setSelectedIds((current) => new Set([...current].filter((id) => id !== candidateId)));
+    }
+    setSaveError('');
+    setReviewMessage(willBecomeMemo ? '아이디어 저장 대상에서 제외하고 메모로 보관했습니다.' : '메모를 아이디어 후보로 복원했습니다.');
+  };
+
+  const mergeSelectedCandidates = () => {
+    const merged = mergeCandidateIdeas(mergeCandidates);
+    if (!merged) return;
+    const removedIds = new Set(mergeCandidates.slice(1).map((candidate) => candidate.id));
+    const nextCandidates = candidates
+      .map((candidate) => candidate.id === merged.id ? merged : candidate)
+      .filter((candidate) => !removedIds.has(candidate.id));
+    setCandidates(nextCandidates);
+    setSelectedIds((current) => {
+      const next = new Set([...current].filter((id) => !removedIds.has(id)));
+      next.add(merged.id);
+      return next;
+    });
+    setMemoIds((current) => new Set([...current].filter((id) => !removedIds.has(id))));
+    onPayloadChange?.(toCandidateIdeasPayload(nextCandidates));
+    setSaveError('');
+    setReviewMessage(`${mergeCandidates.length}개 후보를 “${merged.title}” 후보로 병합했습니다.`);
   };
 
   const toggleCandidate = (candidateId: string) => {
@@ -131,6 +190,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
       const result = await onSave(normalized, extractionRunId || createRunId(), topic.trim() || defaultTopic);
       if (result.savedCandidateIds.length > 0) {
         setSavedIds((current) => new Set([...current, ...result.savedCandidateIds]));
+        setSelectedIds((current) => new Set([...current].filter((id) => !result.savedCandidateIds.includes(id))));
       }
       if (result.failures.length > 0) {
         setSaveError(
@@ -149,7 +209,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
     }
   };
 
-  const selectAll = () => setSelectedIds(new Set(candidates.filter((item) => !savedIds.has(item.id)).map((item) => item.id)));
+  const selectAll = () => setSelectedIds(new Set(candidates.filter((item) => !savedIds.has(item.id) && !memoIds.has(item.id)).map((item) => item.id)));
   const clearSelection = () => setSelectedIds(new Set());
 
   return (
@@ -269,7 +329,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
               <View>
                 <ThemedText type="smallBold">AI가 추론한 후보 아이디어</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  {selectedIds.size}개 선택 · {savedIds.size}개 저장됨
+                  {unsavedCandidates.length}개 선택 · {memoIds.size}개 메모 · {savedIds.size}개 저장됨
                 </ThemedText>
               </View>
               <View style={styles.toolbarActions}>
@@ -279,8 +339,21 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
                 <Pressable accessibilityRole="button" accessibilityLabel="후보 전체 선택 해제" disabled={isBusy} onPress={clearSelection} style={({ pressed }) => [styles.textButton, (pressed || isBusy) && styles.pressed]}>
                   <ThemedText type="smallBold" style={styles.textButtonLabel}>전체 해제</ThemedText>
                 </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`선택한 ${mergeCandidates.length}개 후보 병합`}
+                  disabled={isBusy || mergeCandidates.length < 2}
+                  onPress={mergeSelectedCandidates}
+                  style={({ pressed }) => [styles.mergeButton, { borderColor: theme.primary }, (pressed || isBusy || mergeCandidates.length < 2) && styles.pressed]}>
+                  <ThemedText type="smallBold" style={{ color: theme.primary }}>선택 후보 병합</ThemedText>
+                </Pressable>
               </View>
             </View>
+
+            <ThemedText type="small" themeColor="textSecondary">
+              병합할 후보 2개 이상을 선택하거나, 각 카드에서 메모 전환·삭제를 할 수 있습니다.
+            </ThemedText>
+            {reviewMessage ? <ThemedText accessibilityLiveRegion="polite" type="small" style={{ color: theme.success }}>{reviewMessage}</ThemedText> : null}
 
             <View style={styles.candidateList}>
               {candidates.map((candidate) => (
@@ -289,9 +362,13 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
                   candidate={candidate}
                   isSelected={selectedIds.has(candidate.id)}
                   isSaved={savedIds.has(candidate.id)}
+                  isMemo={memoIds.has(candidate.id)}
                   isBusy={isBusy}
+                  duplicateOfTitle={duplicateReferences[candidate.id]}
                   onToggle={() => toggleCandidate(candidate.id)}
                   onChange={updateCandidate}
+                  onDelete={() => deleteCandidate(candidate.id)}
+                  onToggleMemo={() => toggleMemo(candidate.id)}
                 />
               ))}
             </View>
@@ -441,6 +518,7 @@ const styles = StyleSheet.create({
   toolbarActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   textButton: { minHeight: ControlHeight.touch, justifyContent: 'center', paddingHorizontal: Spacing.two },
   textButtonLabel: { color: '#F59E0B' },
+  mergeButton: { minHeight: ControlHeight.touch, justifyContent: 'center', paddingHorizontal: Spacing.three, borderWidth: 1, borderRadius: Radius.medium },
   candidateList: { gap: Spacing.three },
   emptyState: { gap: Spacing.one, borderRadius: Radius.medium, padding: Spacing.three },
   errorText: { color: '#b91c1c' },

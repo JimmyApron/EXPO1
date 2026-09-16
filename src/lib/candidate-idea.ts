@@ -16,6 +16,39 @@ function duplicateKey(value: string) {
   return value.toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
 }
 
+function similarityTokens(value: string) {
+  return new Set(
+    value
+      .toLocaleLowerCase()
+      .split(/[\s\p{P}\p{S}]+/gu)
+      .map((item) => item.trim())
+      .filter((item) => item.length >= 2),
+  );
+}
+
+function overlapRatio(left: Set<string>, right: Set<string>) {
+  if (left.size === 0 || right.size === 0) return 0;
+  let overlap = 0;
+  left.forEach((item) => {
+    if (right.has(item)) overlap += 1;
+  });
+  return overlap / Math.min(left.size, right.size);
+}
+
+function uniqueText(parts: string[], maxLength = 4_000) {
+  const seen = new Set<string>();
+  return parts
+    .map((item) => item.trim())
+    .filter((item) => {
+      const key = duplicateKey(item);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join('\n')
+    .slice(0, maxLength);
+}
+
 export function normalizeStringArray(value: unknown, maxItems = 12) {
   const source = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[\n,]/) : [];
   const seen = new Set<string>();
@@ -97,6 +130,51 @@ export function normalizeCandidateIdeas(value: unknown): CandidateIdea[] {
   });
 
   return normalized.slice(0, maxCandidateIdeas);
+}
+
+export function findCandidateDuplicateReferences(candidates: CandidateIdea[]) {
+  const references: Record<string, string> = {};
+
+  candidates.forEach((candidate, index) => {
+    const titleKey = duplicateKey(candidate.title);
+    const titleTokens = similarityTokens(candidate.title);
+    const keywordTokens = new Set(candidate.keywords.map(duplicateKey).filter(Boolean));
+    const detailKey = duplicateKey(`${candidate.problem}\n${candidate.solution}`);
+
+    for (let previousIndex = 0; previousIndex < index; previousIndex += 1) {
+      const previous = candidates[previousIndex];
+      const previousTitleKey = duplicateKey(previous.title);
+      const sameOrContainedTitle = titleKey.length >= 6 && previousTitleKey.length >= 6
+        && (titleKey === previousTitleKey || titleKey.includes(previousTitleKey) || previousTitleKey.includes(titleKey));
+      const similarTitle = overlapRatio(titleTokens, similarityTokens(previous.title)) >= 0.67;
+      const similarKeywords = keywordTokens.size >= 2
+        && overlapRatio(keywordTokens, new Set(previous.keywords.map(duplicateKey).filter(Boolean))) >= 0.67;
+      const previousDetailKey = duplicateKey(`${previous.problem}\n${previous.solution}`);
+      const sameDetails = detailKey.length >= 20 && detailKey === previousDetailKey;
+
+      if (sameOrContainedTitle || similarTitle || similarKeywords || sameDetails) {
+        references[candidate.id] = previous.title;
+        break;
+      }
+    }
+  });
+
+  return references;
+}
+
+export function mergeCandidateIdeas(candidates: CandidateIdea[]): CandidateIdea | null {
+  if (candidates.length < 2) return null;
+  const [primary] = candidates;
+
+  return {
+    ...primary,
+    summary: uniqueText(candidates.map((candidate) => candidate.summary)),
+    problem: uniqueText(candidates.map((candidate) => candidate.problem)),
+    targetUsers: normalizeStringArray(candidates.flatMap((candidate) => candidate.targetUsers)),
+    solution: uniqueText(candidates.map((candidate) => candidate.solution)),
+    keywords: normalizeStringArray(candidates.flatMap((candidate) => candidate.keywords)),
+    coreFeatures: normalizeStringArray(candidates.flatMap((candidate) => candidate.coreFeatures)),
+  };
 }
 
 export function normalizeExtractCandidateIdeasResponse(value: unknown): ExtractCandidateIdeasResponse | null {
