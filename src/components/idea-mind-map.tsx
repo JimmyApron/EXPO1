@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
@@ -7,14 +7,14 @@ import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
-  applyIdeaFieldDraft,
-  getIdeaFieldDraftValue,
-  getIdeaFieldLabel,
-  getMindMapNodeIdeaField,
-  ideaFieldDefinitions,
-  isListIdeaField,
-  parseIdeaFieldLines,
-  validateMindMapIdeaField,
+    applyIdeaFieldDraft,
+    getIdeaFieldDraftValue,
+    getIdeaFieldLabel,
+    getMindMapNodeIdeaField,
+    ideaFieldDefinitions,
+    isListIdeaField,
+    parseIdeaFieldLines,
+    validateMindMapIdeaField,
 } from '@/lib/mind-map';
 import { IdeaStatusLabels, normalizeIdeaCategory, normalizeIdeaStatus, type Idea, type IdeaInput } from '@/types/idea';
 import type { IdeaField, MindMap, MindMapIdeaDetailsInput, MindMapNode } from '@/types/mind-map';
@@ -204,6 +204,8 @@ export function IdeaMindMap({
   const [isAddingNode, setIsAddingNode] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('map');
   const [expandedBranchIds, setExpandedBranchIds] = useState<Set<string>>(new Set());
+  const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const ideaById = useMemo(() => new Map(ideas.map((idea) => [idea.id, idea])), [ideas]);
   const selectedNode = selectedNodeId ? nodeById.get(selectedNodeId) ?? null : null;
@@ -220,6 +222,32 @@ export function IdeaMindMap({
   const mapZoomPercent = Math.round(mapZoom * 100);
   const canZoomOut = mapZoom > minMapZoom;
   const canZoomIn = mapZoom < maxMapZoom;
+
+  const getNodePanResponder = (node: MindMapNode) => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, gesture) => (node.nodetype === 'idea' || node.nodetype === 'idea_field') && (Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5),
+    onPanResponderGrant: () => {
+      setDraggedNodeId(node.id);
+      setDragOffset({ x: 0, y: 0 });
+    },
+    onPanResponderMove: (_, gesture) => setDragOffset({ x: gesture.dx / mapZoom, y: gesture.dy / mapZoom }),
+    onPanResponderRelease: async (_, gesture) => {
+      setDraggedNodeId(null);
+      setDragOffset({ x: 0, y: 0 });
+      const currentX = node.x + gesture.dx / mapZoom;
+      const currentY = node.y + gesture.dy / mapZoom;
+      const target = branches
+        .map((branch) => ({ branch, distance: Math.hypot(branch.x - currentX, branch.y - currentY) }))
+        .sort((left, right) => left.distance - right.distance)[0];
+      if (target && target.distance < 280 && target.branch.id !== node.parentnodeid) {
+        await onMoveNode(node.id, target.branch.id);
+      }
+    },
+    onPanResponderTerminate: () => {
+      setDraggedNodeId(null);
+      setDragOffset({ x: 0, y: 0 });
+    },
+  });
 
   const openAddNodeForm = (node: MindMapNode) => {
     setAddTargetNodeId(node.id);
@@ -402,7 +430,10 @@ export function IdeaMindMap({
         key={node.id}
         accessibilityRole="button"
         accessibilityLabel={`${displayTitle} 상세 보기`}
+        accessibilityHint={node.nodetype === 'idea' || node.nodetype === 'idea_field' ? '길게 누르면 가지로 재분류할 수 있습니다.' : undefined}
         onPress={() => openNode(node)}
+        onLongPress={node.nodetype === 'idea' || node.nodetype === 'idea_field' ? () => openNode(node) : undefined}
+        delayLongPress={450}
         style={({ pressed }) => [
           styles.listNodeCard,
           { borderColor: theme.border, backgroundColor: theme.surface },
@@ -537,11 +568,21 @@ export function IdeaMindMap({
                   ? { backgroundColor: theme.primarySoft, borderColor: theme.primary, text: theme.primary }
                   : { backgroundColor: theme.surface, borderColor: isHighlighted ? theme.success : theme.border, text: theme.text };
               return (
-                <View key={node.id} style={[styles.nodeWrap, { left: bounds.originX + node.x - nodeWidth / 2, top: bounds.originY + node.y - nodeHeight / 2 }]}>
+                <View
+                  key={node.id}
+                  {...(node.nodetype === 'idea' || node.nodetype === 'idea_field' ? getNodePanResponder(node).panHandlers : {})}
+                  style={[
+                    styles.nodeWrap,
+                    { left: bounds.originX + node.x - nodeWidth / 2, top: bounds.originY + node.y - nodeHeight / 2 },
+                    draggedNodeId === node.id && { transform: [{ translateX: dragOffset.x }, { translateY: dragOffset.y }], zIndex: 20 },
+                  ]}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`${node.nodetype === 'root' ? '중심 주제' : node.nodetype === 'branch' ? '분류 가지' : '아이디어'} ${displayTitle} 상세 보기`}
+                    accessibilityHint={node.nodetype === 'idea' || node.nodetype === 'idea_field' ? '길게 누르면 가지로 재분류할 수 있습니다.' : undefined}
                     onPress={() => openNode(node)}
+                    onLongPress={node.nodetype === 'idea' || node.nodetype === 'idea_field' ? () => openNode(node) : undefined}
+                    delayLongPress={450}
                     style={({ pressed }) => [styles.node, { backgroundColor: palette.backgroundColor, borderColor: palette.borderColor }, isHighlighted && styles.highlightedNode, pressed && styles.pressed, Shadows.card]}>
                     <ThemedText type="captionStrong" style={{ color: palette.text }}>{nodeLabel}</ThemedText>
                     <ThemedText type="smallBold" numberOfLines={2} style={{ color: palette.text }}>{displayTitle}</ThemedText>
@@ -680,7 +721,7 @@ export function IdeaMindMap({
                         excludedField={selectedIdeaField}
                         onChange={(field, value) => setForm((current) => ({ ...current, [field]: value }))}
                       />
-                      {selectedNode?.nodetype === 'idea' && customBranches.length > 0 ? <View style={styles.field}><ThemedText type="smallBold">다른 사용자 정의 가지로 이동</ThemedText><View style={styles.branchChoices}>{customBranches.map((branch) => <Pressable key={branch.id} accessibilityRole="button" accessibilityLabel={`${branch.title} 가지로 이동`} accessibilityState={{ selected: selectedNode?.parentnodeid === branch.id }} disabled={selectedNode?.parentnodeid === branch.id} onPress={() => selectedNode ? void onMoveNode(selectedNode.id, branch.id) : undefined} style={({ pressed }) => [styles.branchChoice, { borderColor: theme.border }, selectedNode?.parentnodeid === branch.id && { backgroundColor: theme.primarySoft }, pressed && styles.pressed]}><ThemedText type="smallBold">{branch.title}</ThemedText></Pressable>)}</View></View> : null}
+                      {(selectedNode?.nodetype === 'idea' || selectedNode?.nodetype === 'idea_field') && branches.length > 0 ? <View style={styles.field}><ThemedText type="smallBold">다른 가지로 이동</ThemedText><View style={styles.branchChoices}>{branches.map((branch) => <Pressable key={branch.id} accessibilityRole="button" accessibilityLabel={`${branch.title} 가지로 이동`} accessibilityState={{ selected: selectedNode?.parentnodeid === branch.id }} disabled={selectedNode?.parentnodeid === branch.id} onPress={() => selectedNode ? void onMoveNode(selectedNode.id, branch.id) : undefined} style={({ pressed }) => [styles.branchChoice, { borderColor: theme.border }, selectedNode?.parentnodeid === branch.id && { backgroundColor: theme.primarySoft }, pressed && styles.pressed]}><ThemedText type="smallBold">{branch.title}{branch.branchfield ? ' (고정 필드)' : ''}</ThemedText></Pressable>)}</View></View> : null}
                     </>
                   ) : null}
                 </>

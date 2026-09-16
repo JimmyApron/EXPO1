@@ -26,6 +26,7 @@ export type MindMapNode = {
   x: number;
   y: number;
   sortorder: number;
+  ismanualposition: boolean;
   createdat: string;
   updatedat: string;
 };

@@ -4,12 +4,14 @@ import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/app-icon';
+import { BlindEvaluationPanel } from '@/components/blind-evaluation-panel';
 import { IdeaBoard } from '@/components/idea-board';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
 import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useIdeas } from '@/hooks/use-ideas';
 import { useProject } from '@/hooks/use-project';
 import { useProjectFlow } from '@/hooks/use-project-flow';
 import { useRooms } from '@/hooks/use-rooms';
@@ -42,6 +44,7 @@ export default function ProjectDetailScreen() {
   const initialLocation = resolveProjectWorkspaceLocation({ ideaTab, projectView, flowStep });
   const { project, isloadingproject, projecterror, updateProject, deleteProject } = useProject(projectId);
   const { conditions } = useProjectFlow(projectId);
+  const { ideas } = useIdeas(projectId);
   const { rooms } = useRooms();
   const projectRoom = rooms.find((item) => item.room.id === project?.roomid);
   const evaluationProgress = useTeamEvaluationProgress(projectId, projectRoom?.members, conditions.teamSize);
@@ -160,6 +163,13 @@ export default function ProjectDetailScreen() {
               {mutationError ? <ThemedText type="caption" style={{ color: theme.danger }}>{mutationError} 다시 시도해 주세요.</ThemedText> : null}
             </View>
           )}
+
+          <BlindEvaluationPanel
+            projectId={project.id}
+            ideas={ideas}
+            criteria={conditions.evaluationCriteria}
+            onSubmitted={() => void evaluationProgress.completeEvaluation()}
+          />
 
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
           <IdeaBoard
