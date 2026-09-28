@@ -3,8 +3,8 @@ import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, St
 
 import { CandidateIdeaCard } from '@/components/idea-extraction/candidate-idea-card';
 import {
-  ExtractionSourceInput,
-  type ExtractionSourceMode,
+    ExtractionSourceInput,
+    type ExtractionSourceMode,
 } from '@/components/idea-extraction/extraction-source-input';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -12,11 +12,11 @@ import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useCandidateIdeaExtraction } from '@/hooks/use-candidate-idea-extraction';
 import { useTheme } from '@/hooks/use-theme';
 import {
-  findCandidateDuplicateReferences,
-  mergeCandidateIdeas,
-  normalizeCandidateIdeas,
-  toCandidateIdeasPayload,
-  validateCandidateIdea,
+    findCandidateDuplicateReferences,
+    mergeCandidateIdeas,
+    normalizeCandidateIdeas,
+    toCandidateIdeasPayload,
+    validateCandidateIdea,
 } from '@/lib/candidate-idea';
 import type { CandidateIdea, CandidateIdeaSaveResult, CandidateIdeasPayload } from '@/types/candidate-idea';
 import type { CompleteProjectConditions } from '@/types/project-flow';
@@ -35,7 +35,7 @@ type IdeaExtractionPanelProps = {
 
 type ConditionFieldKey = 'durationWeeks' | 'teamSize' | 'budget';
 type ConditionFieldValues = Record<ConditionFieldKey, string>;
-const skillLevels = ['초급', '중급', '고급'] as const;
+const skillLevels = ['초급', '중급', '고급', '잘 모르겠어요'] as const;
 type SkillLevel = (typeof skillLevels)[number];
 
 function conditionInputValues(conditions: CompleteProjectConditions): ConditionFieldValues {
@@ -55,6 +55,7 @@ function conditionFieldError(key: ConditionFieldKey, value: string) {
 }
 
 function normalizedSkillLevel(value: string): SkillLevel {
+  if (value.includes('잘 모르겠어요')) return '잘 모르겠어요';
   if (value.includes('고급')) return '고급';
   if (value.includes('중급')) return '중급';
   return '초급';
@@ -376,15 +377,16 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
             </View>
           </View>
           <View style={styles.skillLevelField}>
-            <ThemedText type="smallBold">기술 수준</ThemedText>
-            <View style={styles.skillLevelOptions} accessibilityLabel="프로젝트 기술 수준">
+            <ThemedText type="smallBold">팀의 개발 경험</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">선택한 수준에 맞춰 AI가 구현 난이도와 기능 범위를 추천합니다.</ThemedText>
+            <View style={styles.skillLevelOptions} accessibilityLabel="프로젝트 팀의 개발 경험">
               {skillLevels.map((level) => {
                 const isSelected = skillLevel === level;
                 return (
                   <Pressable
                     key={level}
                     accessibilityRole="button"
-                    accessibilityLabel={`기술 수준 ${level}`}
+                    accessibilityLabel={`팀의 개발 경험 ${level}`}
                     accessibilityState={{ selected: isSelected }}
                     onPress={() => selectSkillLevel(level)}
                     style={({ pressed }) => [

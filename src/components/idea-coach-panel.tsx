@@ -26,7 +26,7 @@ type IdeaCoachPanelProps = {
   onGoToMvp: () => void;
 };
 
-const skillLevelOptions = ['초급', '초급~중급', '중급', '중급~고급', '고급'] as const;
+const skillLevelOptions = ['초급', '중급', '고급', '잘 모르겠어요'] as const;
 
 function sameConditions(left: CompleteProjectConditions, right: CompleteProjectConditions) {
   return (
@@ -68,8 +68,9 @@ function SkillLevelField({ value, onChange }: { value: string; onChange: (value:
   const theme = useTheme();
   return (
     <View style={[styles.field, styles.fullField]}>
-      <ThemedText type="smallBold">기술 수준</ThemedText>
-      <View accessibilityRole="radiogroup" accessibilityLabel="팀 기술 수준" style={styles.optionRow}>
+      <ThemedText type="smallBold">팀의 개발 경험</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">선택한 수준에 맞춰 AI가 구현 난이도와 기능 범위를 추천합니다.</ThemedText>
+      <View accessibilityRole="radiogroup" accessibilityLabel="팀의 개발 경험" style={styles.optionRow}>
         {skillLevelOptions.map((option) => {
           const selected = value === option;
           return (

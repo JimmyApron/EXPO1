@@ -4,7 +4,7 @@ import type { SampleMvpPlan } from '@/types/presentation';
 export const sampleProjectConditions: Required<ProjectConditions> = {
   durationWeeks: 6,
   teamSize: 4,
-  skillLevel: '초급~중급',
+  skillLevel: '중급',
   budget: 100000,
   evaluationCriteria: ['창의성', '구현 가능성', '사용자 편의성', '완성도'],
 };

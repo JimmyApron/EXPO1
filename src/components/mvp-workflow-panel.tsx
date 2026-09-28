@@ -1,14 +1,15 @@
 import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
+import { MvpEffortTags } from '@/components/mvp-effort-tags';
+import { MvpSummaryCard } from '@/components/result/mvp-summary-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MvpSummaryCard } from '@/components/result/mvp-summary-card';
-import { MvpEffortTags } from '@/components/mvp-effort-tags';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useMvpPlan } from '@/hooks/use-mvp-plan';
 import type { useProjectFlow } from '@/hooks/use-project-flow';
 import { useTheme } from '@/hooks/use-theme';
+import { formatMvpDuration, normalizeTeamExperience } from '@/lib/mvp';
 import type { Idea } from '@/types/idea';
 import type { MvpIdea } from '@/types/mvp-plan';
 
@@ -57,6 +58,8 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
     saveMvpPlan,
   );
   const hasPreviousPlan = Boolean(flow?.mvpplan && flow.mvpplan.ideaId !== idea.id);
+  const teamExperienceLabel = normalizeTeamExperience(conditions.skillLevel);
+  const durationLabel = formatMvpDuration(conditions.durationWeeks);
 
   return (
     <View style={styles.container}>
@@ -73,6 +76,13 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
           <ThemedText type="small" themeColor="textSecondary">현재 선정 아이디어 기준으로 새 MVP를 만들면 다음 단계를 이어갈 수 있습니다.</ThemedText>
         </ThemedView>
       ) : null}
+
+      <ThemedView type="backgroundElement" style={[styles.metaCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
+        <ThemedText type="smallBold">현재 추천 기준</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          팀의 개발 경험: {teamExperienceLabel} · 예상 기간: {durationLabel}
+        </ThemedText>
+      </ThemedView>
 
       <Pressable
         accessibilityRole="button"
@@ -175,6 +185,7 @@ const styles = StyleSheet.create({
   whiteText: { color: '#fff' },
   pressed: { opacity: 0.7 },
   noticeCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  metaCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
   card: { gap: Spacing.three, borderWidth: 1, borderRadius: Radius.large, padding: Spacing.four },
   sectionTitle: { fontSize: 18, lineHeight: 26 },
   list: { gap: Spacing.one },

@@ -1,14 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
+import { ExportPanel } from '@/components/export/ExportPanel';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { usePresentationGeneration } from '@/hooks/use-presentation-generation';
 import { useTheme } from '@/hooks/use-theme';
-import type { CandidateIdea, PresentationData, ProjectConditions, SampleMvpPlan } from '@/types/presentation';
-import { ExportPanel } from '@/components/export/ExportPanel';
 import type { ExportData } from '@/types/export';
+import type { CandidateIdea, PresentationData, ProjectConditions, SampleMvpPlan } from '@/types/presentation';
 
 type PresentationViewProps = {
   projectId: string;
@@ -38,6 +38,8 @@ export function PresentationView({
   const [error, setError] = useState('');
   const [presentationData, setPresentationData] = useState<PresentationData | null>(initialData ?? null);
   const [generationInstruction, setGenerationInstruction] = useState('');
+  const [appliedVersion, setAppliedVersion] = useState<'current' | 'previous'>('current');
+  const [previousPresentation, setPreviousPresentation] = useState<PresentationData | null>(null);
   const operationRef = useRef(false);
   const tabs = useMemo(
     () => [
@@ -56,6 +58,10 @@ export function PresentationView({
     operationRef.current = true;
     setLoading(true);
     setError('');
+    const preservedSnapshot = presentationData ?? initialData ?? null;
+    if (preservedSnapshot) {
+      setPreviousPresentation(preservedSnapshot);
+    }
     try {
       const generatedData = await generatePresentation({
         projectId,
@@ -64,10 +70,30 @@ export function PresentationView({
         mvpPlan: sampleMvpPlan,
         ...(generationInstruction.trim() ? { instruction: generationInstruction.trim() } : {}),
       });
-      const data: PresentationData = { ...generatedData, ideaId: selectedIdea.id };
+      const data: PresentationData = {
+        ...generatedData,
+        ideaId: selectedIdea.id,
+        currentVersionId: generatedData.currentVersionId ?? `version-${Date.now()}`,
+        previousVersionId: initialData?.currentVersionId ?? presentationData?.currentVersionId,
+        versionHistory: [
+          {
+            id: generatedData.currentVersionId ?? `version-${Date.now()}`,
+            createdAt: new Date().toISOString(),
+            instruction: generationInstruction.trim() || '초기 발표자료 생성',
+            summary: '전체 발표자료 재생성 요청 반영',
+            changedSlides: generatedData.slides.slice(0, 3).map((slide) => ({
+              slideNumber: slide.slideNumber,
+              title: slide.title,
+              summary: slide.speakerScript || slide.bulletPoints.join(' · '),
+            })),
+          },
+          ...(generatedData.versionHistory ?? []),
+        ],
+      };
       const result = (await onSave?.(data)) as { error?: string } | undefined;
       if (result?.error) throw new Error(result.error);
       setPresentationData(data);
+      setAppliedVersion('current');
       setGenerationInstruction('');
     } catch (generationError) {
       setError(
@@ -104,12 +130,41 @@ export function PresentationView({
           </ThemedText>
         </ThemedView>
       ) : null}
-      {presentationData ? (
+      {presentationData || previousPresentation ? (
         <ThemedView type="warningSoft" style={[styles.regenerationCard, { borderColor: theme.warning }]}>
           <ThemedText type="smallBold" style={{ color: theme.warning }}>요청을 반영해 발표자료 전체를 다시 생성합니다.</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             생성과 저장이 모두 완료된 뒤에만 현재 자료를 교체합니다. 실패하면 기존 자료는 유지됩니다.
           </ThemedText>
+          {previousPresentation ? (
+            <View style={styles.versionCompareBox}>
+              <ThemedText type="smallBold">기존/새 버전 비교</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">기존 생성 시점: 이전 발표자료 보관본</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">수정 요청: {generationInstruction || '초기 생성'}</ThemedText>
+              <View style={styles.versionButtons}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setPresentationData(previousPresentation);
+                    setAppliedVersion('previous');
+                  }}
+                  style={[styles.versionButton, { borderColor: theme.border }]}
+                >
+                  <ThemedText type="smallBold">이전 버전 유지</ThemedText>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setPresentationData(presentationData);
+                    setAppliedVersion('current');
+                  }}
+                  style={[styles.versionButton, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]}
+                >
+                  <ThemedText type="smallBold" style={{ color: theme.primary }}>새 버전 적용</ThemedText>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
           <View style={styles.presetRow}>
             {['더 간결하게', '전문적으로', '더 길고 자세하게'].map((preset) => (
               <Pressable
@@ -184,6 +239,15 @@ export function PresentationView({
       </Pressable>
       )}
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
+
+      {presentationData ? (
+        <ThemedView type="backgroundElement" style={[styles.versionStatus, { borderColor: theme.border }]}>
+          <ThemedText type="smallBold">현재 상태</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {appliedVersion === 'current' ? '새 버전이 적용되어 있습니다.' : '이전 버전이 유지되고 있습니다.'}
+          </ThemedText>
+        </ThemedView>
+      ) : null}
 
       {presentationData ? (
         <View style={styles.contentWrapper}>
