@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import JSZip from 'jszip';
 import { createPptx } from '../src/utils/export/createPptx.ts';
-import { formatForKakao, formatForNotion, presentationPages, reportHtml } from '../src/utils/export/exportFormats.ts';
+import { formatForKakao, formatForNotion, presentationMarkdown, presentationOutline, presentationPages, presentationScript, reportHtml } from '../src/utils/export/exportFormats.ts';
 
 const data = {
   projectTitle: 'Watt',
@@ -50,6 +50,19 @@ test('Continuation slides preserve Unicode and speaker notes', () => {
   assert.equal(pages.map((page) => page.content).join(''), content);
   assert.equal(pages[0].notes, '발표 대본');
   assert.equal(pages[1].notes, '');
+});
+
+test('presentation text exports use generated slides and speaker notes', () => {
+  const presentation = { presentationTitle: '발표 제목', slides: [
+    { slideNumber: 1, title: '문제', bulletPoints: ['필기 시간 부족'], speakerScript: '학생들은 필기에 시간을 씁니다.' },
+    { slideNumber: 2, title: '해결', bulletPoints: ['AI 요약'], speakerScript: '' },
+  ] };
+  const source = { ...data, presentation };
+  assert.match(presentationMarkdown(source), /^# 발표 제목/m);
+  assert.match(presentationMarkdown(source), /발표 대본: 학생들은 필기에 시간을 씁니다/);
+  assert.match(presentationOutline(source), /2\. 해결\n  - AI 요약/);
+  assert.match(presentationScript(source), /1\. 문제\n학생들은 필기에 시간을 씁니다/);
+  assert.match(presentationScript(source), /2\. 해결\n- AI 요약/);
 });
 
 test('PPTX is a valid ZIP with Korean slide text and speaker notes', async () => {

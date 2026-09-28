@@ -32,6 +32,26 @@ export function formatForNotion(data: ExportData) {
   return '# 최종 아이디어 정리\n\n' + exportSections(data).map((section, index) => `## ${index + 1}. ${section.title}\n\n${section.content}`).join('\n\n');
 }
 
+/** These exports use generated presentation slides, unlike mind-map exports. */
+export function presentationMarkdown(data: ExportData) {
+  const slides = data.presentation?.slides ?? [];
+  return `# ${data.presentation?.presentationTitle || data.projectTitle}\n\n${slides.map((slide) =>
+    `## ${slide.slideNumber}. ${slide.title}\n\n${slide.bulletPoints.map((point) => `- ${point}`).join('\n')}${slide.speakerScript ? `\n\n> 발표 대본: ${slide.speakerScript.replace(/\n/g, '\n> ')}` : ''}`,
+  ).join('\n\n')}\n`;
+}
+
+export function presentationOutline(data: ExportData) {
+  return [`PPT 슬라이드 목차: ${data.presentation?.presentationTitle || data.projectTitle}`,
+    ...(data.presentation?.slides ?? []).map((slide) => `${slide.slideNumber}. ${slide.title}\n${slide.bulletPoints.map((point) => `  - ${point}`).join('\n')}`),
+  ].join('\n\n');
+}
+
+export function presentationScript(data: ExportData) {
+  return [`발표 대본: ${data.presentation?.presentationTitle || data.projectTitle}`,
+    ...(data.presentation?.slides ?? []).map((slide) => `${slide.slideNumber}. ${slide.title}\n${slide.speakerScript || slide.bulletPoints.map((point) => `- ${point}`).join('\n')}`),
+  ].join('\n\n');
+}
+
 export function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
