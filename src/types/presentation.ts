@@ -25,7 +25,23 @@ export interface SampleMvpPlan {
   requiredApis: string[];
 }
 
+export type PresentationVersionChange = {
+  slideNumber?: number;
+  title?: string;
+  summary: string;
+};
+
+export type PresentationVersionEntry = {
+  id: string;
+  createdAt: string;
+  instruction: string;
+  summary: string;
+  changedSlides: PresentationVersionChange[];
+};
+
 export interface PresentationData {
+  /** 새로 생성되는 발표자료가 어떤 최종 아이디어를 기준으로 했는지 기록합니다. */
+  ideaId?: string;
   presentationTitle: string;
   slides: {
     slideNumber: number;
@@ -39,6 +55,9 @@ export interface PresentationData {
   }[];
   businessPlanDraft: string;
   finalReport: string;
+  currentVersionId?: string;
+  previousVersionId?: string;
+  versionHistory?: PresentationVersionEntry[];
 }
 
 export type PresentationSlideType = 'title' | 'bullet' | 'code' | 'image';

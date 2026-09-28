@@ -1,269 +1,383 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
+import { ExportPanel } from '@/components/export/ExportPanel';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
+import { usePresentationGeneration } from '@/hooks/use-presentation-generation';
 import { useTheme } from '@/hooks/use-theme';
-import type {
-    CandidateIdea,
-    PresentationData,
-    ProjectConditions,
-    SampleMvpPlan,
-} from '@/types/presentation';
-import { copyToClipboard, downloadAsFile } from '@/utils/fileExport';
+import type { ExportData } from '@/types/export';
+import type { CandidateIdea, PresentationData, ProjectConditions, SampleMvpPlan } from '@/types/presentation';
 
 type PresentationViewProps = {
+  projectId: string;
   projectConditions: ProjectConditions;
   selectedIdea: CandidateIdea;
   sampleMvpPlan: SampleMvpPlan;
+  exportDetails?: Pick<ExportData, 'aiAnalysis' | 'teamRoles' | 'presentationOrder'>;
+  initialData?: PresentationData | null;
+  hasPreviousPresentation?: boolean;
+  onSave?: (data: PresentationData, expected?: PresentationData) => Promise<unknown>;
 };
 
 export function PresentationView({
+  projectId,
   projectConditions,
   selectedIdea,
   sampleMvpPlan,
+  initialData,
+  hasPreviousPresentation = false,
+  exportDetails,
+  onSave,
 }: PresentationViewProps) {
   const theme = useTheme();
+  const { canGenerate, generatePresentation } = usePresentationGeneration();
   const [activeTab, setActiveTab] = useState<'slides' | 'qna' | 'report'>('slides');
   const [loading, setLoading] = useState(false);
-  const [presentationData, setPresentationData] = useState<PresentationData | null>(null);
-
-  const tabButtons = useMemo(
+  const [error, setError] = useState('');
+  const [presentationData, setPresentationData] = useState<PresentationData | null>(initialData ?? null);
+  const [generationInstruction, setGenerationInstruction] = useState('');
+  const [appliedVersion, setAppliedVersion] = useState<'current' | 'previous'>('current');
+  const [previousPresentation, setPreviousPresentation] = useState<PresentationData | null>(null);
+  const operationRef = useRef(false);
+  const tabs = useMemo(
     () => [
       { key: 'slides' as const, label: '슬라이드 & 대본' },
       { key: 'qna' as const, label: '예상 Q&A' },
-      { key: 'report' as const, label: '보고서/사업계획서' },
+      { key: 'report' as const, label: '보고서 · 사업계획서' },
     ],
     [],
   );
 
   const handleGeneratePresentation = async () => {
+    if (operationRef.current || !canGenerate || (presentationData && !generationInstruction.trim())) {
+      return;
+    }
+
+    operationRef.current = true;
     setLoading(true);
-
+    setError('');
+    const preservedSnapshot = presentationData ?? initialData ?? null;
+    if (preservedSnapshot) {
+      setPreviousPresentation(preservedSnapshot);
+    }
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      setPresentationData({
-        presentationTitle: `${selectedIdea.title} - 최종 발표 자료`,
-        slides: [
-          {
-            slideNumber: 1,
-            title: '1. 문제 정의 및 개발 배경',
-            bulletPoints: [selectedIdea.problem, '기존 도구의 한계 및 정리 귀찮음 해소'],
-            speakerScript:
-              '안녕하세요. 저희 프로젝트는 회의 후 아이디어가 실행으로 이어지지 않는 문제를 해결하기 위해 기획되었습니다.',
-          },
-          {
-            slideNumber: 2,
-            title: '2. 핵심 솔루션 및 MVP 기능',
-            bulletPoints: sampleMvpPlan.essentialFeatures,
-            speakerScript:
-              '핵심 솔루션으로 AI 텍스트 자동 추출 및 마인드맵 생성을 제공합니다.',
-          },
-        ],
-        expectedQna: [
-          {
-            question: '6주 동안 초급~중급 4명 인원으로 개발이 가능한가요?',
-            answer: `네, 필수 기능(${sampleMvpPlan.essentialFeatures.join(', ')})에 집중하여 1~4주 차에 핵심 기능을 완성하도록 일정을 수립했습니다.`,
-          },
-        ],
-        businessPlanDraft: `# ${selectedIdea.title} 사업계획서\n\n## 1. 개요\n${selectedIdea.summary}`,
-        finalReport: `# ${selectedIdea.title} 최종 결과 보고서\n\n- 팀원 수: ${projectConditions.teamSize}명\n- 기간: ${projectConditions.durationWeeks}주`,
+      const generatedData = await generatePresentation({
+        projectId,
+        projectConditions,
+        selectedIdea,
+        mvpPlan: sampleMvpPlan,
+        ...(generationInstruction.trim() ? { instruction: generationInstruction.trim() } : {}),
       });
-    } catch (error) {
-      console.error(error);
+      const data: PresentationData = {
+        ...generatedData,
+        ideaId: selectedIdea.id,
+        currentVersionId: generatedData.currentVersionId ?? `version-${Date.now()}`,
+        previousVersionId: initialData?.currentVersionId ?? presentationData?.currentVersionId,
+        versionHistory: [
+          {
+            id: generatedData.currentVersionId ?? `version-${Date.now()}`,
+            createdAt: new Date().toISOString(),
+            instruction: generationInstruction.trim() || '초기 발표자료 생성',
+            summary: '전체 발표자료 재생성 요청 반영',
+            changedSlides: generatedData.slides.slice(0, 3).map((slide) => ({
+              slideNumber: slide.slideNumber,
+              title: slide.title,
+              summary: slide.speakerScript || slide.bulletPoints.join(' · '),
+            })),
+          },
+          ...(generatedData.versionHistory ?? []),
+        ],
+      };
+      const result = (await onSave?.(data)) as { error?: string } | undefined;
+      if (result?.error) throw new Error(result.error);
+      setPresentationData(data);
+      setAppliedVersion('current');
+      setGenerationInstruction('');
+    } catch (generationError) {
+      setError(
+        generationError instanceof Error
+          ? generationError.message
+          : '발표 자료를 생성하지 못했습니다. 다시 시도해주세요.',
+      );
     } finally {
+      operationRef.current = false;
       setLoading(false);
     }
   };
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
-      <ThemedText type="subtitle">📊 C: AI 발표 자료 생성</ThemedText>
-
-      {!presentationData ? (
-        <Pressable
-          onPress={handleGeneratePresentation}
-          disabled={loading}
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}> 
-          <ThemedText type="smallBold" style={styles.primaryButtonText}>
-            {loading ? 'AI가 발표 자료를 생성 중입니다...' : 'idea-001 기반 발표 자료 자동 생성'}
+    <ThemedView style={styles.container}>
+      <ThemedText type="subtitle">발표자료</ThemedText>
+      <ThemedText themeColor="textSecondary">
+        선정 아이디어와 저장된 MVP 결과를 AI가 발표·문서 형식으로 구성합니다.
+      </ThemedText>
+      <ThemedView type="backgroundElement" style={[styles.basisCard, { borderColor: theme.success, backgroundColor: theme.successSoft }]}>
+        <ThemedText type="smallBold" style={{ color: theme.success }}>기준 아이디어</ThemedText>
+        <ThemedText type="smallBold">{selectedIdea.title}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">{selectedIdea.summary}</ThemedText>
+      </ThemedView>
+      {hasPreviousPresentation && !presentationData ? (
+        <ThemedView
+          type="warningSoft"
+          style={[styles.previousPresentationNotice, { borderColor: theme.warning }]}>
+          <ThemedText type="smallBold" style={{ color: theme.warning }}>
+            저장된 발표자료는 이전 아이디어 기준이에요.
           </ThemedText>
-        </Pressable>
+          <ThemedText type="small" themeColor="textSecondary">
+            현재 선정 아이디어와 MVP를 기준으로 새 발표자료를 만들 수 있습니다. 새 자료를 저장하면 기존 발표자료가 교체됩니다.
+          </ThemedText>
+        </ThemedView>
+      ) : null}
+      {presentationData || previousPresentation ? (
+        <ThemedView type="warningSoft" style={[styles.regenerationCard, { borderColor: theme.warning }]}>
+          <ThemedText type="smallBold" style={{ color: theme.warning }}>요청을 반영해 발표자료 전체를 다시 생성합니다.</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            생성과 저장이 모두 완료된 뒤에만 현재 자료를 교체합니다. 실패하면 기존 자료는 유지됩니다.
+          </ThemedText>
+          {previousPresentation ? (
+            <View style={styles.versionCompareBox}>
+              <ThemedText type="smallBold">기존/새 버전 비교</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">기존 생성 시점: 이전 발표자료 보관본</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">수정 요청: {generationInstruction || '초기 생성'}</ThemedText>
+              <View style={styles.versionButtons}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setPresentationData(previousPresentation);
+                    setAppliedVersion('previous');
+                  }}
+                  style={[styles.versionButton, { borderColor: theme.border }]}
+                >
+                  <ThemedText type="smallBold">이전 버전 유지</ThemedText>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setPresentationData(presentationData);
+                    setAppliedVersion('current');
+                  }}
+                  style={[styles.versionButton, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]}
+                >
+                  <ThemedText type="smallBold" style={{ color: theme.primary }}>새 버전 적용</ThemedText>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          <View style={styles.presetRow}>
+            {['더 간결하게', '전문적으로', '더 길고 자세하게'].map((preset) => (
+              <Pressable
+                key={preset}
+                accessibilityRole="button"
+                accessibilityLabel={`${preset} 요청 입력`}
+                disabled={loading}
+                onPress={() => setGenerationInstruction(preset)}
+                style={({ pressed }) => [
+                  styles.presetButton,
+                  { borderColor: theme.border },
+                  (pressed || loading) && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold">{preset}</ThemedText>
+              </Pressable>
+            ))}
+          </View>
+          <TextInput
+            value={generationInstruction}
+            onChangeText={setGenerationInstruction}
+            editable={!loading}
+            multiline
+            maxLength={1000}
+            accessibilityLabel="발표자료 전체 재생성 요청"
+            placeholder="예: 5분 발표용으로 간결하고 설득력 있게 다시 구성해 줘"
+            placeholderTextColor={theme.textSecondary}
+            style={[styles.instructionInput, { color: theme.text, borderColor: theme.border }]}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="요청을 반영해 발표자료 전체 재생성"
+            accessibilityState={{ disabled: loading || !canGenerate || !generationInstruction.trim() }}
+            onPress={handleGeneratePresentation}
+            disabled={loading || !canGenerate || !generationInstruction.trim()}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              { backgroundColor: theme.primary },
+              (pressed || loading || !canGenerate || !generationInstruction.trim()) && styles.pressed,
+            ]}>
+            {loading ? <ActivityIndicator color="#fff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>요청 반영해 전체 재생성</ThemedText>}
+          </Pressable>
+        </ThemedView>
       ) : (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={
+          presentationData
+            ? '발표자료 다시 생성'
+            : hasPreviousPresentation
+              ? '현재 아이디어로 새 발표자료 만들기'
+              : '발표자료 생성 및 저장'
+        }
+        accessibilityState={{ disabled: loading || !canGenerate }}
+        onPress={handleGeneratePresentation}
+        disabled={loading || !canGenerate}
+        style={({ pressed }) => [
+          styles.primaryButton,
+          { backgroundColor: theme.primary },
+          (pressed || loading || !canGenerate) && styles.pressed,
+        ]}>
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <ThemedText type="smallBold" style={styles.primaryButtonText}>
+            {presentationData
+              ? '발표자료 다시 생성'
+              : hasPreviousPresentation
+                ? '현재 아이디어로 새 발표자료 만들기'
+                : '발표자료 생성·저장'}
+          </ThemedText>
+        )}
+      </Pressable>
+      )}
+      {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
+
+      {presentationData ? (
+        <ThemedView type="backgroundElement" style={[styles.versionStatus, { borderColor: theme.border }]}>
+          <ThemedText type="smallBold">현재 상태</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {appliedVersion === 'current' ? '새 버전이 적용되어 있습니다.' : '이전 버전이 유지되고 있습니다.'}
+          </ThemedText>
+        </ThemedView>
+      ) : null}
+
+      {presentationData ? (
         <View style={styles.contentWrapper}>
           <View style={styles.tabRow}>
-            {tabButtons.map((tab) => (
+            {tabs.map((tab) => (
               <Pressable
+                accessibilityRole="tab"
+                accessibilityState={{ selected: activeTab === tab.key }}
                 key={tab.key}
                 onPress={() => setActiveTab(tab.key)}
-                style={({ pressed }) => [
+                style={[
                   styles.tabButton,
-                  activeTab === tab.key && styles.activeTabButton,
-                  pressed && styles.pressed,
+                  { borderColor: theme.border },
+                  activeTab === tab.key && { backgroundColor: theme.primary, borderColor: theme.primary },
                 ]}>
-                <ThemedText type="smallBold" style={activeTab === tab.key && styles.activeTabText}>
+                <ThemedText type="smallBold" style={activeTab === tab.key ? styles.activeTabText : undefined}>
                   {tab.label}
                 </ThemedText>
               </Pressable>
             ))}
           </View>
 
-          {activeTab === 'slides' && (
-            <ScrollView style={styles.slideList} contentContainerStyle={styles.slideListContent}>
+          {activeTab === 'slides' ? (
+            <View style={styles.listGap}>
               {presentationData.slides.map((slide) => (
-                <ThemedView key={slide.slideNumber} type="backgroundElement" style={styles.slideCard}>
+                <ThemedView
+                  key={slide.slideNumber}
+                  type="backgroundElement"
+                  style={[styles.card, { borderColor: theme.border }, Shadows.card]}>
                   <ThemedText type="smallBold">{slide.title}</ThemedText>
-                  <View style={styles.listWrapper}>
-                    {slide.bulletPoints.map((point, index) => (
-                      <ThemedText key={`${slide.slideNumber}-${index}`} type="small" themeColor="textSecondary">
-                        • {point}
-                      </ThemedText>
-                    ))}
-                  </View>
-                  <ThemedView type="backgroundElement" style={styles.scriptBox}>
-                    <ThemedText type="smallBold">🎙️ 발표 대본</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {slide.speakerScript}
+                  {slide.bulletPoints.map((point, index) => (
+                    <ThemedText
+                      key={`${slide.slideNumber}-${index}`}
+                      type="small"
+                      themeColor="textSecondary">
+                      • {point}
                     </ThemedText>
-                  </ThemedView>
-                </ThemedView>
-              ))}
-            </ScrollView>
-          )}
-
-          {activeTab === 'qna' && (
-            <View style={styles.qnaList}>
-              {presentationData.expectedQna.map((qna, idx) => (
-                <ThemedView key={`${qna.question}-${idx}`} type="backgroundElement" style={styles.qnaCard}>
-                  <ThemedText type="smallBold" style={styles.qnaQuestion}>
-                    Q. {qna.question}
-                  </ThemedText>
-                  <ThemedText type="small" style={styles.qnaAnswer}>
-                    A. {qna.answer}
-                  </ThemedText>
+                  ))}
+                  <View style={[styles.scriptBox, { backgroundColor: theme.primarySoft, borderLeftColor: theme.primary }]}>
+                    <ThemedText type="smallBold">발표 대본</ThemedText>
+                    <ThemedText type="small">{slide.speakerScript}</ThemedText>
+                  </View>
                 </ThemedView>
               ))}
             </View>
-          )}
+          ) : null}
 
-          {activeTab === 'report' && (
-            <ThemedView type="backgroundElement" style={styles.reportBox}>
-              <ThemedText type="small">{presentationData.businessPlanDraft}</ThemedText>
-            </ThemedView>
-          )}
+          {activeTab === 'qna' ? (
+            <View style={styles.listGap}>
+              {presentationData.expectedQna.map((qna, index) => (
+                <ThemedView
+                  key={`${qna.question}-${index}`}
+                  type="backgroundElement"
+                  style={[styles.card, { borderColor: theme.border }]}>
+                  <ThemedText type="smallBold">Q. {qna.question}</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">A. {qna.answer}</ThemedText>
+                </ThemedView>
+              ))}
+            </View>
+          ) : null}
 
-          <View style={styles.actionRow}>
-            <Pressable
-              onPress={() => copyToClipboard(JSON.stringify(presentationData, null, 2))}
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-              <ThemedText type="smallBold">전체 내용 복사</ThemedText>
-            </Pressable>
+          {activeTab === 'report' ? (
+            <View style={styles.listGap}>
+              {(['businessPlanDraft', 'finalReport'] as const).map((field) => (
+                <View key={field} style={styles.listGap}>
+                  <ThemedText type="smallBold">{field === 'businessPlanDraft' ? '사업계획서 초안' : '최종 결과 보고서'}</ThemedText>
+                  <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+                    <ThemedText type="small">{presentationData[field]}</ThemedText>
+                  </ThemedView>
+                </View>
+              ))}
+            </View>
+          ) : null}
 
-            <Pressable
-              onPress={() => downloadAsFile(presentationData.businessPlanDraft, `${selectedIdea.title}_사업계획서.md`)}
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-              <ThemedText type="smallBold">사업계획서(.md) 다운로드</ThemedText>
-            </Pressable>
-          </View>
+
         </View>
-      )}
+      ) : null}
+      <ExportPanel data={{
+        projectTitle: presentationData?.presentationTitle || selectedIdea.title,
+        idea: selectedIdea,
+        mvpPlan: sampleMvpPlan,
+        presentation: presentationData,
+        aiAnalysis: exportDetails?.aiAnalysis,
+        teamRoles: exportDetails?.teamRoles ?? [],
+        presentationOrder: exportDetails?.presentationOrder ?? [],
+      }} />
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: Spacing.three,
-    gap: Spacing.two,
-  },
-  contentWrapper: {
-    gap: Spacing.two,
-  },
-  tabRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
-  tabButton: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one,
-    borderRadius: 999,
+  container: { gap: Spacing.three },
+  basisCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  previousPresentationNotice: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  regenerationCard: { gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  presetButton: {
+    minHeight: ControlHeight.touch,
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#d0d7de',
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
   },
-  activeTabButton: {
-    backgroundColor: '#2868d8',
-    borderColor: '#2868d8',
+  instructionInput: { minHeight: 88, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.two, textAlignVertical: 'top' },
+  contentWrapper: { gap: Spacing.three },
+  tabRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  tabButton: {
+    minHeight: ControlHeight.touch,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
   },
-  activeTabText: {
-    color: '#ffffff',
-  },
-  slideList: {
-    maxHeight: 420,
-  },
-  slideListContent: {
-    gap: Spacing.two,
-  },
-  slideCard: {
-    gap: Spacing.one,
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-  },
-  listWrapper: {
-    gap: 4,
-  },
+  activeTabText: { color: '#fff' },
+  listGap: { gap: Spacing.three },
+  card: { gap: Spacing.three, borderWidth: 1, borderRadius: Radius.large, padding: Spacing.four },
   scriptBox: {
-    borderRadius: Spacing.one,
-    padding: Spacing.two,
     gap: Spacing.one,
-  },
-  qnaList: {
-    gap: Spacing.two,
-  },
-  qnaCard: {
-    borderRadius: Spacing.two,
+    borderLeftWidth: 3,
+    borderRadius: Radius.small,
     padding: Spacing.three,
-    gap: Spacing.one,
-  },
-  qnaQuestion: {
-    color: '#d9534f',
-  },
-  qnaAnswer: {
-    color: '#5cb85c',
-  },
-  reportBox: {
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
   },
   primaryButton: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    backgroundColor: '#2868d8',
-    borderRadius: Spacing.two,
-    alignItems: 'center',
+    alignSelf: 'flex-start',
+    minHeight: ControlHeight.input,
     justifyContent: 'center',
+    paddingHorizontal: Spacing.four,
+    borderRadius: Radius.medium,
   },
-  secondaryButton: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
-    borderWidth: 1,
-    borderColor: '#d0d7de',
-    borderRadius: Spacing.two,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-  },
-  pressed: {
-    opacity: 0.8,
-  },
+  primaryButtonText: { color: '#fff' },
+  error: { color: '#dc2626' },
+  pressed: { opacity: 0.6 },
 });

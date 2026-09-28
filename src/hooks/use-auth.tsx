@@ -11,6 +11,9 @@ type AuthContextValue = {
   signin: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<string>;
   signout: () => Promise<void>;
+  updateaccount: (input: { email?: string; nickname?: string; avatarurl?: string; avatarpath?: string }) => Promise<void>;
+  changepassword: (password: string) => Promise<void>;
+  deleteaccount: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -25,13 +28,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        setAutherror(error.message);
-      }
-      setSession(data.session);
-      setIsauthloading(false);
+    let iscancelled = false;
+    const sessiontimeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('인증 서버에 연결할 수 없습니다.')), 8000);
     });
+
+    Promise.race([supabase.auth.getSession(), sessiontimeout])
+      .then(({ data, error }) => {
+        if (iscancelled) return;
+        if (error) setAutherror(error.message);
+        setSession(data.session);
+        setIsauthloading(false);
+      })
+      .catch((error: Error) => {
+        if (iscancelled) return;
+        setAutherror(error.message);
+        setIsauthloading(false);
+      });
 
     const { data } = supabase.auth.onAuthStateChange((_event, nextsession) => {
       setSession(nextsession);
@@ -40,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      iscancelled = true;
       data.subscription.unsubscribe();
     };
   }, []);
@@ -88,6 +102,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setAutherror(error.message);
           throw error;
         }
+      },
+      updateaccount: async ({ email, nickname, avatarurl, avatarpath }) => {
+        setAutherror('');
+        const metadata = {
+          ...(session?.user.user_metadata ?? {}),
+          ...(nickname !== undefined ? { nickname } : {}),
+          ...(avatarurl !== undefined ? { avatarurl } : {}),
+          ...(avatarpath !== undefined ? { avatarpath } : {}),
+        };
+        const { error } = await supabase.auth.updateUser({
+          ...(email ? { email: email.trim() } : {}),
+          data: metadata,
+        });
+
+        if (error) {
+          setAutherror(error.message);
+          throw error;
+        }
+      },
+      changepassword: async (password: string) => {
+        setAutherror('');
+        const { error } = await supabase.auth.updateUser({ password });
+
+        if (error) {
+          setAutherror(error.message);
+          throw error;
+        }
+      },
+      deleteaccount: async () => {
+        setAutherror('');
+        const { error } = await supabase.functions.invoke('delete-account');
+
+        if (error) {
+          setAutherror(error.message);
+          throw error;
+        }
+
+        await supabase.auth.signOut({ scope: 'local' });
+        setSession(null);
       },
     }),
     [autherror, isauthloading, session],
