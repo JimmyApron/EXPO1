@@ -141,11 +141,6 @@ export function AppNavigation() {
         })}
       </View>
 
-      {isWide ? (
-        <ThemedText style={styles.sideFooter}>
-          {isProjectDetail ? '⚡ 과제 작업 공간' : '아이디어에서 결과물까지'}
-        </ThemedText>
-      ) : null}
     </SafeAreaView>
   );
 

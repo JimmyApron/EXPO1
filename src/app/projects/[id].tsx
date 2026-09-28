@@ -1,3 +1,5 @@
+import { RoomBreadcrumb } from '@/components/room/RoomBreadcrumb';
+import { ReminderActions } from '@/components/reminder/ReminderActions';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -118,6 +120,7 @@ export default function ProjectDetailScreen() {
             <ThemedText type="button" themeColor="textSecondary">과제 목록</ThemedText>
           </Pressable>
 
+          {project.roomid ? <RoomBreadcrumb roomName={projectRoom?.room.name} title={project.title} /> : null}
           {isEditing ? (
             <ThemedView type="surface" style={[styles.editPanel, { borderColor: theme.border }]}>
               <ThemedText type="sectionTitle">과제 수정</ThemedText>
@@ -133,6 +136,7 @@ export default function ProjectDetailScreen() {
                   </View>
                   <ThemedText type="screenTitle">{project.title}</ThemedText>
                   <ThemedText type="body" themeColor="textSecondary">{project.description || '과제 설명이 아직 없어요. 목표나 조건을 추가해 보세요.'}</ThemedText>
+                  {evaluationProgress.error ? <ThemedText accessibilityLiveRegion="polite">{evaluationProgress.error}</ThemedText> : null}
                   <View style={styles.evaluationRow}>
                     <View
                       accessibilityLabel={`평가 진행률 ${evaluationProgress.completedCount}/${evaluationProgress.totalCount}명 완료`}
@@ -146,11 +150,12 @@ export default function ProjectDetailScreen() {
                       <ThemedText
                         type="smallBold"
                         style={{ color: hasCompletedEvaluations ? theme.success : theme.primary }}>
-                        평가 진행률 {evaluationProgress.completedCount}/{evaluationProgress.totalCount}명 완료
+                        {evaluationProgress.isLoading ? '평가 현황을 불러오는 중…' : evaluationProgress.error ? '평가 현황 확인 필요' : `평가 진행률 ${evaluationProgress.completedCount}/${evaluationProgress.totalCount}명 완료`}
                       </ThemedText>
                     </View>
                   </View>
                 </View>
+                {projectRoom && evaluationIdeaIds.length > 0 && !evaluationProgress.isLoading && !evaluationProgress.error ? <ReminderActions key={project.id} projectId={project.id} title={project.title} deadline={project.deadline} completedCount={evaluationProgress.completedCount} totalCount={projectRoom.members.length} /> : null}
                 <View style={styles.actions}>
                   <Pressable disabled={isBusy} onPress={() => setIsEditing(true)} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, (pressed || isBusy) && styles.pressed]}>
                     <ThemedText type="button">수정</ThemedText>
@@ -191,8 +196,8 @@ const styles = StyleSheet.create({
   backIcon: { transform: [{ scaleX: -1 }] },
   hero: { gap: Spacing.three },
   heroTop: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: Spacing.three },
-  titleBlock: { flex: 1, minWidth: 260, gap: Spacing.two },
-  deadlineRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  titleBlock: { flex: 1, minWidth: 0, gap: Spacing.two },
+  deadlineRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two },
   dayChip: { borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 5 },
   evaluationBadge: { alignSelf: 'flex-start', borderWidth: 1, borderRadius: Radius.pill, paddingHorizontal: Spacing.two, paddingVertical: Spacing.one },
   evaluationRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two },

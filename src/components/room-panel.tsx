@@ -1,7 +1,8 @@
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import * as Clipboard from 'expo-clipboard';
 import { router, type Href } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { EmptyState } from '@/components/empty-state';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
@@ -221,13 +222,15 @@ function RoomProjectCard({ project }: { project: Project }) {
   return (
     <Pressable
       onPress={() => router.push(`/projects/${project.id}` as Href)}
+      accessibilityRole="button"
+      accessibilityLabel={`${project.title} 과제 열기`}
       style={({ pressed }) => [
         styles.projectButton,
         { backgroundColor: theme.surface, borderColor: theme.border },
         pressed && styles.pressed,
       ]}>
       <View style={styles.projectTitleBlock}>
-        <ThemedText type="smallBold" style={styles.projectTitle}>
+        <ThemedText type="smallBold" style={styles.projectTitle} numberOfLines={2}>
           {project.title}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
@@ -384,10 +387,11 @@ function RoomCard({
   return (
     <ThemedView
       type="backgroundElement"
-      style={[styles.roomCard, { borderColor: theme.border }, Shadows.card]}>
+      style={[styles.roomCard, { borderColor: theme.primary }, Shadows.card]}>
       <View style={styles.roomCardHeader}>
         <View style={styles.roomTitleBlock}>
-          <ThemedText type="smallBold" style={styles.roomTitle}>
+          <ThemedText type="captionStrong" themeColor="textSecondary">팀 작업 공간 · 방</ThemedText>
+          <ThemedText accessibilityRole="header" numberOfLines={2} type="smallBold" style={styles.roomTitle}>
             {item.room.name}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
@@ -993,7 +997,7 @@ const styles = StyleSheet.create({
   },
   sectionCopy: {
     flex: 1,
-    minWidth: 220,
+    minWidth: 0,
     gap: Spacing.one,
   },
   headerActions: {
@@ -1030,7 +1034,7 @@ const styles = StyleSheet.create({
   roomCard: {
     gap: Spacing.four,
     borderRadius: Radius.large,
-    borderWidth: 1,
+    borderWidth: 3,
     padding: Spacing.four,
   },
   roomCardHeader: {
@@ -1041,7 +1045,7 @@ const styles = StyleSheet.create({
   },
   roomTitleBlock: {
     flex: 1,
-    minWidth: 200,
+    minWidth: 0,
     gap: Spacing.one,
   },
   roomTitle: {
@@ -1066,7 +1070,7 @@ const styles = StyleSheet.create({
   },
   roomCodeRow: {
     flexGrow: 1,
-    minWidth: 220,
+    minWidth: 0,
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -1107,6 +1111,9 @@ const styles = StyleSheet.create({
   projectButton: {
     flexGrow: 1,
     flexBasis: 300,
+    flexShrink: 1,
+    maxWidth: '100%',
+    minWidth: 0,
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -1118,7 +1125,7 @@ const styles = StyleSheet.create({
   },
   projectTitleBlock: {
     flex: 1,
-    minWidth: 180,
+    minWidth: 0,
     gap: Spacing.one,
   },
   projectTitle: {
@@ -1194,7 +1201,7 @@ const styles = StyleSheet.create({
   },
   listItemCopy: {
     flex: 1,
-    minWidth: 180,
+    minWidth: 0,
     gap: Spacing.one,
   },
   memberSectionHeader: {

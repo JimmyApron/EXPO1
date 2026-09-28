@@ -11,6 +11,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
+import { ExperienceProvider } from '@/context/ExperienceContext';
+import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { AppProvider } from '@/context/AppContext';
 
 function AuthGate() {
@@ -42,10 +44,10 @@ export default function TabLayout() {
       <AppProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <AuthProvider>
-            <NotificationToastProvider>
+            <ExperienceProvider><NotificationToastProvider>
               <AnimatedSplashOverlay />
               <AuthGate />
-            </NotificationToastProvider>
+            <OnboardingModal /></NotificationToastProvider></ExperienceProvider>
           </AuthProvider>
         </ThemeProvider>
       </AppProvider>

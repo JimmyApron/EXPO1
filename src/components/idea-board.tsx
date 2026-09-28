@@ -1,3 +1,4 @@
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
@@ -8,7 +9,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 
@@ -887,6 +887,9 @@ function IdeaCard({
           <Pressable
             disabled={isBusy}
             onPress={() => { setIsMenuOpen(false); onToggleFavorite(); }}
+            accessibilityRole="button"
+            accessibilityLabel={idea.isfavorite ? '아이디어 즐겨찾기 해제' : '아이디어 즐겨찾기'}
+            accessibilityState={{ disabled: isBusy, selected: idea.isfavorite }}
             style={({ pressed }) => [styles.overflowMenuItem, pressed && styles.pressed]}>
             <AppIcon name="favorite" color={idea.isfavorite ? '#F59E0B' : PALETTE.textSecondary} size={18} />
             <ThemedText style={{ color: PALETTE.text, fontSize: 13, fontWeight: '600' }}>
@@ -1183,6 +1186,9 @@ function FilterBlock({
             <ThemedText type="cardTitle" style={{ color: PALETTE.text }}>상세 필터</ThemedText>
             <Pressable
               onPress={onToggleFavorite}
+              accessibilityRole="button"
+              accessibilityLabel="즐겨찾기만 보기"
+              accessibilityState={{ selected: favoriteOnly }}
               style={({ pressed }) => [
                 styles.favoriteFilterButton,
                 favoriteOnly && styles.activeFavoriteFilterButton,

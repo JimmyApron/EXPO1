@@ -1,3 +1,4 @@
+import { ReminderInbox } from '@/components/notification/reminder-inbox';
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -93,6 +94,7 @@ export default function NotificationsScreen() {
             </View>
           </View>
 
+          <ReminderInbox />
           <View style={styles.summary}>
             <ThemedText type="smallBold">전체 {notifications.length}개</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">

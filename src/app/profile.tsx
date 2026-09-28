@@ -1,3 +1,5 @@
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
+import { ExperienceSettings } from '@/components/experience-settings';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -11,7 +13,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -406,6 +407,7 @@ export default function ProfileScreen() {
 
           <View style={styles.section}>
             <ThemedText type="sectionTitle">앱 설정</ThemedText>
+            <ExperienceSettings />
             <ThemedView type="backgroundElement" style={[styles.settingsCard, { borderColor: theme.border }]}>
               <SettingRow
                 icon="notifications"
