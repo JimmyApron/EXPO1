@@ -24,6 +24,16 @@ function isMvpPlan(value: unknown, ideaId: string): value is MvpPlan {
   );
 }
 
+function hydrateSavedPlan(savedPlan: MvpPlan | null | undefined, idea: MvpIdea): MvpPlan | null {
+  if (!isMvpPlan(savedPlan, idea.id)) return null;
+  const normalized = normalizeMvpPlan(savedPlan, idea);
+  return normalized ? {
+    ...normalized,
+    manualKeywords: savedPlan.manualKeywords ?? [],
+    removedKeywords: savedPlan.removedKeywords ?? [],
+  } : null;
+}
+
 async function getMvpErrorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'context' in error) {
     const context = (error as { context?: unknown }).context;
@@ -50,7 +60,7 @@ export function useMvpPlan(
 ) {
   const { session } = useAuth();
   const [plan, setPlan] = useState<MvpPlan | null>(
-    isMvpPlan(savedPlan, idea.id) ? normalizeMvpPlan(savedPlan, idea) : null,
+    hydrateSavedPlan(savedPlan, idea),
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
@@ -58,7 +68,7 @@ export function useMvpPlan(
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(
-      () => setPlan(isMvpPlan(savedPlan, idea.id) ? normalizeMvpPlan(savedPlan, idea) : null),
+      () => setPlan(hydrateSavedPlan(savedPlan, idea)),
       0,
     );
     return () => globalThis.clearTimeout(timeout);
@@ -80,7 +90,8 @@ export function useMvpPlan(
       });
       if (invokeError) throw invokeError;
       if (!isMvpPlan(data, idea.id)) throw new Error('AI 계획 응답 형식이 올바르지 않습니다.');
-      const normalized = normalizeMvpPlan(data, idea);
+      const base = normalizeMvpPlan(data, idea);
+      const normalized = base ? { ...base, manualKeywords: savedPlan?.ideaId === idea.id ? savedPlan.manualKeywords ?? [] : [], removedKeywords: savedPlan?.ideaId === idea.id ? savedPlan.removedKeywords ?? [] : [] } : null;
       if (!normalized) throw new Error('AI 계획 응답 형식이 올바르지 않습니다.');
       const saveResult = await onSave?.(normalized) as { error?: string } | undefined;
       if (saveResult?.error) throw new Error(saveResult.error);
@@ -90,7 +101,7 @@ export function useMvpPlan(
     } finally {
       setIsGenerating(false);
     }
-  }, [accessToken, conditions, idea, isGenerating, onSave]);
+  }, [accessToken, conditions, idea, isGenerating, onSave, savedPlan]);
 
   return { plan, isGenerating, error, generatePlan };
 }

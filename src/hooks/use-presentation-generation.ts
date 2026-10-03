@@ -15,6 +15,7 @@ type GeneratePresentationInput = {
   selectedIdea: CandidateIdea;
   mvpPlan: SampleMvpPlan;
   instruction?: string;
+  previousPresentation?: Pick<PresentationData, 'presentationTitle' | 'slides' | 'expectedQna' | 'businessPlanDraft' | 'finalReport'>;
 };
 
 const generationErrorMessage = '발표 자료를 생성하지 못했습니다. 다시 시도해주세요.';

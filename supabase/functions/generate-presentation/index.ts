@@ -36,6 +36,7 @@ const presentationMaxTokens = 16_000;
 
 const systemInstruction = `당신은 대학생 팀 프로젝트의 최종 발표 자료를 작성하는 AI 코치입니다.
 제공된 아이디어, 프로젝트 조건, MVP 계획만 근거로 사용하세요.
+이전 발표자료와 수정 요청이 제공되면 기존 자료의 유용한 내용을 유지하면서 요청을 반영해 슬라이드, 예상 질문, 사업계획서와 최종 보고서 전체를 새로 작성하세요.
 발표 슬라이드는 논리적인 이야기 흐름을 갖추고, 발표 대본은 실제로 읽기 쉬운 자연스러운 한국어로 작성하세요.
 예상 질문은 평가자가 물을 법한 현실적인 내용으로 구성하고 답변에는 제공된 근거를 반영하세요.
 사업계획서와 최종 결과 보고서는 바로 제출해도 될 만큼 구체적이고 전문적인 마크다운 문서로 작성하세요.
@@ -312,7 +313,11 @@ Deno.serve(async (request) => {
     (typeof requestBody.instruction !== 'string' || requestBody.instruction.length > 1000)) {
     return jsonResponse({ error: 'invalid_instruction', message: '발표자료 재생성 요청은 1,000자 이내로 입력해 주세요.' }, 400);
   }
-  const generationInstruction = cleanString(requestBody.instruction, 1000);
+const generationInstruction = cleanString(requestBody.instruction, 1000);
+  const previousPresentation = requestBody.previousPresentation;
+  if (previousPresentation !== undefined && !isPresentationData(previousPresentation)) {
+    return jsonResponse({ error: 'invalid_previous', message: '이전 발표자료 형식을 확인해 주세요.' }, 400);
+  }
 
   const deepSeekApiKey = Deno.env.get('DEEPSEEK_API_KEY');
   if (!deepSeekApiKey) {
@@ -336,6 +341,7 @@ Deno.serve(async (request) => {
     mvpPlan,
     outputLanguage: 'Korean',
     ...(generationInstruction ? { generationInstruction } : {}),
+    ...(previousPresentation ? { previousPresentation } : {}),
   });
 
   const controller = new AbortController();

@@ -15,9 +15,9 @@ test('team experience normalization keeps legacy values compatible', () => {
   assert.equal(normalizeTeamExperience('unknown'), '중급');
 });
 
-test('short MVP durations are displayed in days instead of weeks', () => {
-  assert.equal(formatMvpDuration(0.5), '3일');
-  assert.equal(formatMvpDuration(0.7), '5일');
+test('short MVP durations remain in week units', () => {
+  assert.equal(formatMvpDuration(0.5), '0.5주');
+  assert.equal(formatMvpDuration(0.7), '0.7주');
   assert.equal(formatMvpDuration(2), '2주');
 });
 

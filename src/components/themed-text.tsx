@@ -1,5 +1,7 @@
-import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
+import { Platform, StyleSheet, Text, type TextProps, type TextStyle } from 'react-native';
 
+import { useExperience } from '@/context/ExperienceContext';
+import { scaledTypography } from '@/utils/fontSize';
 import { Fonts, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -25,6 +27,9 @@ export type ThemedTextProps = TextProps & {
 
 export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
   const theme = useTheme();
+  const { fontSize } = useExperience();
+  const base: TextStyle = StyleSheet.flatten([styles[type], style]);
+  const typography = scaledTypography(base.fontSize ?? 16, base.lineHeight, fontSize);
 
   return (
     <Text
@@ -46,6 +51,7 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'linkPrimary' && [styles.linkPrimary, { color: theme.primary }],
         type === 'code' && styles.code,
         style,
+        typography,
       ]}
       {...rest}
     />

@@ -37,6 +37,7 @@ export type PresentationVersionEntry = {
   instruction: string;
   summary: string;
   changedSlides: PresentationVersionChange[];
+  snapshot?: Pick<PresentationData, 'presentationTitle' | 'slides' | 'expectedQna' | 'businessPlanDraft' | 'finalReport'>;
 };
 
 export interface PresentationData {
@@ -55,6 +56,7 @@ export interface PresentationData {
   }[];
   businessPlanDraft: string;
   finalReport: string;
+  createdAt?: string;
   currentVersionId?: string;
   previousVersionId?: string;
   versionHistory?: PresentationVersionEntry[];

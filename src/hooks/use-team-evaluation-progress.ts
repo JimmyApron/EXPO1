@@ -11,6 +11,7 @@ type TeamEvaluationProgress = {
   completedCount: number;
   totalCount: number;
   isLoading: boolean;
+  error: string;
   isCurrentUserCompleted: boolean;
 };
 
@@ -30,6 +31,7 @@ export function useTeamEvaluationProgress(
   const { showNotificationToast } = useNotificationToasts();
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+  const [progressError, setProgressError] = useState('');
   const previousCompletedCount = useRef<number | null>(null);
   const requiredIdeaIds = useMemo(() => [...new Set(ideaIds)].sort(), [ideaIds]);
   const participantIds = useMemo(
@@ -50,6 +52,8 @@ export function useTeamEvaluationProgress(
     }
 
     setIsLoading(true);
+    setProgressError('');
+    try {
     const { data, error } = await supabase
       .from('ideaevaluations')
       .select('userid, ideaid')
@@ -75,7 +79,9 @@ export function useTeamEvaluationProgress(
       previousCompletedCount.current = nextCompletedCount;
       setCompletedIds(nextCompletedIds);
     }
-    setIsLoading(false);
+    if (error) { setCompletedIds(new Set()); setProgressError('평가 현황을 불러오지 못했어요. 연결을 확인하고 화면을 다시 열어주세요.'); }
+    } catch { setCompletedIds(new Set()); setProgressError('평가 현황을 불러오지 못했어요. 연결을 확인하고 화면을 다시 열어주세요.'); }
+    finally { setIsLoading(false); }
   }, [evaluationRound, participantIds, projectId, requiredIdeaIds, showNotificationToast, totalCount, user]);
 
   useEffect(() => {
@@ -93,6 +99,7 @@ export function useTeamEvaluationProgress(
   return {
     completedCount,
     totalCount,
+    error: progressError,
     isLoading,
     isCurrentUserCompleted: Boolean(user && completedIds.has(user.id)),
   };

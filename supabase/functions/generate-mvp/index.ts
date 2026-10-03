@@ -219,7 +219,9 @@ function normalizeConditions(value: unknown) {
   return {
     durationWeeks: Math.max(1, Math.min(52, Math.round(Number(conditions.durationWeeks) || 6))),
     teamSize: Math.max(1, Math.min(20, Math.round(Number(conditions.teamSize) || 4))),
-    skillLevel: cleanString(conditions.skillLevel, 100) || '초급~중급',
+    skillLevel: /모르겠|unknown|not sure/i.test(cleanString(conditions.skillLevel, 100))
+      ? '중급 (사용자가 개발 경험을 잘 모르겠다고 선택함)'
+      : cleanString(conditions.skillLevel, 100) || '중급',
     budget: Math.max(0, Math.min(1_000_000_000, Number(conditions.budget) || 0)),
     evaluationCriteria: cleanStringArray(conditions.evaluationCriteria, 20),
   };

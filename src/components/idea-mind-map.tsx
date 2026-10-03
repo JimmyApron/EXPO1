@@ -1,3 +1,4 @@
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -8,7 +9,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';

@@ -57,4 +57,6 @@ export type MvpPlan = {
   teamRoles: MvpRole[];
   apis: MvpApi[];
   presentationOrder: string[];
+  manualKeywords?: string[];
+  removedKeywords?: string[];
 };

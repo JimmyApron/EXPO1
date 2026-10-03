@@ -1,5 +1,6 @@
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { CandidateIdeaCard } from '@/components/idea-extraction/candidate-idea-card';
 import {

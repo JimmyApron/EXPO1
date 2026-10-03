@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { MvpEffortTags } from '@/components/mvp-effort-tags';
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { MvpSummaryCard } from '@/components/result/mvp-summary-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -9,7 +10,7 @@ import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useMvpPlan } from '@/hooks/use-mvp-plan';
 import type { useProjectFlow } from '@/hooks/use-project-flow';
 import { useTheme } from '@/hooks/use-theme';
-import { formatMvpDuration, normalizeTeamExperience } from '@/lib/mvp';
+import { extractKeywordsFromText, formatMvpDuration, mergeKeywordLists, normalizeTeamExperience } from '@/lib/mvp';
 import type { Idea } from '@/types/idea';
 import type { MvpIdea } from '@/types/mvp-plan';
 
@@ -60,6 +61,38 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
   const hasPreviousPlan = Boolean(flow?.mvpplan && flow.mvpplan.ideaId !== idea.id);
   const teamExperienceLabel = normalizeTeamExperience(conditions.skillLevel);
   const durationLabel = formatMvpDuration(conditions.durationWeeks);
+  const [keywordDraft, setKeywordDraft] = useState('');
+  const [keywordSaving, setKeywordSaving] = useState(false);
+  const [keywordError, setKeywordError] = useState('');
+  const autoKeywords = plan ? extractKeywordsFromText([
+    plan.summary,
+    ...plan.mustHaveFeatures.flatMap((feature) => [feature.name, feature.description]),
+    ...plan.schedule.flatMap((step) => [step.goal, ...step.tasks]),
+  ].join(' ')) : [];
+  const keywords = plan ? mergeKeywordLists(
+    autoKeywords.filter((keyword) => !(plan.removedKeywords ?? []).includes(keyword)),
+    plan.manualKeywords ?? [],
+  ) : [];
+  const saveKeywords = async (manualKeywords: string[], removedKeywords: string[]) => {
+    if (!plan || keywordSaving) return;
+    setKeywordSaving(true); setKeywordError('');
+    try {
+      const result = await saveMvpPlan({ ...plan, manualKeywords, removedKeywords });
+      if (result.error) throw new Error(result.error);
+      return true;
+    } catch (cause) { setKeywordError(cause instanceof Error ? cause.message : '키워드를 저장하지 못했습니다.'); }
+    finally { setKeywordSaving(false); }
+    return false;
+  };
+  const addKeyword = async () => {
+    const next = keywordDraft.trim();
+    if (!next || !plan || keywords.some((keyword) => keyword.toLowerCase() === next.toLowerCase())) return;
+    if (await saveKeywords([...(plan.manualKeywords ?? []), next], (plan.removedKeywords ?? []).filter((item) => item.toLowerCase() !== next.toLowerCase()))) setKeywordDraft('');
+  };
+  const removeKeyword = async (keyword: string) => {
+    if (!plan) return;
+    await saveKeywords((plan.manualKeywords ?? []).filter((item) => item !== keyword), [...(plan.removedKeywords ?? []), keyword]);
+  };
 
   return (
     <View style={styles.container}>
@@ -80,7 +113,7 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
       <ThemedView type="backgroundElement" style={[styles.metaCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
         <ThemedText type="smallBold">현재 추천 기준</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          팀의 개발 경험: {teamExperienceLabel} · 예상 기간: {durationLabel}
+          팀의 개발 경험: {teamExperienceLabel}{teamExperienceLabel === '잘 모르겠어요' ? ' (중급 기준 추천)' : ''} · 예상 기간: {durationLabel}
         </ThemedText>
       </ThemedView>
 
@@ -107,6 +140,12 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
       {plan ? (
         <>
           <ThemedText type="smallBold" style={{ color: theme.primary }}>{plan.ideaTitle}</ThemedText>
+          <Section title="프로젝트 핵심 키워드">
+            <ThemedText type="small" themeColor="textSecondary">MVP 계획에서 추출했습니다. 직접 추가하거나 제거한 내용은 계획을 다시 만들어도 유지됩니다.</ThemedText>
+            <View style={styles.grid}>{keywords.length ? keywords.map((keyword) => <Pressable key={keyword} accessibilityRole="button" accessibilityLabel={`${keyword} 키워드 삭제`} disabled={keywordSaving} onPress={() => void removeKeyword(keyword)} style={[styles.keywordChip, { borderColor: theme.border }]}><ThemedText type="smallBold">{keyword} ×</ThemedText></Pressable>) : <ThemedText type="small">키워드가 없습니다. 직접 추가해 주세요.</ThemedText>}</View>
+            <View style={styles.grid}><TextInput accessibilityLabel="핵심 키워드 입력" value={keywordDraft} onChangeText={setKeywordDraft} editable={!keywordSaving} placeholder="키워드 추가" placeholderTextColor={theme.textSecondary} style={[styles.keywordInput, { color: theme.text, borderColor: theme.border }]} /><Pressable accessibilityRole="button" accessibilityLabel="핵심 키워드 추가" accessibilityState={{ disabled: !keywordDraft.trim() || keywordSaving }} disabled={!keywordDraft.trim() || keywordSaving} onPress={() => void addKeyword()} style={[styles.primaryButton, { backgroundColor: theme.primary }]}><ThemedText type="smallBold" style={styles.whiteText}>{keywordSaving ? '저장 중' : '추가'}</ThemedText></Pressable></View>
+            {keywordError ? <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>{keywordError}</ThemedText> : null}
+          </Section>
           <MvpSummaryCard
             featureDetails={(
               <Section title="필수 기능 · 구현 난이도">
@@ -194,4 +233,6 @@ const styles = StyleSheet.create({
   wireframeBlock: { padding: Spacing.two, borderRadius: Radius.small },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   innerCard: { minWidth: 220, flex: 1, gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  keywordChip: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  keywordInput: { minWidth: 160, flex: 1, minHeight: ControlHeight.input, borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
 });

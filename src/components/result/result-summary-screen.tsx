@@ -19,6 +19,8 @@ type ResultSummaryScreenProps = {
   onRetryRanking: () => void;
   onSelectIdea: (ideaId: string) => Promise<void>;
   onGoToMvp: () => void;
+  onEditIdea: (ideaId: string) => void;
+  onAddFeedback: (ideaId: string, content: string) => Promise<{ error?: string }>;
 };
 
 export function ResultSummaryScreen({
@@ -31,6 +33,8 @@ export function ResultSummaryScreen({
   onRetryRanking,
   onSelectIdea,
   onGoToMvp,
+  onEditIdea,
+  onAddFeedback,
 }: ResultSummaryScreenProps) {
   const [selectingId, setSelectingId] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<IdeaResultSortMode>('ai');
@@ -128,6 +132,9 @@ export function ResultSummaryScreen({
             selectionHint={selectionHint}
             onSelect={() => void select(idea.id)}
             onGoToMvp={onGoToMvp}
+            onEdit={() => onEditIdea(idea.id)}
+            onRegenerate={onRetryRanking}
+            onAddFeedback={(content) => onAddFeedback(idea.id, content)}
           />
         ))}
       </View>

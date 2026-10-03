@@ -16,13 +16,31 @@ create index if not exists ideaevaluationsprojectidideaididx
 
 alter table public.ideaevaluations enable row level security;
 
-create policy "ideaevaluations_select_project_members"
-  on public.ideaevaluations for select to authenticated
-  using (true);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'ideaevaluations'
+      and policyname = 'ideaevaluations_select_project_members'
+  ) then
+    create policy "ideaevaluations_select_project_members"
+      on public.ideaevaluations for select to authenticated
+      using (true);
+  end if;
 
-create policy "ideaevaluations_insert_self"
-  on public.ideaevaluations for insert to authenticated
-  with check (userid = auth.uid());
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'ideaevaluations'
+      and policyname = 'ideaevaluations_insert_self'
+  ) then
+    create policy "ideaevaluations_insert_self"
+      on public.ideaevaluations for insert to authenticated
+      with check (userid = auth.uid());
+  end if;
+end
+$$;
 
 create or replace function public.reject_idea_evaluation_change()
 returns trigger

@@ -33,6 +33,8 @@ type BlindSwipeEvaluationProps = {
   onGoToExtraction: () => void;
   onGoToList: () => void;
   onGoToMvp: () => void;
+  onEditIdea: (ideaId: string) => void;
+  onAddFeedback: (ideaId: string, content: string) => Promise<{ error?: string }>;
 };
 
 const orange = '#F59E0B';
@@ -53,6 +55,8 @@ export function BlindSwipeEvaluation({
   onGoToExtraction,
   onGoToList,
   onGoToMvp,
+  onEditIdea,
+  onAddFeedback,
 }: BlindSwipeEvaluationProps) {
   const {
     flow,
@@ -146,7 +150,7 @@ export function BlindSwipeEvaluation({
     ?? null;
 
   const requestRecommendation = useCallback(async (force = false) => {
-    if (!isComplete || !canAnalyzeRecommendation || activeRecommendation || isAnalyzingRecommendation) return;
+    if (!isComplete || !canAnalyzeRecommendation || (activeRecommendation && !force) || isAnalyzingRecommendation) return;
     if (!force && recommendationRequestKey.current === recommendationFingerprint) return;
     recommendationRequestKey.current = recommendationFingerprint;
     const recommendation = await analyzeIdeas(recommendationFingerprint);
@@ -342,14 +346,16 @@ export function BlindSwipeEvaluation({
           selectedIdeaId={selectedIdeaId}
           canSelect={canSelectFinalIdea}
           selectionHint={selectionHint}
-          isRanking={!activeRecommendation && !recommendationError}
-          rankingError={!activeRecommendation ? recommendationError : ''}
+          isRanking={isAnalyzingRecommendation || (!activeRecommendation && !recommendationError)}
+          rankingError={recommendationError}
           onRetryRanking={() => {
             recommendationRequestKey.current = '';
             void requestRecommendation(true);
           }}
           onSelectIdea={selectForMvp}
           onGoToMvp={onGoToMvp}
+          onEditIdea={onEditIdea}
+          onAddFeedback={onAddFeedback}
         />
         {selectionError ? <ThemedText type="small" style={styles.errorText}>{selectionError}</ThemedText> : null}
         {evaluationError ? <ThemedText type="small" style={styles.mutedText}>{evaluationError}</ThemedText> : null}

@@ -53,11 +53,11 @@ export default function PresentationScreen() {
             AI 기반 프로젝트 기획
           </ThemedText>
 
-          <ThemedText type="largeBold" style={styles.title}>
+          <ThemedText type="title" style={styles.title}>
             MVP를 더 빠르게, 더 명확하게 설계하세요
           </ThemedText>
 
-          <ThemedText type="medium" themeColor="textSecondary" style={styles.subtitle}>
+          <ThemedText type="body" themeColor="textSecondary" style={styles.subtitle}>
             팀의 개발 경험, 목표, 기능 우선순위를 반영해 AI가 실현 가능한 MVP를 추천합니다.
           </ThemedText>
 
@@ -81,7 +81,7 @@ export default function PresentationScreen() {
                 styles.secondaryButton,
                 {
                   borderColor: theme.border,
-                  backgroundColor: theme.cardBackground,
+                  backgroundColor: theme.backgroundElement,
                 },
               ]}
             >
@@ -96,13 +96,13 @@ export default function PresentationScreen() {
               key={item.label}
               style={[
                 styles.metricCard,
-                { backgroundColor: theme.cardBackground, borderColor: theme.border },
+                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
               ]}
             >
               <ThemedText type="small" themeColor="textSecondary">
                 {item.label}
               </ThemedText>
-              <ThemedText type="largeBold" style={styles.metricValue}>
+              <ThemedText type="title" style={styles.metricValue}>
                 {item.value}
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
@@ -113,7 +113,7 @@ export default function PresentationScreen() {
         </View>
 
         <View style={styles.sectionHeader}>
-          <ThemedText type="mediumBold">핵심 기능</ThemedText>
+          <ThemedText type="sectionTitle">핵심 기능</ThemedText>
         </View>
 
         <View style={styles.featureGrid}>
@@ -122,7 +122,7 @@ export default function PresentationScreen() {
               key={feature.title}
               style={[
                 styles.featureCard,
-                { backgroundColor: theme.cardBackground, borderColor: theme.border },
+                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
               ]}
             >
               <ThemedText type="smallBold">{feature.title}</ThemedText>
@@ -134,13 +134,13 @@ export default function PresentationScreen() {
         </View>
 
         <View style={styles.sectionHeader}>
-          <ThemedText type="mediumBold">간단한 진행 흐름</ThemedText>
+          <ThemedText type="sectionTitle">간단한 진행 흐름</ThemedText>
         </View>
 
         <View
           style={[
             styles.workflowCard,
-            { backgroundColor: theme.cardBackground, borderColor: theme.border },
+            { backgroundColor: theme.backgroundElement, borderColor: theme.border },
           ]}
         >
           {workflow.map((step, index) => (
@@ -164,7 +164,7 @@ export default function PresentationScreen() {
         </View>
 
         <View style={[styles.ctaCard, { backgroundColor: theme.primarySoft || '#EAF1FF' }]}>
-          <ThemedText type="mediumBold">지금 바로 MVP를 시작해 보세요</ThemedText>
+          <ThemedText type="sectionTitle">지금 바로 MVP를 시작해 보세요</ThemedText>
           <ThemedText type="small" themeColor="textSecondary" style={styles.ctaText}>
             팀에 맞는 기능 범위와 AI 추천 결과를 한 번에 정리할 수 있습니다.
           </ThemedText>

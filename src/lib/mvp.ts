@@ -1,6 +1,6 @@
 export type TeamExperienceLevel = '초급' | '중급' | '고급' | '잘 모르겠어요';
 
-const teamExperienceMap: Array<[RegExp, TeamExperienceLevel]> = [
+const teamExperienceMap: [RegExp, TeamExperienceLevel][] = [
   [/고급/i, '고급'],
   [/중급/i, '중급'],
   [/초급/i, '초급'],
@@ -35,8 +35,7 @@ export function formatMvpDuration(weeks: number): string {
   if (!Number.isFinite(weeks) || weeks <= 0) return '1주';
 
   if (weeks < 1) {
-    const roundedDays = weeks <= 0.5 ? 3 : Math.round(weeks * 7);
-    return `${roundedDays}일`;
+    return `${Math.max(0.1, Math.round(weeks * 10) / 10)}주`;
   }
 
   const roundedWeeks = Math.round(weeks * 2) / 2;
