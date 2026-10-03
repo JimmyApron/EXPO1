@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import JSZip from 'jszip';
 import { createPptx } from '../src/utils/export/createPptx.ts';
-import { formatForKakao, formatForNotion, presentationMarkdown, presentationOutline, presentationPages, presentationScript, reportHtml } from '../src/utils/export/exportFormats.ts';
+import { formatForKakao, formatForNotion, fullResultText, presentationMarkdown, presentationOutline, presentationPages, presentationScript, reportHtml } from '../src/utils/export/exportFormats.ts';
 
 const data = {
   projectTitle: 'Watt',
@@ -63,6 +63,28 @@ test('presentation text exports use generated slides and speaker notes', () => {
   assert.match(presentationOutline(source), /2\. 해결\n  - AI 요약/);
   assert.match(presentationScript(source), /1\. 문제\n학생들은 필기에 시간을 씁니다/);
   assert.match(presentationScript(source), /2\. 해결\n- AI 요약/);
+});
+
+test('full copy groups every presentation section without exposing stored JSON fields', () => {
+  const source = { ...data, presentation: {
+    ideaId: 'internal-id', presentationTitle: '축제 안내 앱',
+    slides: [{ slideNumber: 1, title: '문제 정의', bulletPoints: ['긴 대기줄'], speakerScript: '현장의 불편을 설명합니다.' }],
+    expectedQna: [{ question: '정보가 늦으면?', answer: '갱신 주기를 조정합니다.' }],
+    finalReport: '# 최종 보고서\n\n## 성과\n\n대기 정보를 제공했습니다.',
+    businessPlanDraft: '# 사업계획서\n\n## 목표\n\n축제 경험을 개선합니다.',
+  } };
+  const text = fullResultText(source);
+  for (const value of ['# 축제 안내 앱', '## 1. 문제 정의', '- 긴 대기줄', '발표 대본: 현장의 불편을 설명합니다.', '## 예상 질문과 답변', '정보가 늦으면?', '갱신 주기를 조정합니다.', '## 최종 결과 보고서', '대기 정보를 제공했습니다.', '## 사업계획서', '축제 경험을 개선합니다.']) {
+    assert.ok(text.includes(value), `missing ${value}`);
+  }
+  assert.match(text, /## 최종 결과 보고서\n\n### 최종 보고서\n\n#### 성과/);
+  assert.doesNotMatch(text, /internal-id|"slides"|"speakerScript"|\\n/);
+});
+
+test('full copy without a presentation includes current idea and MVP fields', () => {
+  const text = fullResultText({ ...data, mvpPlan: { ...data.mvpPlan, screens: ['홈 화면'] } });
+  for (const value of ['# Watt · 현재 결과', '## 문제 정의', '정리되지 않는 회의', '## MVP 요약', '## 화면 구성', '- 홈 화면', '## 키워드']) assert.ok(text.includes(value));
+  assert.doesNotMatch(text, /"idea"|"mvpPlan"/);
 });
 
 test('PPTX is a valid ZIP with Korean slide text and speaker notes', async () => {

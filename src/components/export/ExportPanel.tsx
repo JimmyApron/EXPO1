@@ -8,7 +8,7 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { ExportData } from '@/types/export';
 import { downloadAsDocx } from '@/utils/fileExport';
-import { formatForNotion, presentationMarkdown, presentationOutline, presentationScript } from '@/utils/export/exportFormats';
+import { formatForNotion, fullResultText, presentationMarkdown, presentationOutline, presentationScript } from '@/utils/export/exportFormats';
 import { copyForKakao } from '@/utils/export/copyForKakao';
 import { copyForNotion } from '@/utils/export/copyForNotion';
 import { exportToPdf } from '@/utils/export/exportToPdf';
@@ -63,8 +63,8 @@ export function ExportPanel({ data }: { data: ExportData }) {
       { icon: '📚', title: 'Notion 복사', description: '선정 아이디어와 MVP 결과 Markdown', actions: [
         { label: '노션 마크다운 복사', run: () => copyForNotion(data), message: '노션 마크다운이 복사되었습니다.' },
       ] },
-      { icon: '📎', title: '전체 복사', description: '발표자료 또는 현재 결과 전체 데이터', actions: [
-        { label: '전체 결과 복사', run: () => copy(JSON.stringify(data.presentation ?? data, null, 2)), message: '전체 결과가 복사되었습니다.' },
+      { icon: '📎', title: '전체 복사', description: data.presentation ? '슬라이드·대본·예상 질문·문서를 한 번에 복사' : '현재 아이디어와 MVP 결과를 한 번에 복사', actions: [
+        { label: '전체 결과 복사', run: () => copy(fullResultText(data)), message: '읽기 쉬운 전체 결과가 복사되었습니다.' },
       ] },
     ] },
   ];

@@ -52,6 +52,37 @@ export function presentationScript(data: ExportData) {
   ].join('\n\n');
 }
 
+/** A readable copy of all generated presentation content, or the current result before generation. */
+export function fullResultText(data: ExportData) {
+  if (!data.presentation) {
+    const sections = [
+      ...exportSections(data),
+      { title: '화면 구성', content: list(data.mvpPlan.screens) },
+      { title: '키워드', content: list(data.idea.keywords) },
+    ];
+    return [`# ${data.projectTitle} · 현재 결과`, ...sections.map((section) => `## ${section.title}\n\n${section.content}`)].join('\n\n');
+  }
+
+  const presentation = data.presentation;
+  const slides = presentation.slides?.length
+    ? presentationMarkdown(data).trim()
+    : `# ${presentation.presentationTitle || data.projectTitle}\n\n## 발표 슬라이드\n\n아직 작성되지 않았습니다.`;
+  const qna = presentation.expectedQna?.length
+    ? presentation.expectedQna.map(({ question, answer }, index) => `### 질문 ${index + 1}\n\n${question}\n\n답변: ${answer}`).join('\n\n')
+    : '아직 작성되지 않았습니다.';
+  const document = (value?: string) => value?.trim()
+    // Keep headings in generated Markdown below this export's section heading.
+    .replace(/^(#{1,6})([ \t]+)/gm, (_match, heading: string, space: string) => `${'#'.repeat(Math.min(heading.length + 2, 6))}${space}`)
+    || '아직 작성되지 않았습니다.';
+
+  return [
+    slides,
+    `## 예상 질문과 답변\n\n${qna}`,
+    `## 최종 결과 보고서\n\n${document(presentation.finalReport)}`,
+    `## 사업계획서\n\n${document(presentation.businessPlanDraft)}`,
+  ].join('\n\n');
+}
+
 export function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
