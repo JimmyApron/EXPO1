@@ -11,6 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useProjectIdeaStats } from '@/hooks/use-project-idea-stats';
+import { useProjectFlowSummaries } from '@/hooks/use-project-flow-summaries';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
 import type { ProjectInput } from '@/types/project';
@@ -26,6 +27,8 @@ export default function ProjectsScreen() {
     () => [...projects].sort((a, b) => (a.deadline ?? '9999').localeCompare(b.deadline ?? '9999')),
     [projects],
   );
+  const projectIds = useMemo(() => sortedProjects.map((project) => project.id), [sortedProjects]);
+  const { flowsByProjectId, flowStatus } = useProjectFlowSummaries(projectIds);
 
   const openCreate = () => {
     setFormError('');
@@ -56,7 +59,7 @@ export default function ProjectsScreen() {
                 accessibilityLabel="새 과제 만들기"
                 onPress={openCreate}
                 style={({ pressed }) => [styles.createButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
-                <AppIcon name="add" color="#FFFFFF" size={20} />
+                <AppIcon name="add" color={theme.text} size={20} />
                 <ThemedText type="button" style={styles.whiteText}>새 과제</ThemedText>
               </Pressable>
             </View>
@@ -71,7 +74,7 @@ export default function ProjectsScreen() {
             {isloadingprojects || isLoadingStats ? <LoadingSkeleton rows={4} /> : sortedProjects.length === 0 ? (
               <EmptyState icon="projects" title="아직 과제가 없어요" description="새 과제를 만들고 아이디어를 모아 보세요." actionLabel="새 과제 만들기" onAction={openCreate} />
             ) : (
-              <View style={styles.list}>{sortedProjects.map((project) => <ProjectCard key={project.id} project={project} stats={getStatsForProject(project.id)} />)}</View>
+              <View style={styles.list}>{sortedProjects.map((project) => <ProjectCard key={project.id} project={project} stats={getStatsForProject(project.id)} flow={flowsByProjectId.get(project.id)} flowStatus={flowStatus} />)}</View>
             )}
           </ThemedView>
         </SafeAreaView>
@@ -88,7 +91,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.three, paddingTop: Spacing.two },
   headerCopy: { flex: 1, gap: Spacing.one },
   createButton: { minHeight: ControlHeight.touch, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
-  whiteText: { color: '#FFFFFF' },
+  whiteText: { color: '#1E293B' },
   errorBanner: { borderRadius: Radius.medium, padding: Spacing.three, gap: Spacing.one },
   list: { gap: Spacing.two },
   pressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },

@@ -39,5 +39,5 @@ export default function MvpGeneratorRedirectScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.three, padding: Spacing.three },
   button: { minHeight: ControlHeight.button, justifyContent: 'center', paddingHorizontal: Spacing.three, borderRadius: Radius.medium },
-  whiteText: { color: '#fff' },
+  whiteText: { color: '#1E293B' },
 });

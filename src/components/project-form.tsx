@@ -308,7 +308,7 @@ export function ProjectForm({
             (pressed || isbusy) && styles.pressed,
           ]}>
           {isbusy ? (
-            <ActivityIndicator color="#ffffff" />
+            <ActivityIndicator color={theme.primaryText} />
           ) : (
             <ThemedText type="smallBold" style={styles.primaryButtonText}>
               {submitLabel}
@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   selectedDayButtonText: {
-    color: '#ffffff',
+    color: '#1E293B',
   },
   calendarActions: {
     flexDirection: 'row',
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: '#1E293B',
   },
   secondaryButton: {
     minHeight: ControlHeight.touch,

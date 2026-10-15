@@ -909,7 +909,7 @@ export function IdeaMindMap({
                   onPress={() => void submitNewNode()}
                   style={({ pressed }) => [styles.primaryButton, (pressed || isAddingNode) && styles.pressed]}>
                   {isAddingNode ? (
-                    <ActivityIndicator color="#ffffff" />
+                    <ActivityIndicator color={PALETTE.text} />
                   ) : (
                     <ThemedText style={styles.whiteText}>추가</ThemedText>
                   )}
@@ -1054,7 +1054,7 @@ export function IdeaMindMap({
                     onPress={() => void saveDetails()}
                     style={({ pressed }) => [styles.primaryButton, (pressed || isSaving) && styles.pressed]}>
                     {isSaving ? (
-                      <ActivityIndicator color="#ffffff" />
+                      <ActivityIndicator color={PALETTE.text} />
                     ) : (
                       <ThemedText style={styles.whiteText}>저장</ThemedText>
                     )}
@@ -1098,7 +1098,7 @@ const styles = StyleSheet.create({
   viewModeToggle: { flexDirection: 'row', borderWidth: 1, borderColor: PALETTE.cardBorder, backgroundColor: PALETTE.card, borderRadius: Radius.medium, padding: 2 },
   viewModeButton: { minHeight: 40, justifyContent: 'center', borderRadius: Radius.small, paddingHorizontal: Spacing.two },
   activeViewModeButton: { backgroundColor: PALETTE.primary },
-  activeViewModeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  activeViewModeText: { color: PALETTE.text, fontSize: 13, fontWeight: '700' },
   inactiveViewModeText: { color: PALETTE.textSecondary, fontSize: 13, fontWeight: '700' },
   mapFrame: { position: 'relative' },
   zoomControls: {
@@ -1185,7 +1185,7 @@ const styles = StyleSheet.create({
     color: PALETTE.textSecondary,
   },
   rootBadge: {
-    color: '#FFFBEB',
+    color: PALETTE.text,
   },
   branchBadge: {
     color: PALETTE.primaryDark,
@@ -1197,7 +1197,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   rootTitle: {
-    color: '#FFFFFF',
+    color: PALETTE.text,
     fontSize: 15,
   },
   branchTitle: {
@@ -1209,7 +1209,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   rootSummary: {
-    color: '#FEF3C7',
+    color: PALETTE.text,
   },
   addNodeButton: {
     position: 'absolute',
@@ -1291,7 +1291,7 @@ const styles = StyleSheet.create({
     color: PALETTE.text,
   },
   whiteText: {
-    color: '#FFFFFF',
+    color: PALETTE.text,
     fontSize: 14,
     fontWeight: '700',
   },

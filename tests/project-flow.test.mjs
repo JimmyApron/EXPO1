@@ -10,6 +10,7 @@ import {
 import {
   getNextProjectWorkflowStep,
   getProjectProgressLabel,
+  getProjectWorkflowState,
   resolveProjectWorkspaceLocation,
 } from '../src/lib/project-workspace.ts';
 
@@ -87,6 +88,36 @@ test('project workspace keeps old ideaTab links compatible with the new informat
     resolveProjectWorkspaceLocation({ projectView: 'home', flowStep: 'presentation', ideaTab: 'coach' }),
     { section: 'home', step: 'presentation' },
   );
+});
+
+test('project cards keep selection percentage separate from the current workflow step', () => {
+  const empty = getProjectWorkflowState(0, 0);
+  assert.equal(getNextProjectWorkflowStep(empty), 'extraction');
+  assert.equal(getProjectProgressLabel(empty), '아이디어 추출 중');
+
+  const orphanedFlow = getProjectWorkflowState(0, 0, {
+    selectedideaid: 'deleted-idea', mvpplan: { ideaId: 'deleted-idea' }, presentationdata: null,
+  });
+  assert.equal(getNextProjectWorkflowStep(orphanedFlow), 'extraction');
+
+  const selected = getProjectWorkflowState(3, 1, {
+    selectedideaid: 'idea-1', mvpplan: null, presentationdata: null,
+  });
+  assert.equal(getNextProjectWorkflowStep(selected), 'mvp');
+  assert.equal(getProjectProgressLabel(selected), 'MVP 기획 중');
+
+  const staleMvp = getProjectWorkflowState(3, 1, {
+    selectedideaid: 'idea-2', mvpplan: { ideaId: 'idea-1' }, presentationdata: null,
+  });
+  assert.equal(getNextProjectWorkflowStep(staleMvp), 'mvp');
+
+  const complete = getProjectWorkflowState(3, 1, {
+    selectedideaid: 'idea-2',
+    mvpplan: { ideaId: 'idea-2' },
+    presentationdata: { ideaId: 'idea-2' },
+  });
+  assert.equal(getNextProjectWorkflowStep(complete), 'presentation');
+  assert.equal(getProjectProgressLabel(complete), '최종 결과물 완성');
 });
 
 test('project home recommends the first unfinished workflow step', () => {

@@ -5,12 +5,15 @@ import { AppIcon } from '@/components/app-icon';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
 import type { ProjectIdeaStats } from '@/hooks/use-project-idea-stats';
+import type { ProjectFlowSummary } from '@/hooks/use-project-flow-summaries';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
+import { getNextProjectWorkflowStep, getProjectProgressLabel, getProjectWorkflowState } from '@/lib/project-workspace';
 import type { Project } from '@/types/project';
 
 // 🎨 디자인 가이드 컬러
 const PALETTE = {
   primary: '#F59E0B',        // 메인 옐로우/오렌지
+  primaryInk: '#92400E',
   primaryLight: '#FFFBEB',   // 피처드 카드 배경 (연노랑)
   primaryBorder: '#FDE68A',  // 피처드 카드 테두리
   card: '#FFFFFF',           // 기본 카드 흰색
@@ -31,19 +34,23 @@ export function getProjectProgress(stats: ProjectIdeaStats) {
 type ProjectCardProps = {
   project: Project;
   stats: ProjectIdeaStats;
+  flow?: ProjectFlowSummary;
+  flowStatus?: 'loading' | 'error' | 'ready';
   featured?: boolean;
 };
 
-export function ProjectCard({ project, stats, featured = false }: ProjectCardProps) {
+export function ProjectCard({ project, stats, flow, flowStatus = 'ready', featured = false }: ProjectCardProps) {
   const progress = getProjectProgress(stats);
   const isCompleted = progress === 100;
-
+  const workflowState = getProjectWorkflowState(stats.total, stats.selected, flow);
+  const workflowStep = getNextProjectWorkflowStep(workflowState);
+  const stageLabel = flowStatus === 'loading' ? '확인 중' : flowStatus === 'error' ? '확인할 수 없음' : getProjectProgressLabel(workflowState);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${project.title} 과제, ${getDDayLabel(project.deadline)}, 진행률 ${progress}%`}
+      accessibilityLabel={`${project.title} 과제, ${getDDayLabel(project.deadline)}, 진행률 ${progress}%, ${stageLabel}`}
       accessibilityHint="과제 상세 화면으로 이동합니다"
-      onPress={() => router.push(`/projects/${project.id}` as Href)}
+      onPress={() => router.push(`/projects/${project.id}?projectView=home${flowStatus === 'ready' ? `&flowStep=${workflowStep}` : ''}` as Href)}
       style={({ pressed }) => [
         styles.card,
         featured ? styles.featuredCard : styles.standardCard,
@@ -54,7 +61,7 @@ export function ProjectCard({ project, stats, featured = false }: ProjectCardPro
         <View style={styles.titleBlock}>
           {featured ? (
             <View style={styles.featuredBadge}>
-              <ThemedText style={styles.featuredBadgeText}>⚡ 지금 이어서 할 과제</ThemedText>
+              <ThemedText style={styles.featuredBadgeText}>최근 업데이트한 과제</ThemedText>
             </View>
           ) : null}
           <ThemedText
@@ -81,6 +88,8 @@ export function ProjectCard({ project, stats, featured = false }: ProjectCardPro
         </ThemedText>
       ) : null}
 
+      <ThemedText style={styles.stageText}>현재 단계 · {stageLabel}</ThemedText>
+
       {/* 진행률 바 */}
       <View style={styles.progressSection}>
         <View style={styles.progressHeading}>
@@ -105,7 +114,7 @@ export function ProjectCard({ project, stats, featured = false }: ProjectCardPro
       {/* 하단 액션 링크 */}
       <View style={styles.footer}>
         <ThemedText style={styles.footerText}>이어서 하기</ThemedText>
-        <AppIcon name="chevronRight" color={PALETTE.primary} size={18} />
+        <AppIcon name="chevronRight" color={PALETTE.primaryInk} size={18} />
       </View>
     </Pressable>
   );
@@ -144,7 +153,7 @@ const styles = StyleSheet.create({
   featuredBadgeText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#D97706',
+    color: PALETTE.primaryInk,
   },
   titleText: {
     color: PALETTE.text,
@@ -177,6 +186,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: PALETTE.textSecondary,
+  },
+  stageText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    color: PALETTE.text,
   },
   progressSection: {
     gap: 6,
@@ -217,7 +232,7 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 13,
     fontWeight: '700',
-    color: PALETTE.primary,
+    color: PALETTE.primaryInk,
   },
   pressed: {
     opacity: 0.85,

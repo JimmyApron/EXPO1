@@ -2,6 +2,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { issupabaseconfigured, supabase } from '@/lib/supabase';
+import { disableDevicePush } from '@/lib/notification-push';
 
 type AuthContextValue = {
   session: Session | null;
@@ -96,6 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signout: async () => {
         setAutherror('');
+        if (session?.user.id) {
+          try { await disableDevicePush(session.user.id); } catch { /* Sign-out still proceeds. */ }
+        }
         const { error } = await supabase.auth.signOut();
 
         if (error) {

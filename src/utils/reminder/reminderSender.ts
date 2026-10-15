@@ -7,7 +7,7 @@ export const reminderMessages: Record<string, string> = {
   complete: '모두 평가를 완료했거나 평가할 아이디어가 없어요.',
   forbidden: '이 과제에 리마인드를 보낼 권한이 없어요.',
 };
-// Only creates in-app records. Future push delivery belongs behind this server boundary.
+// The existing RPC creates the in-app record; the server worker delivers optional push.
 export async function sendReminderNotification(projectId: string) {
   const { data, error } = await supabase.rpc('send_anonymous_reminder', { p_projectid: projectId });
   if (error) throw new Error('리마인드를 보내지 못했어요. 네트워크 연결을 확인하고 다시 시도해주세요.');

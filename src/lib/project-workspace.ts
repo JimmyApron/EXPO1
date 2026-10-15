@@ -1,3 +1,7 @@
+import { isMvpPlanCurrent, isPresentationCurrent } from './project-flow.ts';
+import type { MvpPlan } from '@/types/mvp-plan';
+import type { PresentationData } from '@/types/presentation';
+
 export type ProjectSection = 'home' | 'ideas' | 'mindmap';
 export type ProjectWorkflowStep = 'extraction' | 'selection' | 'mvp' | 'presentation';
 
@@ -57,6 +61,32 @@ export type ProjectWorkflowState = {
   hasCurrentMvp: boolean;
   hasCurrentPresentation: boolean;
 };
+
+export function getProjectWorkflowState(
+  ideaCount: number,
+  selectedIdeaCount: number,
+  flow?: {
+    selectedideaid: string | null;
+    mvpplan: MvpPlan | null;
+    presentationdata: PresentationData | null;
+  } | null,
+): ProjectWorkflowState {
+  const selectedIdeaId = flow?.selectedideaid;
+  const hasIdeas = ideaCount > 0;
+  const hasSelectedIdea = hasIdeas && Boolean(selectedIdeaId || selectedIdeaCount > 0);
+  const hasCurrentMvp = hasSelectedIdea && isMvpPlanCurrent(flow?.mvpplan, selectedIdeaId);
+
+  return {
+    hasIdeas,
+    hasSelectedIdea,
+    hasCurrentMvp,
+    hasCurrentPresentation: hasCurrentMvp && isPresentationCurrent(
+      flow?.presentationdata,
+      selectedIdeaId,
+      flow?.mvpplan,
+    ),
+  };
+}
 
 export function getNextProjectWorkflowStep(state: ProjectWorkflowState): ProjectWorkflowStep {
   if (!state.hasIdeas) return 'extraction';

@@ -132,9 +132,9 @@ export function IdeaResultCard({
           (pressed || isSelectionDisabled) && styles.disabled,
         ]}>
         {isSelecting && !isSelected ? (
-          <ActivityIndicator color="#FFFFFF" />
+          <ActivityIndicator color={theme.primaryText} />
         ) : (
-          <ThemedText type="button" style={styles.whiteText}>
+          <ThemedText type="button" style={{ color: theme.primaryText }}>
             {isSelected ? 'MVP 기획으로 이동' : '최종 아이디어로 선정'}
           </ThemedText>
         )}
@@ -166,5 +166,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
   },
   disabled: { opacity: 0.5 },
-  whiteText: { color: '#FFFFFF' },
 });

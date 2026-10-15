@@ -336,7 +336,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
                 { backgroundColor: theme.primary },
                 (pressed || isSavingConditions) && styles.pressed,
               ]}>
-              {isSavingConditions ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>조건 저장</ThemedText>}
+              {isSavingConditions ? <ActivityIndicator color={theme.primaryText} /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>조건 저장</ThemedText>}
             </Pressable>
           </View>
           <View style={styles.conditionsFields}>
@@ -452,7 +452,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
           ]}>
           {isPickingImages || isExtracting ? (
             <View style={styles.loadingRow}>
-              <ActivityIndicator color="#ffffff" />
+              <ActivityIndicator color={theme.primaryText} />
               <ThemedText type="smallBold" style={styles.primaryButtonText}>
                 {isPickingImages ? '이미지 처리 중…' : mode === 'image' ? 'OCR 및 아이디어 추출 중…' : '아이디어 추출 중…'}
               </ThemedText>
@@ -570,7 +570,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
                 { backgroundColor: theme.success },
                 (pressed || isBusy || unsavedCandidates.length === 0) && styles.pressed,
               ]}>
-              {isSaving ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>선택한 {unsavedCandidates.length}개로 마인드맵 구성</ThemedText>}
+              {isSaving ? <ActivityIndicator color={theme.text} /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>선택한 {unsavedCandidates.length}개로 마인드맵 구성</ThemedText>}
             </Pressable>
           </View>
         ) : hasExtractionResult && !isExtracting && !extractionError ? (
@@ -640,7 +640,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
             {saveError ? <ThemedText accessibilityRole="alert" type="small" style={styles.errorText}>{saveError}</ThemedText> : null}
             <View style={styles.saveCompleteActions}>
               <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 구성 취소" disabled={isSaving} onPress={() => setIsConfigOpen(false)} style={({ pressed }) => [styles.laterButton, { borderColor: theme.border }, (pressed || isSaving) && styles.pressed]}><ThemedText type="smallBold">취소</ThemedText></Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 생성" disabled={isSaving || !topic.trim()} onPress={() => void handleSave()} style={({ pressed }) => [styles.goToMindMapButton, { backgroundColor: theme.primary }, (pressed || isSaving || !topic.trim()) && styles.pressed]}>{isSaving ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>마인드맵 생성</ThemedText>}</Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 생성" disabled={isSaving || !topic.trim()} onPress={() => void handleSave()} style={({ pressed }) => [styles.goToMindMapButton, { backgroundColor: theme.primary }, (pressed || isSaving || !topic.trim()) && styles.pressed]}>{isSaving ? <ActivityIndicator color={theme.primaryText} /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>마인드맵 생성</ThemedText>}</Pressable>
             </View>
           </ThemedView>
         </View>
@@ -715,7 +715,7 @@ const styles = StyleSheet.create({
   extractButton: { minHeight: ControlHeight.input, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   saveButton: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   goToSelectionButton: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
-  primaryButtonText: { color: '#ffffff', textAlign: 'center' },
+  primaryButtonText: { color: '#1E293B', textAlign: 'center' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   section: { gap: Spacing.three },
   ocrInput: { minHeight: 150, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three, fontSize: 16, lineHeight: 23, textAlignVertical: 'top' },

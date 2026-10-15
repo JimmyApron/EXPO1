@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   checkmark: {
-    color: '#FFFFFF',
+    color: PALETTE.text,
     fontSize: 13,
     fontWeight: '800',
     lineHeight: 16,

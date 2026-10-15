@@ -11,6 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
+import { AppNotificationsProvider } from '@/hooks/use-app-notifications';
 import { ExperienceProvider } from '@/context/ExperienceContext';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { AppProvider } from '@/context/AppContext';
@@ -44,10 +45,10 @@ export default function TabLayout() {
       <AppProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <AuthProvider>
-            <ExperienceProvider><NotificationToastProvider>
+            <ExperienceProvider><NotificationToastProvider><AppNotificationsProvider>
               <AnimatedSplashOverlay />
               <AuthGate />
-            <OnboardingModal /></NotificationToastProvider></ExperienceProvider>
+            <OnboardingModal /></AppNotificationsProvider></NotificationToastProvider></ExperienceProvider>
           </AuthProvider>
         </ThemeProvider>
       </AppProvider>

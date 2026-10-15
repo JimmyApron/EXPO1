@@ -618,7 +618,7 @@ function IdeaForm({
                 (pressed || isBusy || isAddingCategory) && styles.pressed,
               ]}>
               {isAddingCategory ? (
-                <ActivityIndicator color="#ffffff" size="small" />
+                <ActivityIndicator color={PALETTE.text} size="small" />
               ) : (
                 <ThemedText type="smallBold" style={styles.primaryButtonText}>
                   추가
@@ -669,7 +669,7 @@ function IdeaForm({
           onPress={handleSubmit}
           style={({ pressed }) => [styles.primaryButton, (pressed || isBusy) && styles.pressed]}>
           {isBusy ? (
-            <ActivityIndicator color="#ffffff" />
+            <ActivityIndicator color={PALETTE.text} />
           ) : (
             <ThemedText type="smallBold" style={styles.primaryButtonText}>
               {submitLabel}
@@ -742,7 +742,7 @@ function FeedbackSection({
             (pressed || isSubmittingFeedback) && styles.pressed,
           ]}>
           {isSubmittingFeedback ? (
-            <ActivityIndicator color="#ffffff" size="small" />
+            <ActivityIndicator color={PALETTE.text} size="small" />
           ) : (
             <ThemedText type="smallBold" style={styles.primaryButtonText}>
               등록
@@ -961,9 +961,9 @@ function IdeaCard({
             (pressed || isBusy || isLoadingLikes) && styles.pressed,
           ]}>
           {isLoadingLikes ? (
-            <ActivityIndicator color={isLiked ? '#FFFFFF' : PALETTE.primaryDark} size="small" />
+            <ActivityIndicator color={isLiked ? PALETTE.text : PALETTE.primaryDark} size="small" />
           ) : (
-            <AppIcon name="like" color={isLiked ? '#FFFFFF' : PALETTE.primaryDark} size={16} />
+            <AppIcon name="like" color={isLiked ? PALETTE.text : PALETTE.primaryDark} size={16} />
           )}
           <ThemedText style={isLiked ? styles.activeLikeText : styles.likeText}>
             공감
@@ -1165,7 +1165,7 @@ function FilterBlock({
           accessibilityLabel="아이디어 검색"
           onPress={onSubmitSearch}
           style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}>
-          <AppIcon name="search" color="#FFFFFF" size={18} />
+          <AppIcon name="search" color={PALETTE.text} size={18} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -1935,7 +1935,7 @@ export function IdeaBoard({
               accessibilityLabel="아이디어 추가"
               onPress={() => { setMutationError(''); setIsCreateIdeaOpen(true); }}
               style={({ pressed }) => [styles.addIdeaButton, pressed && styles.pressed]}>
-              <AppIcon name="add" color="#FFFFFF" size={18} />
+              <AppIcon name="add" color={PALETTE.text} size={18} />
               <ThemedText type="smallBold" style={styles.primaryButtonText}>아이디어 추가</ThemedText>
             </Pressable>
           </View>
@@ -2294,7 +2294,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   draftCoachActionText: {
-    color: '#ffffff',
+    color: PALETTE.text,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -2395,7 +2395,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   activeFavoriteFilterText: {
-    color: '#FFFFFF',
+    color: PALETTE.text,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -2524,7 +2524,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   activeLikeText: {
-    color: '#FFFFFF',
+    color: PALETTE.text,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -2717,7 +2717,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: PALETTE.text,
     fontSize: 14,
     fontWeight: '700',
   },

@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: '#1E293B',
   },
   secondaryButton: {
     minHeight: ControlHeight.button,

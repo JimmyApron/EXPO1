@@ -6,8 +6,7 @@ import { AppIcon, type AppIconName } from '@/components/app-icon';
 import { BrandIcon } from '@/components/brand-icon';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
-import { useNotifications } from '@/hooks/use-notifications';
-import { useProjects } from '@/hooks/use-projects';
+import { useAppNotifications } from '@/hooks/use-app-notifications';
 import { resolveProjectWorkspaceLocation, type ProjectSection } from '@/lib/project-workspace';
 
 // 🎨 네비게이션 테마 팔레트
@@ -61,8 +60,7 @@ export function AppNavigation() {
   }>();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
-  const { projects } = useProjects();
-  const { unreadCount } = useNotifications(projects);
+  const { unreadCount } = useAppNotifications();
   const isProjectDetail = /^\/projects\/[^/]+$/.test(pathname);
   const routeProjectId = Array.isArray(params.id) ? params.id[0] : params.id;
   const fallbackProjectId = isProjectDetail ? pathname.slice('/projects/'.length) : '';

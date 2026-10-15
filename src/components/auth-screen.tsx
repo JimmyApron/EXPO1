@@ -257,7 +257,7 @@ export function AuthScreen() {
                 (pressed || isbusy) && styles.pressed,
               ]}>
               {isbusy ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={PALETTE.text} />
               ) : (
                 <ThemedText type="smallBold" style={styles.primaryButtonText}>
                   {mode === 'signin' ? '로그인' : '회원가입'}
@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   primaryButtonText: {
-    color: '#FFFFFF',
+    color: '#1E293B',
     fontSize: 15,
     fontWeight: '700',
   },

@@ -6,6 +6,11 @@ export const NotificationKinds = [
   'feedback',
   'likesurge',
   'evaluation',
+  'team_evaluation',
+  'team_reminder',
+  'team_feedback',
+  'team_changes',
+  'team_room',
 ] as const;
 
 export type NotificationKind = (typeof NotificationKinds)[number];
@@ -30,6 +35,11 @@ export const NotificationKindLabels: Record<NotificationKind, string> = {
   feedback: '피드백 도착',
   likesurge: '공감 증가',
   evaluation: '평가 참여',
+  team_evaluation: '팀 평가',
+  team_reminder: '익명 콕 찌르기',
+  team_feedback: '팀 피드백',
+  team_changes: '팀 과제 변경',
+  team_room: '방 소식',
 };
 
 export type AppNotification = {
@@ -40,4 +50,8 @@ export type AppNotification = {
   kind: NotificationKind;
   createdat: string;
   isread: boolean;
+  scope?: 'personal' | 'team';
+  target?: string;
+  sourcekey?: string;
+  roomid?: string | null;
 };

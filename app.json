@@ -49,7 +49,14 @@
       ],
       "expo-web-browser",
       "expo-image",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-notifications",
+        {
+          "color": "#F59E0B",
+          "defaultChannel": "personal"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

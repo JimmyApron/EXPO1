@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     paddingHorizontal: Spacing.two,
   },
-  selectedSortText: { color: '#FFFFFF' },
+  selectedSortText: { color: '#1E293B' },
   recommendationReason: {
     gap: Spacing.one,
     borderWidth: 1,

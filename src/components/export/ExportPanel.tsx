@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
 import { ThemedText } from '@/components/themed-text';
@@ -20,11 +20,10 @@ type Card = { icon: string; title: string; description: string; unavailable?: st
 
 export function ExportPanel({ data }: { data: ExportData }) {
   const theme = useTheme();
-  const { width } = useWindowDimensions();
-  const lock = useRef(false);
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
   const [failed, setFailed] = useState(false);
+  const [showFormats, setShowFormats] = useState(false);
   const hasSlides = Boolean(data.presentation?.slides?.length);
   const fileMessage = Platform.OS === 'web' ? '파일 다운로드를 시작했습니다.' : '공유 창을 닫았습니다. 선택한 앱에서 저장 여부를 확인해 주세요.';
   const docx = (content: string, kind: string) => downloadAsDocx(content, `${data.idea.title.slice(0, 70)}_${kind}.docx`, { documentType: kind, projectTitle: data.projectTitle });
@@ -46,9 +45,6 @@ export function ExportPanel({ data }: { data: ExportData }) {
       ] },
     ] },
     { title: '발표', cards: [
-      { icon: '📊', title: 'PPTX', description: '생성된 슬라이드를 발표 파일로 저장', actions: [
-        { label: 'PPTX 저장', run: () => exportToPptx(data), message: fileMessage },
-      ] },
       { icon: '🎙️', title: '발표 대본', description: '생성된 슬라이드별 발표 내용', unavailable: hasSlides ? undefined : '발표자료를 생성하면 사용할 수 있습니다.', actions: [
         { label: '대본 복사', run: () => copy(presentationScript(data)), message: '발표 대본이 복사되었습니다.' },
       ] },
@@ -70,8 +66,7 @@ export function ExportPanel({ data }: { data: ExportData }) {
   ];
 
   const run = async (action: Action, actionId: string) => {
-    if (lock.current) return;
-    lock.current = true;
+    if (busy) return;
     setBusy(actionId);
     setMessage('');
     setFailed(false);
@@ -82,41 +77,47 @@ export function ExportPanel({ data }: { data: ExportData }) {
       setFailed(true);
       setMessage(error instanceof Error ? error.message : '내보내기에 실패했습니다. 다시 시도해 주세요.');
     } finally {
-      lock.current = false;
       setBusy('');
     }
   };
 
   return (
     <ThemedView type="backgroundElement" style={[styles.panel, { borderColor: theme.border }]}>
-      <ThemedText type="subtitle">내보내기 / 공유</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">발표자료 내보내기는 생성된 발표 슬라이드 기반입니다. 마인드맵 내보내기는 마인드맵 화면에서 아이디어 구조와 노드를 기반으로 제공합니다.</ThemedText>
-      {groups.map((group) => (
+      <View style={styles.header}>
+        <View style={styles.itemCopy}>
+          <ThemedText type="subtitle">결과물 저장·공유</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">현재 저장된 버전을 발표 파일로 저장하거나 문서·복사 형식을 선택하세요.</ThemedText>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="PPTX 저장" accessibilityState={{ disabled: Boolean(busy), busy: busy === 'quick:pptx' }} disabled={Boolean(busy)} onPress={() => void run({ label: 'PPTX 저장', run: () => exportToPptx(data), message: fileMessage }, 'quick:pptx')} style={[styles.quickAction, { backgroundColor: theme.primary }, Boolean(busy) && styles.pressed]}>
+          {busy === 'quick:pptx' ? <ActivityIndicator color={theme.primaryText} size="small" /> : <ThemedText type="smallBold" style={{ color: theme.primaryText }}>PPTX 저장</ThemedText>}
+        </Pressable>
+      </View>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: showFormats }} onPress={() => setShowFormats((open) => !open)} style={[styles.action, { borderColor: theme.border }]}>
+        <ThemedText type="smallBold">{showFormats ? '다른 형식 접기' : 'PDF·DOCX·복사 등 다른 형식 보기'}</ThemedText>
+      </Pressable>
+      {showFormats ? groups.map((group) => (
         <View key={group.title} style={styles.group}>
           <ThemedText type="smallBold">{group.title}</ThemedText>
-          <View style={styles.grid}>
+          <View style={styles.list}>
             {group.cards.map((card) => (
-              <View key={card.title} style={[styles.card, { borderColor: theme.border, backgroundColor: theme.backgroundElement, width: width < 650 ? '100%' : '31.5%' }]}>
-                <ThemedText style={styles.icon}>{card.icon}</ThemedText>
-                <ThemedText type="smallBold">{card.title}</ThemedText>
-                <ThemedText type="caption" themeColor="textSecondary">{card.description}</ThemedText>
-                <ThemedText type="caption" style={{ color: card.unavailable ? theme.danger : theme.primary }}>
-                  {card.unavailable ? '준비 필요' : '현재 지원'}
-                </ThemedText>
-                {card.unavailable ? <ThemedText type="caption" themeColor="textSecondary">{card.unavailable}</ThemedText> : null}
-                {!card.unavailable ? card.actions.map((action) => (
+              <View key={card.title} style={[styles.item, { borderColor: theme.border }]}>
+                <View style={styles.itemCopy}>
+                  <ThemedText type="smallBold">{card.title}</ThemedText>
+                  <ThemedText type="caption" themeColor="textSecondary">{card.unavailable ?? card.description}</ThemedText>
+                </View>
+                {!card.unavailable ? <View style={styles.actions}>{card.actions.map((action) => (
                   <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={`${card.title} ${action.label}`}
                     accessibilityState={{ disabled: Boolean(busy), busy: busy === `${group.title}:${card.title}:${action.label}` }} disabled={Boolean(busy)} onPress={() => void run(action, `${group.title}:${card.title}:${action.label}`)}
                     style={({ pressed }) => [styles.action, { borderColor: theme.border }, (pressed || Boolean(busy)) && styles.pressed]}>
                     {busy === `${group.title}:${card.title}:${action.label}` ? <ActivityIndicator color={theme.primary} size="small" /> : null}
                     <ThemedText type="captionStrong">{action.label}</ThemedText>
                   </Pressable>
-                )) : null}
+                ))}</View> : null}
               </View>
             ))}
           </View>
         </View>
-      ))}
+      )) : null}
       {message ? <ThemedText accessibilityLiveRegion="polite" type="small" style={{ color: failed ? theme.danger : theme.text }}>{message}</ThemedText> : null}
     </ThemedView>
   );
@@ -124,10 +125,13 @@ export function ExportPanel({ data }: { data: ExportData }) {
 
 const styles = StyleSheet.create({
   panel: { padding: Spacing.four, gap: Spacing.three, borderWidth: 1, borderRadius: Radius.large },
-  group: { gap: Spacing.two },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  card: { minWidth: 210, padding: Spacing.three, gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium },
-  icon: { fontSize: 22 },
+  header: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
+  quickAction: { minHeight: 44, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: Spacing.one, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  group: { gap: Spacing.one },
+  list: { gap: Spacing.one },
+  item: { borderTopWidth: 1, paddingVertical: Spacing.two, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
+  itemCopy: { flexGrow: 1, flexBasis: 180, gap: Spacing.one },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
   action: { minHeight: 40, justifyContent: 'center', paddingHorizontal: Spacing.two, paddingVertical: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   pressed: { opacity: 0.55 },
 });

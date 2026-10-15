@@ -339,8 +339,8 @@ export function IdeaCoachPanel({
             (!canAnalyze || isAnalyzing) && styles.disabled,
             pressed && styles.pressed,
           ]}>
-          {isAnalyzing ? <ActivityIndicator color="#fff" /> : (
-            <ThemedText type="smallBold" style={styles.whiteText}>
+          {isAnalyzing ? <ActivityIndicator color={theme.primaryText} /> : (
+            <ThemedText type="smallBold" style={{ color: theme.primaryText }}>
               {activeAnalysis ? 'AI 분석 다시 실행하기' : candidates.length === 1 ? 'AI로 구체화·위험 분석하기' : 'AI 비교 분석하기'}
             </ThemedText>
           )}
@@ -413,7 +413,7 @@ export function IdeaCoachPanel({
                 disabled={selected || !activeAnalysis || isAnalyzing}
                 onPress={() => void handleSelect(idea.id)}
                 style={[styles.selectButton, { backgroundColor: theme.success }, (selected || !activeAnalysis || isAnalyzing) && styles.disabled]}>
-                <ThemedText type="smallBold" style={styles.whiteText}>{selected ? '현재 선정됨' : '이 아이디어를 최종 선정'}</ThemedText>
+                <ThemedText type="smallBold" style={{ color: theme.text }}>{selected ? '현재 선정됨' : '이 아이디어를 최종 선정'}</ThemedText>
               </Pressable>
             </ThemedView>
           );
@@ -434,7 +434,7 @@ export function IdeaCoachPanel({
           accessibilityLabel="MVP 기획 단계로 이동"
           onPress={onGoToMvp}
           style={({ pressed }) => [styles.nextButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
-          <ThemedText type="smallBold" style={styles.whiteText}>MVP 기획으로 이동</ThemedText>
+          <ThemedText type="smallBold" style={{ color: theme.primaryText }}>MVP 기획으로 이동</ThemedText>
         </Pressable>
       ) : (
         <ThemedText type="small" themeColor="textSecondary">MVP 기획을 시작하려면 아이디어를 하나 선정해 주세요.</ThemedText>
@@ -472,7 +472,6 @@ const styles = StyleSheet.create({
   list: { gap: Spacing.one },
   selectButton: { alignSelf: 'flex-start', minHeight: ControlHeight.touch, justifyContent: 'center', paddingHorizontal: Spacing.three, borderRadius: Radius.medium },
   nextButton: { alignSelf: 'flex-start', minHeight: ControlHeight.button, justifyContent: 'center', paddingHorizontal: Spacing.four, borderRadius: Radius.medium },
-  whiteText: { color: '#fff' },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.72 },
 });

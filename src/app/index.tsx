@@ -1,55 +1,62 @@
 import { router, type Href } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppIcon } from '@/components/app-icon';
 import { BrandIcon } from '@/components/brand-icon';
 import { EmptyState } from '@/components/empty-state';
+import { LoadingSkeleton } from '@/components/loading-skeleton';
 import { ProjectCard } from '@/components/project-card';
+import { ProjectCreateModal } from '@/components/project-create-modal';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
-import { useNotifications } from '@/hooks/use-notifications';
+import { useAppNotifications } from '@/hooks/use-app-notifications';
 import { useProjectIdeaStats } from '@/hooks/use-project-idea-stats';
+import { useProjectFlowSummaries } from '@/hooks/use-project-flow-summaries';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
+import type { ProjectInput } from '@/types/project';
 
 export default function HomeScreen() {
   const theme = useTheme();
-  const { projects } = useProjects();
-  const { unreadCount } = useNotifications(projects);
+  const { projects, isloadingprojects, projecterror, createProject } = useProjects();
+  const { unreadCount } = useAppNotifications();
   const projectIds = useMemo(() => projects.map((p) => p.id), [projects]);
-  const stats = (useProjectIdeaStats as any)(projectIds);
+  const { getStatsForProject, totals, isLoadingStats } = useProjectIdeaStats();
+  const { flowsByProjectId, flowStatus } = useProjectFlowSummaries(projectIds);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [formError, setFormError] = useState('');
 
-  const featuredProject = projects[0] ?? null;
-  const otherProjects = projects.slice(1);
+  const recentProjects = useMemo(
+    () => [...projects].sort((a, b) => b.updatedat.localeCompare(a.updatedat)),
+    [projects],
+  );
+  const featuredProject = recentProjects[0] ?? null;
+  const otherProjects = recentProjects.slice(1);
 
-  // stats가 Map인지 일반 객체인지 안전하게 처리
-  const getStats = (id: string) => {
-    if (!stats) return { total: 0, selected: 0 };
-    if (stats instanceof Map) {
-      return stats.get(id) ?? { total: 0, selected: 0 };
-    }
-    return (stats as Record<string, any>)[id] ?? { total: 0, selected: 0 };
+  const openCreate = () => {
+    setFormError('');
+    setIsCreateOpen(true);
   };
 
-  const { totalIdeas, totalSelected } = useMemo(() => {
-    let ideas = 0;
-    let selected = 0;
-    if (stats instanceof Map) {
-      stats.forEach((v: any) => {
-        ideas += v?.total ?? 0;
-        selected += v?.selected ?? 0;
-      });
-    } else if (stats && typeof stats === 'object') {
-      Object.values(stats).forEach((v: any) => {
-        ideas += v?.total ?? 0;
-        selected += v?.selected ?? 0;
-      });
+  const handleCreate = async (input: ProjectInput) => {
+    setIsCreating(true);
+    setFormError('');
+    const result = await createProject(input);
+    setIsCreating(false);
+    if (result.error) {
+      setFormError(result.error);
+      return;
     }
-    return { totalIdeas: ideas, totalSelected: selected };
-  }, [stats]);
+    if (result.project) {
+      setIsCreateOpen(false);
+      router.push(`/projects/${result.project.id}` as Href);
+    }
+  };
 
   return (
+    <>
     <ScrollView
       style={[styles.scrollView, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.scrollContent}>
@@ -66,13 +73,13 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="새 과제 만들기"
-              onPress={() => router.push('/projects/new' as Href)}
+              onPress={openCreate}
               style={({ pressed }) => [
                 styles.createButton,
                 { backgroundColor: theme.primary },
                 pressed && styles.pressed,
               ]}>
-              <AppIcon name="add" color="#FFFFFF" size={18} />
+              <AppIcon name="add" color={theme.text} size={18} />
               <ThemedText type="smallBold" style={styles.createButtonText}>
                 새 과제
               </ThemedText>
@@ -114,8 +121,8 @@ export default function HomeScreen() {
           <View style={[styles.statsBadge, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
             <ThemedText style={styles.statsBadgeLabel}>내 작업</ThemedText>
             <ThemedText style={styles.statsBadgeValue}>과제 {projects.length}</ThemedText>
-            <ThemedText style={styles.statsBadgeValue}>아이디어 {totalIdeas}</ThemedText>
-            <ThemedText style={styles.statsBadgeValue}>최종 선정 {totalSelected}</ThemedText>
+            <ThemedText style={styles.statsBadgeValue}>아이디어 {totals.totalIdeas}</ThemedText>
+            <ThemedText style={styles.statsBadgeValue}>최종 선정 {totals.selectedIdeas}</ThemedText>
           </View>
         </View>
 
@@ -128,13 +135,14 @@ export default function HomeScreen() {
         </View>
 
         {/* 프로젝트 목록 */}
-        {projects.length === 0 ? (
+        {projecterror ? <ThemedText style={{ color: theme.danger }}>{projecterror}</ThemedText> : null}
+        {isloadingprojects || isLoadingStats ? <LoadingSkeleton rows={3} /> : projects.length === 0 ? (
           <EmptyState
             icon="projects"
             title="아직 등록된 과제가 없어요"
             description="새로운 프로젝트나 과제를 만들고 아이디어를 모아보세요."
             actionLabel="첫 과제 만들기"
-            onAction={() => router.push('/projects/new' as Href)}
+            onAction={openCreate}
           />
         ) : (
           <View style={styles.projectList}>
@@ -142,7 +150,9 @@ export default function HomeScreen() {
               <ProjectCard
                 key={featuredProject.id}
                 project={featuredProject}
-                stats={getStats(featuredProject.id)}
+                stats={getStatsForProject(featuredProject.id)}
+                flow={flowsByProjectId.get(featuredProject.id)}
+                flowStatus={flowStatus}
                 featured
               />
             ) : null}
@@ -153,7 +163,9 @@ export default function HomeScreen() {
                   <ProjectCard
                     key={project.id}
                     project={project}
-                    stats={getStats(project.id)}
+                    stats={getStatsForProject(project.id)}
+                    flow={flowsByProjectId.get(project.id)}
+                    flowStatus={flowStatus}
                   />
                 ))}
               </View>
@@ -162,6 +174,8 @@ export default function HomeScreen() {
         )}
       </View>
     </ScrollView>
+    <ProjectCreateModal visible={isCreateOpen} isBusy={isCreating} error={formError} onClose={() => setIsCreateOpen(false)} onSubmit={handleCreate} />
+    </>
   );
 }
 
@@ -202,7 +216,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
   },
   createButtonText: {
-    color: '#FFFFFF',
+    color: '#1E293B',
     fontSize: 13,
     fontWeight: '700',
   },

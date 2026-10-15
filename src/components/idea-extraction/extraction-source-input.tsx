@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     paddingHorizontal: Spacing.three,
   },
-  primaryButtonText: { color: '#ffffff' },
+  primaryButtonText: { color: '#1E293B' },
   secondaryButton: {
     minHeight: ControlHeight.touch,
     alignItems: 'center',

@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   container: { gap: Spacing.four, paddingTop: Spacing.two },
   heading: { gap: Spacing.one },
   primaryButton: { minHeight: ControlHeight.button, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: Spacing.four, borderRadius: Radius.medium },
-  whiteText: { color: '#fff' },
+  whiteText: { color: '#1E293B' },
   pressed: { opacity: 0.7 },
   noticeCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
   metaCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },

@@ -35,6 +35,8 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
   const [instruction, setInstruction] = useState('');
   const [pendingInstruction, setPendingInstruction] = useState('');
   const [activeTab, setActiveTab] = useState<'slides' | 'qna' | 'report'>('slides');
+  const [showRevisionTools, setShowRevisionTools] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -103,15 +105,16 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
     <ThemedText themeColor="textSecondary">선정 아이디어와 MVP 계획을 바탕으로 발표자료와 문서를 만듭니다.</ThemedText>
     <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}><ThemedText type="smallBold">기준 아이디어: {selectedIdea.title}</ThemedText><ThemedText type="small" themeColor="textSecondary">{selectedIdea.summary || '아이디어 설명이 없습니다.'}</ThemedText></ThemedView>
     {hasPreviousPresentation && !saved ? <ThemedText style={{ color: theme.warning }}>이전 아이디어의 발표자료가 보관되어 있습니다. 현재 아이디어의 새 자료를 생성해 주세요.</ThemedText> : null}
-    {saved ? <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+    {saved ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: showRevisionTools }} onPress={() => setShowRevisionTools((open) => !open)} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">{showRevisionTools ? '수정 요청 접기' : '발표자료 수정 요청'}</ThemedText></Pressable> : null}
+    {saved && showRevisionTools ? <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
       <ThemedText type="smallBold">전체 발표자료 재생성</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">요청을 입력하면 슬라이드, Q&A, 문서 전체를 다시 만듭니다. 새 결과를 적용하기 전까지 저장된 자료는 유지됩니다.</ThemedText>
       <View style={styles.row}>{['더 간결하게', '전문적으로', '근거를 자세히'].map((preset) => <Pressable key={preset} accessibilityRole="button" accessibilityLabel={`${preset} 요청 입력`} disabled={loading || saving} onPress={() => setInstruction(preset)} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">{preset}</ThemedText></Pressable>)}</View>
       <TextInput accessibilityLabel="발표자료 전체 재생성 요청" value={instruction} onChangeText={setInstruction} editable={!loading && !saving} multiline maxLength={1000} placeholder="예: 5분 발표에 맞게 간결하게 구성해 줘" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
     </ThemedView> : null}
-    <Pressable accessibilityRole="button" accessibilityLabel={saved ? '발표자료 전체 재생성 요청' : '발표자료 생성 및 저장'} accessibilityState={{ disabled: loading || saving || !canGenerate || Boolean(saved && !instruction.trim()) }} disabled={loading || saving || !canGenerate || Boolean(saved && !instruction.trim())} onPress={() => void generate()} style={[styles.primaryButton, { backgroundColor: theme.primary }, (loading || saving || !canGenerate || Boolean(saved && !instruction.trim())) && styles.disabled]}>
-      {loading ? <ActivityIndicator color="#fff" /> : <ThemedText type="smallBold" style={styles.white}>{saved ? '요청 반영해 전체 재생성' : '발표자료 생성·저장'}</ThemedText>}
-    </Pressable>
+    {(!saved || showRevisionTools) ? <Pressable accessibilityRole="button" accessibilityLabel={saved ? '발표자료 전체 재생성 요청' : '발표자료 생성 및 저장'} accessibilityState={{ disabled: loading || saving || !canGenerate || Boolean(saved && !instruction.trim()) }} disabled={loading || saving || !canGenerate || Boolean(saved && !instruction.trim())} onPress={() => void generate()} style={[styles.primaryButton, { backgroundColor: theme.primary }, (loading || saving || !canGenerate || Boolean(saved && !instruction.trim())) && styles.disabled]}>
+      {loading ? <ActivityIndicator color={theme.primaryText} /> : <ThemedText type="smallBold" style={{ color: theme.primaryText }}>{saved ? '요청 반영해 전체 재생성' : '발표자료 생성·저장'}</ThemedText>}
+    </Pressable> : null}
     {!canGenerate ? <ThemedText type="small" themeColor="textSecondary">로그인 후 발표자료를 생성할 수 있습니다.</ThemedText> : null}
     {error ? <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>{error}</ThemedText> : null}
     {notice ? <ThemedText accessibilityLiveRegion="polite" style={{ color: theme.success }}>{notice}</ThemedText> : null}
@@ -122,14 +125,16 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
       <ThemedText type="small" themeColor="textSecondary">기존: {saved.slides.length}개 슬라이드 · 새 버전: {candidate.slides.length}개 슬라이드</ThemedText>
       {changes.length ? changes.map((change) => <ThemedText key={change} type="small">• {change}</ThemedText>) : <ThemedText type="small">내용 변화가 감지되지 않았습니다.</ThemedText>}
       <View style={styles.row}>
-        <Pressable accessibilityRole="button" accessibilityLabel="새 버전 적용" disabled={saving} onPress={() => void apply(applyPresentationCandidate(saved, candidate, pendingInstruction))} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>{saving ? <ActivityIndicator color="#fff" /> : <ThemedText type="smallBold" style={styles.white}>새 버전 적용</ThemedText>}</Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="새 버전 적용" disabled={saving} onPress={() => void apply(applyPresentationCandidate(saved, candidate, pendingInstruction))} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>{saving ? <ActivityIndicator color={theme.primaryText} /> : <ThemedText type="smallBold" style={{ color: theme.primaryText }}>새 버전 적용</ThemedText>}</Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="이전 버전 유지" disabled={saving} onPress={() => { setCandidate(null); setNotice('이전 버전을 유지했습니다.'); }} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">이전 버전 유지</ThemedText></Pressable>
       </View>
     </ThemedView> : null}
-    {saved?.versionHistory?.some((entry) => entry.snapshot) ? <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+    {saved?.versionHistory?.some((entry) => entry.snapshot) ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: showHistory }} onPress={() => setShowHistory((open) => !open)} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">{showHistory ? '이전 버전 접기' : `이전 버전 보기 (${saved.versionHistory.filter((entry) => entry.snapshot).length})`}</ThemedText></Pressable> : null}
+    {saved && showHistory && saved.versionHistory?.some((entry) => entry.snapshot) ? <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
       <ThemedText type="smallBold">보관된 버전</ThemedText>
       {saved.versionHistory.filter((entry) => entry.snapshot).map((entry) => <View key={entry.id} style={styles.row}><ThemedText type="small" style={styles.flex}>{dateLabel(entry.createdAt)} · {entry.summary}</ThemedText><Pressable accessibilityRole="button" accessibilityLabel={`${dateLabel(entry.createdAt)} 버전 미리보기`} onPress={() => restore(entry.id)} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">미리보기</ThemedText></Pressable></View>)}
     </ThemedView> : null}
+    {saved ? <ExportPanel data={exportData} /> : null}
     {shown ? <View style={styles.container}>
       <ThemedText type="smallBold">{candidate ? '새 버전 미리보기' : '현재 저장된 버전'}: {shown.presentationTitle}</ThemedText>
       <View style={styles.row}>{([{ key: 'slides', label: '슬라이드·대본' }, { key: 'qna', label: '예상 Q&A' }, { key: 'report', label: '보고서·사업계획서' }] as const).map((tab) => <Pressable key={tab.key} accessibilityRole="tab" accessibilityState={{ selected: activeTab === tab.key }} onPress={() => setActiveTab(tab.key)} style={[styles.outlineButton, { borderColor: theme.border, backgroundColor: activeTab === tab.key ? theme.primarySoft : 'transparent' }]}><ThemedText type="smallBold">{tab.label}</ThemedText></Pressable>)}</View>
@@ -137,7 +142,6 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
       {activeTab === 'qna' ? shown.expectedQna.map((item, index) => <ThemedView key={index} type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}><ThemedText type="smallBold">Q. {item.question}</ThemedText><ThemedText type="small">A. {item.answer}</ThemedText></ThemedView>) : null}
       {activeTab === 'report' ? <><ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}><ThemedText type="smallBold">사업계획서 초안</ThemedText><ThemedText type="small">{shown.businessPlanDraft}</ThemedText></ThemedView><ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}><ThemedText type="smallBold">최종 결과 보고서</ThemedText><ThemedText type="small">{shown.finalReport}</ThemedText></ThemedView></> : null}
     </View> : null}
-    {saved ? <ExportPanel data={exportData} /> : null}
   </ThemedView>;
 }
 
@@ -149,5 +153,5 @@ const styles = StyleSheet.create({
   outlineButton: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   primaryButton: { alignSelf: 'flex-start', minHeight: ControlHeight.touch, justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.four },
   input: { minHeight: 88, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.two, textAlignVertical: 'top' },
-  white: { color: '#fff' }, disabled: { opacity: 0.55 },
+  disabled: { opacity: 0.55 },
 });

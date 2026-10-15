@@ -1,7 +1,7 @@
 import { RoomBreadcrumb } from '@/components/room/RoomBreadcrumb';
 import { ReminderActions } from '@/components/reminder/ReminderActions';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -19,7 +19,7 @@ import { useRooms } from '@/hooks/use-rooms';
 import { useTeamEvaluationProgress } from '@/hooks/use-team-evaluation-progress';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
-import { resolveProjectWorkspaceLocation, type ProjectWorkspaceLocation } from '@/lib/project-workspace';
+import { getNextProjectWorkflowStep, getProjectProgressLabel, getProjectWorkflowState, resolveProjectWorkspaceLocation, type ProjectWorkspaceLocation } from '@/lib/project-workspace';
 import type { ProjectInput } from '@/types/project';
 
 function confirmDelete(onConfirm: () => void) {
@@ -44,8 +44,8 @@ export default function ProjectDetailScreen() {
   const projectId = Array.isArray(id) ? id[0] : id;
   const initialLocation = resolveProjectWorkspaceLocation({ ideaTab, projectView, flowStep });
   const { project, isloadingproject, projecterror, updateProject, deleteProject } = useProject(projectId);
-  const { conditions, flow } = useProjectFlow(projectId);
-  const { ideas } = useIdeas(projectId);
+  const { conditions, flow, isloadingflow, flowerror } = useProjectFlow(projectId);
+  const { ideas, isLoadingIdeas, ideaError } = useIdeas(projectId);
   const { rooms } = useRooms();
   const projectRoom = rooms.find((item) => item.room.id === project?.roomid);
   const evaluationIdeaIds = useMemo(
@@ -62,13 +62,41 @@ export default function ProjectDetailScreen() {
   const [isEditing, setIsEditing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [mutationError, setMutationError] = useState('');
+  const scrollRef = useRef<ScrollView>(null);
+  const boardOffset = useRef(0);
   const theme = useTheme();
   const hasCompletedEvaluations = evaluationProgress.completedCount >= evaluationProgress.totalCount;
+  const workflowIdeaCount = ideas.filter((idea) => !idea.legacystructural && Boolean(idea.title.trim() || idea.content.trim())).length;
+  const selectedIdeaCount = ideas.filter((idea) => idea.status === 'selected').length;
+  const workflowState = getProjectWorkflowState(workflowIdeaCount, selectedIdeaCount, flow);
+  const isWorkflowLoading = isloadingflow || isLoadingIdeas;
+  const isWorkflowUnavailable = Boolean(flowerror || ideaError);
+  const nextStep = getNextProjectWorkflowStep(workflowState);
+  const nextActionLabel = workflowState.hasCurrentPresentation
+    ? '완성된 결과물 보기'
+    : nextStep === 'extraction'
+      ? '아이디어 시작하기'
+      : nextStep === 'selection'
+        ? '아이디어 평가 이어서 하기'
+        : nextStep === 'mvp'
+          ? 'MVP 기획 이어서 하기'
+          : '발표자료 이어서 하기';
 
   const goToList = () => router.replace('/projects' as Href);
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      goToList();
+    }
+  };
   const handleLocationChange = useCallback((location: ProjectWorkspaceLocation) => {
     router.setParams({ projectView: location.section, flowStep: location.step });
   }, []);
+  const handleContinue = () => {
+    handleLocationChange({ section: 'home', step: nextStep });
+    scrollRef.current?.scrollTo({ y: boardOffset.current, animated: true });
+  };
 
   const handleSave = async (input: ProjectInput) => {
     if (!projectId) return;
@@ -112,13 +140,23 @@ export default function ProjectDetailScreen() {
   }
 
   return (
-    <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={styles.scrollContent}>
+    <ScrollView ref={scrollRef} style={{ backgroundColor: theme.background }} contentContainerStyle={styles.scrollContent}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ThemedView style={styles.container}>
-          <Pressable accessibilityRole="button" accessibilityLabel="과제 목록으로 돌아가기" onPress={goToList} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-            <View style={styles.backIcon}><AppIcon name="chevronRight" color={theme.textSecondary} size={18} /></View>
-            <ThemedText type="button" themeColor="textSecondary">과제 목록</ThemedText>
-          </Pressable>
+          <View style={styles.topBar}>
+            <Pressable accessibilityRole="button" accessibilityLabel="이전 화면으로 돌아가기" onPress={goBack} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+              <View style={styles.backIcon}><AppIcon name="chevronRight" color={theme.textSecondary} size={18} /></View>
+              <ThemedText type="button" themeColor="textSecondary">뒤로</ThemedText>
+            </Pressable>
+            {!isEditing && initialLocation.section === 'home' ? <View style={styles.actions}>
+              <Pressable accessibilityRole="button" accessibilityLabel="과제 수정" disabled={isBusy} onPress={() => setIsEditing(true)} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, (pressed || isBusy) && styles.pressed]}>
+                <ThemedText type="button">수정</ThemedText>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="과제 삭제" disabled={isBusy} onPress={handleDelete} style={({ pressed }) => [styles.deleteButton, (pressed || isBusy) && styles.pressed]}>
+                <ThemedText type="button" style={{ color: theme.danger }}>삭제</ThemedText>
+              </Pressable>
+            </View> : null}
+          </View>
 
           {project.roomid ? <RoomBreadcrumb roomName={projectRoom?.room.name} title={project.title} /> : null}
           {isEditing ? (
@@ -136,6 +174,15 @@ export default function ProjectDetailScreen() {
                   </View>
                   <ThemedText type="screenTitle">{project.title}</ThemedText>
                   <ThemedText type="body" themeColor="textSecondary">{project.description || '과제 설명이 아직 없어요. 목표나 조건을 추가해 보세요.'}</ThemedText>
+                  <View style={styles.nextAction}>
+                    <View style={styles.nextActionCopy}>
+                      <ThemedText type="caption" themeColor="textSecondary">현재 단계 · {isWorkflowLoading ? '확인 중' : isWorkflowUnavailable ? '확인할 수 없음' : getProjectProgressLabel(workflowState)}</ThemedText>
+                      {!isWorkflowLoading && !isWorkflowUnavailable ? <ThemedText type="smallBold">다음 할 일</ThemedText> : null}
+                    </View>
+                    {!isWorkflowLoading && !isWorkflowUnavailable ? <Pressable accessibilityRole="button" accessibilityLabel={nextActionLabel} onPress={handleContinue} style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
+                      <ThemedText type="button" style={styles.whiteText}>{nextActionLabel}</ThemedText>
+                    </Pressable> : null}
+                  </View>
                   {evaluationProgress.error ? <ThemedText accessibilityLiveRegion="polite">{evaluationProgress.error}</ThemedText> : null}
                   <View style={styles.evaluationRow}>
                     <View
@@ -156,20 +203,13 @@ export default function ProjectDetailScreen() {
                   </View>
                 </View>
                 {projectRoom && evaluationIdeaIds.length > 0 && !evaluationProgress.isLoading && !evaluationProgress.error ? <ReminderActions key={project.id} projectId={project.id} title={project.title} deadline={project.deadline} completedCount={evaluationProgress.completedCount} totalCount={projectRoom.members.length} /> : null}
-                <View style={styles.actions}>
-                  <Pressable disabled={isBusy} onPress={() => setIsEditing(true)} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, (pressed || isBusy) && styles.pressed]}>
-                    <ThemedText type="button">수정</ThemedText>
-                  </Pressable>
-                  <Pressable disabled={isBusy} onPress={handleDelete} style={({ pressed }) => [styles.deleteButton, (pressed || isBusy) && styles.pressed]}>
-                    <ThemedText type="button" style={{ color: theme.danger }}>삭제</ThemedText>
-                  </Pressable>
-                </View>
               </View>
               {mutationError ? <ThemedText type="caption" style={{ color: theme.danger }}>{mutationError} 다시 시도해 주세요.</ThemedText> : null}
             </View>
           )}
 
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+          <View onLayout={(event) => { boardOffset.current = event.nativeEvent.layout.y; }}>
           <IdeaBoard
             projectId={project.id}
             projectOwnerId={project.userid}
@@ -179,6 +219,7 @@ export default function ProjectDetailScreen() {
             initialStep={initialLocation.step}
             onLocationChange={handleLocationChange}
           />
+          </View>
         </ThemedView>
       </SafeAreaView>
     </ScrollView>
@@ -189,6 +230,7 @@ const styles = StyleSheet.create({
   scrollContent: { alignItems: 'center', paddingBottom: Spacing.five },
   safeArea: { width: '100%', alignItems: 'center' },
   container: { width: '100%', maxWidth: MaxContentWidth, paddingHorizontal: Spacing.three, paddingTop: Spacing.three, gap: Spacing.four },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
   loading: { flex: 1, padding: Spacing.four },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.three, padding: Spacing.four },
   centerText: { textAlign: 'center', maxWidth: 420 },
@@ -196,6 +238,8 @@ const styles = StyleSheet.create({
   backIcon: { transform: [{ scaleX: -1 }] },
   hero: { gap: Spacing.three },
   heroTop: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: Spacing.three },
+  nextAction: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two, paddingVertical: Spacing.two },
+  nextActionCopy: { gap: Spacing.one },
   titleBlock: { flex: 1, minWidth: 0, gap: Spacing.two },
   deadlineRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two },
   dayChip: { borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 5 },
@@ -207,6 +251,6 @@ const styles = StyleSheet.create({
   editPanel: { borderWidth: 1, borderRadius: Radius.large, padding: Spacing.three, gap: Spacing.three },
   divider: { height: 1 },
   primaryButton: { minHeight: ControlHeight.button, justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
-  whiteText: { color: '#FFFFFF' },
+  whiteText: { color: '#1E293B' },
   pressed: { opacity: 0.7 },
 });

@@ -107,9 +107,9 @@ function ConfirmationModal({
                 (pressed || isbusy) && styles.disabledButton,
               ]}>
               {isbusy ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={isDanger ? '#ffffff' : '#1E293B'} />
               ) : (
-                <ThemedText type="smallBold" style={styles.primaryButtonText}>{confirmLabel}</ThemedText>
+                <ThemedText type="smallBold" style={isDanger ? styles.dangerButtonText : styles.primaryButtonText}>{confirmLabel}</ThemedText>
               )}
             </Pressable>
           </View>
@@ -204,7 +204,7 @@ function RoomForm({ room, submitLabel, isbusy = false, error, onSubmit, onCancel
         ) : null}
         <Pressable disabled={isbusy} onPress={handleSubmit} style={({ pressed }) => [styles.primaryButton, (pressed || isbusy) && styles.pressed]}>
           {isbusy ? (
-            <ActivityIndicator color="#ffffff" />
+            <ActivityIndicator color="#1E293B" />
           ) : (
             <ThemedText type="smallBold" style={styles.primaryButtonText}>
               {submitLabel}
@@ -621,7 +621,7 @@ function RoomManager({
                     onPress={() => startConfirmation({ kind: 'transfer', member })}
                     style={({ pressed }) => [styles.primaryButton, styles.memberActionButton, (pressed || isactiondisabled) && styles.disabledButton]}>
                     {busykey === `transfer:${member.id}` ? (
-                      <ActivityIndicator color="#ffffff" />
+                      <ActivityIndicator color="#1E293B" />
                     ) : (
                       <ThemedText type="smallBold" style={styles.primaryButtonText}>방장 권한 넘기기</ThemedText>
                     )}
@@ -635,7 +635,7 @@ function RoomManager({
                     {busykey === `kick:${member.id}` ? (
                       <ActivityIndicator color="#ffffff" />
                     ) : (
-                      <ThemedText type="smallBold" style={styles.primaryButtonText}>강퇴</ThemedText>
+                      <ThemedText type="smallBold" style={styles.dangerButtonText}>강퇴</ThemedText>
                     )}
                   </Pressable>
                 </View>
@@ -647,13 +647,13 @@ function RoomManager({
 
       {canOwn ? (
         <Pressable disabled={isactiondisabled} onPress={onDelete} style={({ pressed }) => [styles.fullDangerButton, (pressed || isactiondisabled) && styles.disabledButton]}>
-          <ThemedText type="smallBold" style={styles.primaryButtonText}>
+          <ThemedText type="smallBold" style={styles.dangerButtonText}>
             방 삭제
           </ThemedText>
         </Pressable>
       ) : (
         <Pressable disabled={isactiondisabled} onPress={onLeave} style={({ pressed }) => [styles.fullDangerButton, (pressed || isactiondisabled) && styles.disabledButton]}>
-          <ThemedText type="smallBold" style={styles.primaryButtonText}>
+          <ThemedText type="smallBold" style={styles.dangerButtonText}>
             방 나가기
           </ThemedText>
         </Pressable>
@@ -1263,8 +1263,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: '#1E293B',
   },
+  dangerButtonText: { color: '#ffffff' },
   secondaryButton: {
     minHeight: ControlHeight.touch,
     borderRadius: Radius.medium,

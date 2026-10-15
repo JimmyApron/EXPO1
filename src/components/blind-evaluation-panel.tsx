@@ -117,7 +117,7 @@ export function BlindEvaluationPanel({ projectId, ideas, criteria, onSubmitted }
       {error ? <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>{error}</ThemedText> : null}
       <View style={styles.footer}>
         {saved ? <ThemedText type="small" style={{ color: theme.success }}>평가가 저장되었습니다.</ThemedText> : null}
-        <Pressable disabled={isSaving} onPress={() => void submit()} style={[styles.submit, { backgroundColor: theme.primary }, isSaving && styles.disabled]}>{isSaving ? <ActivityIndicator color="#fff" /> : <ThemedText type="smallBold" style={styles.white}>평가 제출</ThemedText>}</Pressable>
+        <Pressable disabled={isSaving} onPress={() => void submit()} style={[styles.submit, { backgroundColor: theme.primary }, isSaving && styles.disabled]}>{isSaving ? <ActivityIndicator color={theme.primaryText} /> : <ThemedText type="smallBold" style={styles.white}>평가 제출</ThemedText>}</Pressable>
       </View>
     </ThemedView>
   );
@@ -133,9 +133,9 @@ const styles = StyleSheet.create({
   criterionRow: { gap: Spacing.one },
   scores: { flexDirection: 'row', gap: Spacing.one },
   score: { width: 34, height: 34, borderWidth: 1, borderRadius: Radius.small, alignItems: 'center', justifyContent: 'center' },
-  selectedText: { color: '#fff' },
+  selectedText: { color: '#1E293B' },
   footer: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: Spacing.two },
   submit: { minHeight: ControlHeight.button, borderRadius: Radius.medium, justifyContent: 'center', paddingHorizontal: Spacing.three },
-  white: { color: '#fff' },
+  white: { color: '#1E293B' },
   disabled: { opacity: 0.6 },
 });
