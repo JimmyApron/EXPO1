@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/app-icon';
 import { IdeaBoard } from '@/components/idea-board';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
-import { ProjectForm } from '@/components/project-form';
+import { ProjectEditModal } from '@/components/project-edit-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
@@ -46,7 +46,7 @@ export default function ProjectDetailScreen() {
   }>();
   const projectId = Array.isArray(id) ? id[0] : id;
   const initialLocation = resolveProjectWorkspaceLocation({ ideaTab, projectView, flowStep });
-  const { project, isloadingproject, projecterror, updateProject, deleteProject } = useProject(projectId);
+  const { project, isInitialProjectLoad, projecterror, updateProject, deleteProject } = useProject(projectId);
   const { conditions, flow, isloadingflow, flowerror } = useProjectFlow(projectId);
   const { progressByProjectId, stageProgressStatus, stageProgressError, saveStage } = useProjectStageProgress(projectId ? [projectId] : []);
   const { ideas, isLoadingIdeas, ideaError } = useIdeas(projectId);
@@ -61,6 +61,7 @@ export default function ProjectDetailScreen() {
     projectRoom?.members,
     evaluationIdeaIds,
     flow?.evaluationround ?? 1,
+    Boolean(project?.roomid),
     conditions.teamSize,
   );
   const [isEditing, setIsEditing] = useState(false);
@@ -131,7 +132,7 @@ export default function ProjectDetailScreen() {
     });
   };
 
-  if (isloadingproject) {
+  if (isInitialProjectLoad) {
     return <ThemedView style={[styles.loading, { backgroundColor: theme.background }]}><LoadingSkeleton rows={3} /></ThemedView>;
   }
 
@@ -148,6 +149,7 @@ export default function ProjectDetailScreen() {
   }
 
   return (
+    <>
     <ScrollView ref={scrollRef} style={{ backgroundColor: theme.background }} contentContainerStyle={styles.scrollContent}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ThemedView style={styles.container}>
@@ -167,13 +169,7 @@ export default function ProjectDetailScreen() {
           </View>
 
           {project.roomid ? <RoomBreadcrumb roomName={projectRoom?.room.name} title={project.title} /> : null}
-          {isEditing ? (
-            <ThemedView type="surface" style={[styles.editPanel, { borderColor: theme.border }]}>
-              <ThemedText type="sectionTitle">과제 수정</ThemedText>
-              <ProjectForm project={project} submitLabel="저장" isbusy={isBusy} error={mutationError} onSubmit={handleSave} onCancel={() => setIsEditing(false)} />
-            </ThemedView>
-          ) : (
-            <View style={styles.hero}>
+          <View style={styles.hero}>
               <View style={styles.heroTop}>
                 <View style={styles.titleBlock}>
                   <View style={styles.deadlineRow}>
@@ -217,7 +213,6 @@ export default function ProjectDetailScreen() {
               {mutationError ? <ThemedText type="caption" style={{ color: theme.danger }}>{mutationError} 다시 시도해 주세요.</ThemedText> : null}
               {stageProgressError && !isServiceTemplate ? <ThemedText accessibilityRole="alert" type="caption" style={{ color: theme.danger }}>{stageProgressError}</ThemedText> : null}
             </View>
-          )}
 
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
           <View onLayout={(event) => { boardOffset.current = event.nativeEvent.layout.y; }}>
@@ -241,6 +236,8 @@ export default function ProjectDetailScreen() {
         </ThemedView>
       </SafeAreaView>
     </ScrollView>
+    <ProjectEditModal visible={isEditing} project={project} isBusy={isBusy} error={mutationError} onClose={() => setIsEditing(false)} onSubmit={handleSave} />
+    </>
   );
 }
 
@@ -266,7 +263,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', alignSelf: 'flex-start', gap: Spacing.two },
   secondaryButton: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   deleteButton: { minHeight: ControlHeight.touch, justifyContent: 'center', paddingHorizontal: Spacing.two },
-  editPanel: { borderWidth: 1, borderRadius: Radius.large, padding: Spacing.three, gap: Spacing.three },
   divider: { height: 1 },
   primaryButton: { minHeight: ControlHeight.button, justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   whiteText: { color: '#1E293B' },

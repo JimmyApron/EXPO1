@@ -17,7 +17,7 @@ import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { AppProvider } from '@/context/AppContext';
 
 function AuthGate() {
-  const { user, isauthloading } = useAuth();
+  const { user, isauthloading, authflow } = useAuth();
 
   if (isauthloading) {
     return (
@@ -30,7 +30,7 @@ function AuthGate() {
     );
   }
 
-  if (!user) {
+  if (authflow || !user) {
     return <AuthScreen />;
   }
 

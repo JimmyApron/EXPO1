@@ -18,7 +18,6 @@ type IdeaResultCardProps = {
   onSelect: () => void;
   onGoToMvp: () => void;
   onEdit: () => void;
-  onRegenerate: () => void;
   onAddFeedback: (content: string) => Promise<{ error?: string }>;
 };
 
@@ -32,7 +31,6 @@ export function IdeaResultCard({
   onSelect,
   onGoToMvp,
   onEdit,
-  onRegenerate,
   onAddFeedback,
 }: IdeaResultCardProps) {
   const theme = useTheme();
@@ -58,12 +56,15 @@ export function IdeaResultCard({
       type="backgroundElement"
       style={[
         styles.card,
-        { borderColor: isSelected ? theme.success : theme.border },
-        isSelected && { backgroundColor: theme.successSoft },
+        { borderColor: isSelected ? '#F3DDA8' : theme.border },
+        isSelected && { backgroundColor: '#FFFFFF' },
         Shadows.card,
       ]}>
       <View style={styles.header}>
         <View style={styles.grow}>
+          {isSelected ? <View style={{ alignSelf: 'flex-start', backgroundColor: theme.successSoft, borderColor: theme.success, borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.two, paddingVertical: Spacing.one }}>
+            <ThemedText accessibilityLiveRegion="polite" type="body" style={{ color: theme.success, fontWeight: '700' }}>✓ 최종 선정된 아이디어</ThemedText>
+          </View> : null}
           {idea.number ? <ThemedText type="smallBold" style={{ color: theme.primary }}>아이디어 {idea.number}</ThemedText> : null}
           <ThemedText type="cardTitle">{idea.label}</ThemedText>
           {idea.summary ? <ThemedText type="small" themeColor="textSecondary">{idea.summary}</ThemedText> : null}
@@ -73,7 +74,7 @@ export function IdeaResultCard({
         </View>
         {idea.aiRank ? (
           <View style={[styles.rank, { backgroundColor: theme.primarySoft }]}>
-            <ThemedText type="smallBold" style={{ color: theme.primary }}>
+            <ThemedText type="smallBold" style={{ color: '#A86B00' }}>
               AI 추천 {idea.aiRank}위
             </ThemedText>
           </View>
@@ -109,17 +110,10 @@ export function IdeaResultCard({
       <View style={styles.actions}>
         <Pressable accessibilityRole="button" accessibilityLabel={`${idea.label} 수정`} onPress={onEdit} style={[styles.actionButton, { borderColor: theme.border }]}><ThemedText type="smallBold">수정</ThemedText></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={`${idea.label} 팀 의견 남기기`} onPress={() => setFeedbackOpen((open) => !open)} style={[styles.actionButton, { borderColor: theme.border }]}><ThemedText type="smallBold">팀 의견 남기기</ThemedText></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={`${idea.label} AI 추천 재생성 요청`} disabled={isDisabled} onPress={onRegenerate} style={[styles.actionButton, { borderColor: theme.border }, isDisabled && styles.disabled]}><ThemedText type="smallBold">재생성 요청</ThemedText></Pressable>
       </View>
       {feedbackOpen ? <View style={styles.feedbackBox}><TextInput accessibilityLabel={`${idea.label} 팀 의견 입력`} value={feedbackDraft} onChangeText={setFeedbackDraft} editable={!feedbackBusy} multiline maxLength={1000} placeholder="아이디어에 대한 의견을 입력해 주세요" placeholderTextColor={theme.textSecondary} style={[styles.feedbackInput, { color: theme.text, borderColor: theme.border }]} /><Pressable accessibilityRole="button" accessibilityLabel="팀 의견 저장" accessibilityState={{ disabled: feedbackBusy || !feedbackDraft.trim() }} disabled={feedbackBusy || !feedbackDraft.trim()} onPress={() => void submitFeedback()} style={[styles.actionButton, { borderColor: theme.primary }]}><ThemedText type="smallBold" style={{ color: theme.primary }}>{feedbackBusy ? '저장 중' : '의견 저장'}</ThemedText></Pressable></View> : null}
       {feedbackError ? <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>{feedbackError}</ThemedText> : null}
       {feedbackNotice ? <ThemedText accessibilityLiveRegion="polite" style={{ color: theme.success }}>{feedbackNotice}</ThemedText> : null}
-
-      {isSelected ? (
-        <ThemedText accessibilityLiveRegion="polite" type="smallBold" style={{ color: theme.success }}>
-          ✓ 최종 선정된 아이디어
-        </ThemedText>
-      ) : null}
 
       <Pressable
         accessibilityRole="button"
@@ -128,13 +122,13 @@ export function IdeaResultCard({
         onPress={isSelected ? onGoToMvp : onSelect}
         style={({ pressed }) => [
           styles.button,
-          { backgroundColor: isSelected ? theme.success : theme.primary },
+          { backgroundColor: theme.primary },
           (pressed || isSelectionDisabled) && styles.disabled,
         ]}>
         {isSelecting && !isSelected ? (
           <ActivityIndicator color={theme.primaryText} />
         ) : (
-          <ThemedText type="button" style={{ color: theme.primaryText }}>
+          <ThemedText type="button" style={{ color: isSelected ? '#172238' : theme.primaryText }}>
             {isSelected ? 'MVP 기획으로 이동' : '최종 아이디어로 선정'}
           </ThemedText>
         )}

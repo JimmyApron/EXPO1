@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import * as Print from 'expo-print';
+import { File } from 'expo-file-system';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -12,8 +14,8 @@ import { formatForNotion, fullResultText, presentationMarkdown, presentationOutl
 import { copyForKakao } from '@/utils/export/copyForKakao';
 import { copyForNotion } from '@/utils/export/copyForNotion';
 import { exportToPdf } from '@/utils/export/exportToPdf';
-import { exportToPptx } from '@/utils/export/exportToPptx';
 import { saveFile } from '@/utils/export/saveFile';
+import { createPresentationHtml } from '@/utils/export/presentationHtml';
 
 type Action = { label: string; run: () => Promise<unknown>; message: string };
 type Card = { icon: string; title: string; description: string; unavailable?: string; actions: Action[] };
@@ -28,6 +30,36 @@ export function ExportPanel({ data }: { data: ExportData }) {
   const fileMessage = Platform.OS === 'web' ? '파일 다운로드를 시작했습니다.' : '공유 창을 닫았습니다. 선택한 앱에서 저장 여부를 확인해 주세요.';
   const docx = (content: string, kind: string) => downloadAsDocx(content, `${data.idea.title.slice(0, 70)}_${kind}.docx`, { documentType: kind, projectTitle: data.projectTitle });
   const copy = async (value: string) => { if (!await Clipboard.setStringAsync(value)) throw new Error('클립보드에 접근할 수 없습니다.'); };
+  const presentationHtml = data.presentation ? createPresentationHtml(data.presentation) : '';
+  const safeTitle = data.presentation?.presentationTitle || data.projectTitle;
+  const savePresentationHtml = () => saveFile(presentationHtml, `${safeTitle}_발표자료.html`, 'text/html;charset=utf-8');
+  const savePresentationPdf = async () => {
+    if (Platform.OS === 'web') {
+      const popup = window.open('', '_blank');
+      if (!popup) throw new Error('PDF 출력 창이 차단되었습니다. 팝업을 허용한 뒤 다시 시도해 주세요.');
+      printHtmlInWindow(popup);
+      return;
+    }
+    const result = await Print.printToFileAsync({ html: presentationHtml, width: 1280, height: 720 });
+    if (result.numberOfPages !== data.presentation?.slides.length) throw new Error(`PDF 페이지 수(${result.numberOfPages})가 슬라이드 수(${data.presentation?.slides.length})와 다릅니다.`);
+    const file = new File(result.uri);
+    try { await saveFile(await file.bytes(), `${safeTitle}_발표자료.pdf`, 'application/pdf'); }
+    finally { if (file.exists) file.delete(); }
+  };
+  const printHtmlInWindow = (popup: Window) => {
+    popup.document.open(); popup.document.write(presentationHtml); popup.document.close();
+    popup.addEventListener('load', () => popup.print(), { once: true });
+  };
+  const saveBothPresentationFiles = async () => {
+    if (Platform.OS === 'web') {
+      const popup = window.open('', '_blank');
+      if (!popup) throw new Error('PDF 출력 창이 차단되었습니다. 팝업을 허용한 뒤 다시 시도해 주세요.');
+      await savePresentationHtml();
+      printHtmlInWindow(popup);
+      return;
+    }
+    await savePresentationHtml(); await savePresentationPdf();
+  };
 
   const groups: { title: string; cards: Card[] }[] = [
     { title: '문서', cards: [
@@ -45,6 +77,11 @@ export function ExportPanel({ data }: { data: ExportData }) {
       ] },
     ] },
     { title: '발표', cards: [
+      { icon: '▤', title: 'HTML 발표자료', description: '브라우저 미리보기와 16:9 슬라이드 다운로드', unavailable: hasSlides ? undefined : '발표자료를 생성하면 사용할 수 있습니다.', actions: [
+        { label: 'HTML 저장', run: savePresentationHtml, message: fileMessage },
+        { label: 'PDF 저장', run: savePresentationPdf, message: Platform.OS === 'web' ? '인쇄 창에서 “PDF로 저장”을 선택해 주세요.' : fileMessage },
+        { label: 'HTML + PDF 저장', run: saveBothPresentationFiles, message: Platform.OS === 'web' ? 'HTML 다운로드 후 PDF 인쇄 창이 열립니다.' : fileMessage },
+      ] },
       { icon: '🎙️', title: '발표 대본', description: '생성된 슬라이드별 발표 내용', unavailable: hasSlides ? undefined : '발표자료를 생성하면 사용할 수 있습니다.', actions: [
         { label: '대본 복사', run: () => copy(presentationScript(data)), message: '발표 대본이 복사되었습니다.' },
       ] },
@@ -88,8 +125,8 @@ export function ExportPanel({ data }: { data: ExportData }) {
           <ThemedText type="subtitle">결과물 저장·공유</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">현재 저장된 버전을 발표 파일로 저장하거나 문서·복사 형식을 선택하세요.</ThemedText>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="PPTX 저장" accessibilityState={{ disabled: Boolean(busy), busy: busy === 'quick:pptx' }} disabled={Boolean(busy)} onPress={() => void run({ label: 'PPTX 저장', run: () => exportToPptx(data), message: fileMessage }, 'quick:pptx')} style={[styles.quickAction, { backgroundColor: theme.primary }, Boolean(busy) && styles.pressed]}>
-          {busy === 'quick:pptx' ? <ActivityIndicator color={theme.primaryText} size="small" /> : <ThemedText type="smallBold" style={{ color: theme.primaryText }}>PPTX 저장</ThemedText>}
+        <Pressable accessibilityRole="button" accessibilityLabel="PPT 저장" accessibilityState={{ disabled: Boolean(busy), busy: busy === 'quick:ppt' }} disabled={Boolean(busy)} onPress={() => void run({ label: 'PPT 저장', run: savePresentationPdf, message: Platform.OS === 'web' ? '인쇄 창에서 “PDF로 저장”을 선택해 주세요.' : fileMessage }, 'quick:ppt')} style={[styles.quickAction, { backgroundColor: theme.primary }, Boolean(busy) && styles.pressed]}>
+          {busy === 'quick:ppt' ? <ActivityIndicator color={theme.primaryText} size="small" /> : <ThemedText type="smallBold" style={{ color: theme.primaryText }}>PPT 저장</ThemedText>}
         </Pressable>
       </View>
       <Pressable accessibilityRole="button" accessibilityState={{ expanded: showFormats }} onPress={() => setShowFormats((open) => !open)} style={[styles.action, { borderColor: theme.border }]}>

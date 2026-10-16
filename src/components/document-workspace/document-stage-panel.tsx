@@ -16,7 +16,7 @@ import { DocumentEditor } from './document-editor';
 import { ProjectResultPanel } from './project-result-panel';
 import { WritingFeedbackPanel } from './writing-feedback-panel';
 import { WorkspacePresentation } from './workspace-presentation';
-import { WorkspaceButton as Button, WorkspaceField as Field, WorkspacePanel, workspaceStyles as s, confirmWorkspaceAction } from './controls';
+import { WorkspaceButton as Button, WorkspaceField as Field, WorkspacePanel, WorkspaceConfirmProvider, workspaceStyles as s, useWorkspaceConfirm } from './controls';
 import type { WorkspaceController } from './types';
 
 type Props = {
@@ -29,8 +29,9 @@ type Props = {
   onCreateIdea: (input: IdeaInput) => Promise<{ idea?: Idea; error?: string }>;
   onSetTopic: (title: string) => Promise<{ error?: string }>;
 };
-export function DocumentStagePanel({ template, projectId, projectTitle, settings, stage, stages, records, workspace: w, ideas, selectedIdea, mindMapNodes, onOpenList, onOpenMap, onEditIdea, onAddIdea, onNavigate, onSaveStage, onCreateIdea, onSetTopic }: Props) {
+function DocumentStagePanelContent({ template, projectId, projectTitle, settings, stage, stages, records, workspace: w, ideas, selectedIdea, mindMapNodes, onOpenList, onOpenMap, onEditIdea, onAddIdea, onNavigate, onSaveStage, onCreateIdea, onSetTopic }: Props) {
   const ai = useWorkspaceAssistant(projectId), report = template === 'report_research', labels = getTopicLabels(template);
+  const confirmWorkspaceAction = useWorkspaceConfirm();
   const { width } = useWindowDimensions();
   const [supportOpen, setSupportOpen] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState<WorkspaceAiResult | null>(null), [topicPrompt, setTopicPrompt] = useState('');
@@ -109,7 +110,11 @@ export function DocumentStagePanel({ template, projectId, projectTitle, settings
       <Button disabled={stageIndex === stages.length - 1 || busy} onPress={() => void navigate(stages[stageIndex + 1].id)}>다음 단계</Button>
     </View>
     {ai.busy || busy ? <ActivityIndicator /> : null}
-    {error || ai.error ? <ThemedText accessibilityRole="alert">{error || ai.error}</ThemedText> : null}
+    {error || (stage !== bodyStage && ai.error) ? <ThemedText accessibilityRole="alert">{error || ai.error}</ThemedText> : null}
     {notice ? <ThemedText accessibilityLiveRegion="polite">{notice}</ThemedText> : null}
   </WorkspacePanel>;
+}
+
+export function DocumentStagePanel(props: Props) {
+  return <WorkspaceConfirmProvider><DocumentStagePanelContent {...props} /></WorkspaceConfirmProvider>;
 }

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
@@ -55,15 +55,20 @@ export function useIdeaEvaluations(projectId: string, evaluationRound: number) {
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(true);
   const [evaluationError, setEvaluationError] = useState('');
   const [isSavingEvaluation, setIsSavingEvaluation] = useState(false);
+  const loadedEvaluationKey = useRef('');
+  const requestSequence = useRef(0);
+  const evaluationKey = `${user?.id ?? ''}:${projectId}:${evaluationRound}`;
 
   const loadEvaluations = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     if (!projectId || !user) {
       setEvaluations([]);
+      loadedEvaluationKey.current = '';
       setIsLoadingEvaluations(false);
       return;
     }
 
-    setIsLoadingEvaluations(true);
+    if (loadedEvaluationKey.current !== evaluationKey) setIsLoadingEvaluations(true);
     setEvaluationError('');
     const { data, error } = await supabase
       .from('ideaevaluations')
@@ -71,8 +76,11 @@ export function useIdeaEvaluations(projectId: string, evaluationRound: number) {
       .eq('projectid', projectId)
       .eq('evaluationround', evaluationRound);
 
+    if (requestId !== requestSequence.current) return;
+
     if (error) {
       const local = await loadLocal(projectId, user.id, evaluationRound);
+      if (requestId !== requestSequence.current) return;
       setEvaluations(local);
       setEvaluationError('평가 저장소에 연결하지 못해 이 기기의 임시 평가를 사용합니다.');
     } else {
@@ -80,8 +88,9 @@ export function useIdeaEvaluations(projectId: string, evaluationRound: number) {
         .map((item) => fromDatabase(item as Record<string, unknown>))
         .filter((item): item is StoredIdeaEvaluation => Boolean(item)));
     }
+    loadedEvaluationKey.current = evaluationKey;
     setIsLoadingEvaluations(false);
-  }, [evaluationRound, projectId, user]);
+  }, [evaluationKey, evaluationRound, projectId, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => void loadEvaluations(), 0);

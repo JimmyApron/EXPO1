@@ -6,6 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { sampleCandidateIdeas, sampleSimpleMvpPlan } from '@/constants/sample-project';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
 import { useExperience } from '@/context/ExperienceContext';
+import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 
 const steps = [
@@ -17,12 +18,15 @@ const steps = [
 
 export function OnboardingModal() {
   const { onboarding, closeOnboarding } = useExperience();
+  const { authflow } = useAuth();
   const [demo, setDemo] = useState(false);
   const theme = useTheme();
   const close = (remember: boolean) => {
     setDemo(false);
     closeOnboarding(remember);
   };
+
+  if (authflow) return null;
 
   return (
     <Modal visible={onboarding} transparent animationType="fade" onRequestClose={() => close(false)}>

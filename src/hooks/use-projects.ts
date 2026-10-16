@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
@@ -39,15 +39,25 @@ export function useProjects(roomid?: string) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isloadingprojects, setIsloadingprojects] = useState(true);
   const [projecterror, setProjecterror] = useState('');
+  const loadedQueryKey = `${user?.id ?? ''}:${roomid ?? 'personal'}`;
+  const [resolvedQueryKey, setResolvedQueryKey] = useState('');
+  const completedQueryKey = useRef('');
+  const requestId = useRef(0);
 
   const loadProjects = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user) {
       setProjects([]);
+      completedQueryKey.current = loadedQueryKey;
+      setResolvedQueryKey(loadedQueryKey);
       setIsloadingprojects(false);
       return;
     }
 
-    setIsloadingprojects(true);
+    if (completedQueryKey.current !== loadedQueryKey) {
+      setIsloadingprojects(true);
+      setProjects([]);
+    }
     setProjecterror('');
 
     let query = supabase
@@ -84,15 +94,18 @@ export function useProjects(roomid?: string) {
       loadError = legacy.error;
     }
 
+    if (currentRequestId !== requestId.current) return;
+
     if (loadError) {
       setProjecterror(loadError.message);
-      setProjects([]);
     } else {
       setProjects(rows.map(normalizeProjectRow));
     }
 
+    completedQueryKey.current = loadedQueryKey;
+    setResolvedQueryKey(loadedQueryKey);
     setIsloadingprojects(false);
-  }, [roomid, user]);
+  }, [loadedQueryKey, roomid, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => {
@@ -231,7 +244,7 @@ export function useProjects(roomid?: string) {
 
   return {
     projects,
-    isloadingprojects,
+    isloadingprojects: isloadingprojects || resolvedQueryKey !== loadedQueryKey,
     projecterror,
     loadProjects,
     createProject,

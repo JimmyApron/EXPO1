@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
@@ -38,11 +38,16 @@ export function useProject(projectid?: string) {
   const { user } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [isloadingproject, setIsloadingproject] = useState(true);
+  const [loadedProjectKey, setLoadedProjectKey] = useState('');
   const [projecterror, setProjecterror] = useState('');
+  const requestId = useRef(0);
+  const projectKey = `${user?.id ?? ''}:${projectid ?? ''}`;
 
   const loadProject = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user || !projectid) {
       setProject(null);
+      setLoadedProjectKey('');
       setIsloadingproject(false);
       return;
     }
@@ -63,15 +68,17 @@ export function useProject(projectid?: string) {
         .select(LEGACY_PROJECT_SELECT).eq('id', projectid).maybeSingle());
     }
 
+    if (currentRequestId !== requestId.current) return;
+
     if (error) {
       setProjecterror(error.message);
-      setProject(null);
     } else {
       setProject(data ? normalizeProjectRow(data as Record<string, unknown>) : null);
+      setLoadedProjectKey(projectKey);
     }
 
     setIsloadingproject(false);
-  }, [projectid, user]);
+  }, [projectid, projectKey, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => {
@@ -143,8 +150,9 @@ export function useProject(projectid?: string) {
   }, [projectid, user]);
 
   return {
-    project,
+    project: loadedProjectKey === projectKey ? project : null,
     isloadingproject,
+    isInitialProjectLoad: isloadingproject && loadedProjectKey !== projectKey,
     projecterror,
     loadProject,
     updateProject,

@@ -44,6 +44,9 @@ export function useDocumentWorkspace(projectId: string, template: ProjectTemplat
     if (flight.current && !discardDraft) return;
     if (result.error) { setError(`작업 공간을 불러오지 못했습니다. DB 마이그레이션 적용 여부를 확인해 주세요. ${result.error.message}`); setLoading(false); return; }
     const serverRevision = result.data?.revision ?? 0;
+    // Our own autosave emits a realtime event. Avoid replacing the live editor
+    // state with an identical server snapshot, which can disturb text input scroll.
+    if (ready.current && serverRevision === revision.current && saved.current === JSON.stringify(current.current) && !discardDraft) return;
     const server = normalizeWorkspace(result.data?.data, titleRef.current);
     if (!result.data) {
       const legacy = await supabase.from('project_stage_progress').select('stageid, content').eq('projectid', projectId).eq('template', template);

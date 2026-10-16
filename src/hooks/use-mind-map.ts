@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { getTopicBranches, type WritingKind } from '@/lib/topic-workspace';
@@ -23,19 +23,31 @@ export function useMindMap(projectId?: string, defaultTopic = '', template: Proj
   const [nodes, setNodes] = useState<MindMapNode[]>([]);
   const [isLoadingMindMap, setIsLoadingMindMap] = useState(true);
   const [mindMapError, setMindMapError] = useState('');
+  const loadedMapKey = useRef('');
+  const requestId = useRef(0);
+  const mapKey = `${user?.id ?? ''}:${projectId ?? ''}:${template}`;
 
   const loadMindMap = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user || !projectId) {
       setMindMap(null);
       setNodes([]);
+      loadedMapKey.current = '';
       setIsLoadingMindMap(false);
       return;
     }
-    setIsLoadingMindMap(true);
+    // Keep the current map mounted while Realtime refreshes its data.
+    if (loadedMapKey.current !== mapKey) {
+      setIsLoadingMindMap(true);
+      setMindMap(null);
+      setNodes([]);
+    }
     setMindMapError('');
     const { data, error } = await supabase.from('mindmaps').select(mapSelect).eq('projectid', projectId).maybeSingle();
+    if (currentRequestId !== requestId.current) return;
     if (error) {
       setMindMapError(error.message);
+      loadedMapKey.current = mapKey;
       setIsLoadingMindMap(false);
       return;
     }
@@ -43,10 +55,13 @@ export function useMindMap(projectId?: string, defaultTopic = '', template: Proj
     if (!nextMap) {
       const now = new Date().toISOString();
       const created = await supabase.from('mindmaps').insert({ projectid: projectId, userid: user.id, title: defaultTopic || '프로젝트 마인드맵', createdat: now, updatedat: now }).select(mapSelect).single();
+      if (currentRequestId !== requestId.current) return;
       if (created.error) {
         const existing = await supabase.from('mindmaps').select(mapSelect).eq('projectid', projectId).maybeSingle();
+        if (currentRequestId !== requestId.current) return;
         if (existing.error || !existing.data) {
           setMindMapError(created.error.message);
+          loadedMapKey.current = mapKey;
           setIsLoadingMindMap(false);
           return;
         }
@@ -59,18 +74,22 @@ export function useMindMap(projectId?: string, defaultTopic = '', template: Proj
     if (nextMap) {
       if (template !== 'service_app') {
         const initialized = await supabase.rpc('sync_topic_map', { p_projectid: projectId, p_ideaids: [], p_topic: nextMap.title, p_branches: getTopicBranches(template, writingKind) });
-        if (initialized.error) { setMindMapError(initialized.error.message); setIsLoadingMindMap(false); return; }
+        if (currentRequestId !== requestId.current) return;
+        if (initialized.error) { setMindMapError(initialized.error.message); loadedMapKey.current = mapKey; setIsLoadingMindMap(false); return; }
       }
       const result = await supabase.from('mind_map_nodes').select(nodeSelect).eq('mindmapid', nextMap.id).order('sortorder');
+      if (currentRequestId !== requestId.current) return;
       if (result.error) setMindMapError(result.error.message);
       else if ((result.data ?? []).length === 0) {
         const root = await supabase.from('mind_map_nodes').insert({ mindmapid: nextMap.id, userid: user.id, nodetype: 'root', title: nextMap.title, summary: '프로젝트의 중심 주제', x: 0, y: 0, sortorder: 0 }).select(nodeSelect).single();
+        if (currentRequestId !== requestId.current) return;
         if (root.error) setMindMapError(root.error.message);
         else setNodes([root.data as MindMapNode]);
       } else { const visible = getVisibleMindMapNodes((result.data ?? []) as MindMapNode[], template); setNodes(template === 'service_app' ? visible : layoutMindMapNodes(visible)); }
     }
+    loadedMapKey.current = mapKey;
     setIsLoadingMindMap(false);
-  }, [defaultTopic, projectId, template, user, writingKind]);
+  }, [defaultTopic, mapKey, projectId, template, user, writingKind]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => void loadMindMap(), 0);

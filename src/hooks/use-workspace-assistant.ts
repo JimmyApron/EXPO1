@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 
-export type WorkspaceAiTask = 'topics' | 'resource' | 'compare' | 'outline' | 'polish' | 'expand' | 'shorten' | 'continue' | 'tone' | 'dialogue' | 'feedback' | 'presentation';
-export type WorkspaceAiResult = { text: string; suggestions: { title: string; text: string; original: string; reason: string; kind: string }[]; outline: { title: string; guidance: string }[]; slides: { title: string; content: string; script: string }[]; qna: string };
+export type WorkspaceAiTask = 'topics' | 'resource' | 'compare' | 'outline' | 'polish' | 'expand' | 'shorten' | 'continue' | 'tone' | 'dialogue' | 'rewrite' | 'feedback' | 'presentation';
+export type WorkspaceAiResult = { text: string; resultText: string; suggestions: { title: string; text: string; original: string; reason: string; kind: string }[]; outline: { title: string; guidance: string }[]; slides: { title: string; content: string; script: string }[]; qna: string };
 
 /** Removes only complete bold markers from plain-text AI responses. */
 function cleanAiResponseText(value: string) {
@@ -13,6 +13,7 @@ function cleanAiResponseText(value: string) {
 function cleanAiResult(data: WorkspaceAiResult): WorkspaceAiResult {
   return {
     text: cleanAiResponseText(data.text),
+    resultText: cleanAiResponseText(data.resultText),
     suggestions: data.suggestions.map(item => ({ ...item, title: cleanAiResponseText(item.title), text: cleanAiResponseText(item.text), reason: cleanAiResponseText(item.reason) })),
     outline: data.outline.map(item => ({ title: cleanAiResponseText(item.title), guidance: cleanAiResponseText(item.guidance) })),
     slides: data.slides.map(item => ({ title: cleanAiResponseText(item.title), content: cleanAiResponseText(item.content), script: cleanAiResponseText(item.script) })),
@@ -33,7 +34,7 @@ export function useWorkspaceAssistant(projectId: string) {
         try { const result = await failure.context?.json(); if (typeof result?.message === 'string') message = result.message; } catch { /* Network errors have no response body. */ }
         setError(message); return null;
       }
-      if (!data || typeof data.text !== 'string' || !Array.isArray(data.suggestions) || !Array.isArray(data.outline) || !Array.isArray(data.slides) || typeof data.qna !== 'string') { setError('AI 응답 형식을 확인할 수 없습니다.'); return null; }
+      if (!data || typeof data.text !== 'string' || typeof data.resultText !== 'string' || !Array.isArray(data.suggestions) || !Array.isArray(data.outline) || !Array.isArray(data.slides) || typeof data.qna !== 'string') { setError('AI 응답 형식을 확인할 수 없습니다.'); return null; }
       notifyWattBalanceChanged();
       return cleanAiResult(data as WorkspaceAiResult);
     } catch { setError('네트워크 연결을 확인한 후 AI 요청을 다시 시도해 주세요.'); return null; }

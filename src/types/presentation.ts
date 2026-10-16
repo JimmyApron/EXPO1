@@ -31,19 +31,29 @@ export type PresentationVersionChange = {
   summary: string;
 };
 
+export type PresentationSettings = {
+  title: string;
+  pageCount: number;
+  theme: 'minimal-light' | 'modern-dark' | 'soft-color' | 'business';
+  durationMinutes?: number;
+  purpose?: string;
+  additionalRequests?: string;
+};
+
 export type PresentationVersionEntry = {
   id: string;
   createdAt: string;
   instruction: string;
   summary: string;
   changedSlides: PresentationVersionChange[];
-  snapshot?: Pick<PresentationData, 'presentationTitle' | 'slides' | 'expectedQna' | 'businessPlanDraft' | 'finalReport'>;
+  snapshot?: Pick<PresentationData, 'presentationTitle' | 'slides' | 'expectedQna' | 'businessPlanDraft' | 'finalReport' | 'settings'>;
 };
 
 export interface PresentationData {
   /** 새로 생성되는 발표자료가 어떤 최종 아이디어를 기준으로 했는지 기록합니다. */
   ideaId?: string;
   presentationTitle: string;
+  settings?: PresentationSettings;
   slides: {
     slideNumber: number;
     title: string;

@@ -4,6 +4,7 @@ import { applyPresentationCandidate, changedPresentationSections } from '../src/
 
 const original = {
   ideaId: 'idea-1', currentVersionId: 'v1', presentationTitle: '원본',
+  settings: { title: '원본', pageCount: 1, theme: 'minimal-light', durationMinutes: 5 },
   slides: [{ slideNumber: 1, title: '문제', bulletPoints: ['기존'], speakerScript: '기존 대본' }],
   expectedQna: [{ question: '왜?', answer: '근거' }],
   businessPlanDraft: '기존 사업계획서', finalReport: '기존 보고서', versionHistory: [],
@@ -16,6 +17,7 @@ test('new presentation archives all prior content for durable restoration', () =
   assert.equal(applied.previousVersionId, 'v1');
   assert.deepEqual(applied.versionHistory?.[0].snapshot?.slides, original.slides);
   assert.equal(applied.versionHistory?.[0].snapshot?.finalReport, original.finalReport);
+  assert.deepEqual(applied.versionHistory?.[0].snapshot?.settings, original.settings);
   assert.equal(applied.versionHistory?.[0].instruction, '간결하게');
   assert.deepEqual(original.versionHistory, []);
 });

@@ -36,7 +36,7 @@ test('URL-only research cannot be summarized or compared as if its original was 
 test('AI returns reviewable structured proposals and rejects malformed output', async () => {
   const originalFetch = globalThis.fetch;
   let malformed = false;
-  const result = { text: '구체화 제안', suggestions: [{ title: '주제 후보', text: '후보 설명', original: '', reason: '구체화', kind: '주제' }], outline: [], slides: [], qna: '' };
+  const result = { text: '구체화 제안', resultText: '', suggestions: [{ title: '주제 후보', text: '후보 설명', original: '', reason: '구체화', kind: '주제' }], outline: [], slides: [], qna: '' };
   try {
     globalThis.fetch = async (url, options) => {
       if (String(url).includes('/auth/')) return Response.json({ id: 'user' });
@@ -50,6 +50,35 @@ test('AI returns reviewable structured proposals and rejects malformed output', 
     };
     const response = await handler(request()); assert.equal(response.status, 200); assert.deepEqual(await response.json(), result);
     malformed = true; assert.equal((await handler(request())).status, 502);
+  } finally { globalThis.fetch = originalFetch; }
+});
+test('direct editing requests use resultText and retry metadata once within one usage reservation', async () => {
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0, reservations = 0, settlements = 0;
+  const responses = [
+    { text: '조사 목적을 구체화하는 방향으로 다듬었습니다.', resultText: '', suggestions: [], outline: [], slides: [], qna: '' },
+    { text: '본 조사는 일회용품 사용 실태와 주요 사용 원인을 살펴보고, 사용 과정에서 발생하는 환경 문제를 분석하는 것을 목적으로 한다.', resultText: '', suggestions: [], outline: [], slides: [], qna: '' },
+  ];
+  try {
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes('/auth/')) return Response.json({ id: 'user' });
+      if (String(url).includes('watt_reserve_usage')) { reservations++; return Response.json({ usage_id: 'usage-id' }); }
+      if (String(url).includes('watt_settle_usage')) { settlements++; return Response.json({ state: 'succeeded' }); }
+      if (String(url).includes('/rest/')) return Response.json([{ id: projectId, title: '보고서', template: 'report_research', settings: {} }]);
+      const payload = JSON.parse(options.body); providerCalls++;
+      assert.ok(payload.system.includes('resultText에 적용 가능한 최종 문장·문단만'));
+      if (providerCalls === 2) assert.ok(payload.system.includes('응답은 결과물이 아니라 작업 설명'));
+      assert.equal(JSON.parse(payload.messages[0].content).context.selection, '본 조사는 사용 실태를 파악한다.');
+      return Response.json({ content: [{ type: 'tool_use', name: 'record_workspace_assistance', input: responses.shift() }] });
+    };
+    const response = await handler(request('expand', { selection: '본 조사는 사용 실태를 파악한다.', body: '앞 문단\n본 조사는 사용 실태를 파악한다.\n뒤 문단', settings: { writingKind: 'essay' } }));
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.resultText, '본 조사는 일회용품 사용 실태와 주요 사용 원인을 살펴보고, 사용 과정에서 발생하는 환경 문제를 분석하는 것을 목적으로 한다.');
+    assert.equal(result.text, result.resultText);
+    assert.equal(providerCalls, 2);
+    assert.equal(reservations, 1);
+    assert.equal(settlements, 1);
   } finally { globalThis.fetch = originalFetch; }
 });
 test.after(() => { globalThis.Deno = originalDeno; });

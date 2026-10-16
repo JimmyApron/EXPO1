@@ -3,6 +3,7 @@ import type { PresentationData, PresentationVersionEntry } from '@/types/present
 export function presentationSnapshot(data: PresentationData): NonNullable<PresentationVersionEntry['snapshot']> {
   return {
     presentationTitle: data.presentationTitle,
+    settings: data.settings,
     slides: data.slides,
     expectedQna: data.expectedQna,
     businessPlanDraft: data.businessPlanDraft,
@@ -13,6 +14,7 @@ export function presentationSnapshot(data: PresentationData): NonNullable<Presen
 export function changedPresentationSections(before: PresentationData, after: PresentationData) {
   const changes: string[] = [];
   if (before.presentationTitle !== after.presentationTitle) changes.push('발표 제목');
+  if (JSON.stringify(before.settings) !== JSON.stringify(after.settings)) changes.push('생성 설정');
   const oldSlides = new Map(before.slides.map((slide) => [slide.slideNumber, slide]));
   for (const slide of after.slides) {
     const old = oldSlides.get(slide.slideNumber);
@@ -45,6 +47,6 @@ export function applyPresentationCandidate(current: PresentationData, candidate:
     createdAt: new Date().toISOString(),
     currentVersionId: `version-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     previousVersionId: archived.id,
-    versionHistory: [archived, ...(current.versionHistory ?? [])],
+    versionHistory: [archived, ...(current.versionHistory ?? [])].slice(0, 10),
   };
 }

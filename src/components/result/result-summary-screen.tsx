@@ -133,7 +133,6 @@ export function ResultSummaryScreen({
             onSelect={() => void select(idea.id)}
             onGoToMvp={onGoToMvp}
             onEdit={() => onEditIdea(idea.id)}
-            onRegenerate={onRetryRanking}
             onAddFeedback={(content) => onAddFeedback(idea.id, content)}
           />
         ))}

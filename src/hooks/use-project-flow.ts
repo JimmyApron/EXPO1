@@ -51,16 +51,22 @@ export function useProjectFlow(projectid?: string) {
   const flowRef = useRef<ProjectFlow | null>(null);
   const [isloadingflow, setIsloadingflow] = useState(true);
   const [flowerror, setFlowerror] = useState('');
+  const loadedProjectKey = useRef('');
+  const requestId = useRef(0);
+  const projectKey = `${user?.id ?? ''}:${projectid ?? ''}`;
 
   const loadFlow = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user || !projectid) {
       flowRef.current = null;
       setFlow(null);
+      loadedProjectKey.current = '';
       setIsloadingflow(false);
       return;
     }
 
-    setIsloadingflow(true);
+    // Realtime updates are background refreshes; retain the mounted workflow.
+    if (loadedProjectKey.current !== projectKey) setIsloadingflow(true);
     setFlowerror('');
     const { data, error } = await supabase
       .from('projectflows')
@@ -68,18 +74,23 @@ export function useProjectFlow(projectid?: string) {
       .eq('projectid', projectid)
       .maybeSingle();
 
+    if (currentRequestId !== requestId.current) return;
+
     if (error) {
       setFlowerror(error.message);
-      const localFlow = createLocalFlow(projectid, user.id);
-      flowRef.current = localFlow;
-      setFlow(localFlow);
+      if (flowRef.current?.projectid !== projectid || flowRef.current.userid !== user.id) {
+        const localFlow = createLocalFlow(projectid, user.id);
+        flowRef.current = localFlow;
+        setFlow(localFlow);
+      }
     } else {
       const loadedFlow = (data as ProjectFlow | null) ?? createLocalFlow(projectid, user.id);
       flowRef.current = loadedFlow;
       setFlow(loadedFlow);
     }
+    loadedProjectKey.current = projectKey;
     setIsloadingflow(false);
-  }, [projectid, user]);
+  }, [projectid, projectKey, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => void loadFlow(), 0);

@@ -25,6 +25,8 @@ export type AppIconName =
   | 'feedback'
   | 'schedule'
   | 'idea'
+  | 'eye'
+  | 'eyeOff'
   | 'close';
 
 const names: Record<AppIconName, SymbolViewProps['name']> = {
@@ -51,6 +53,8 @@ const names: Record<AppIconName, SymbolViewProps['name']> = {
   feedback: { ios: 'bubble.left.and.bubble.right.fill', android: 'chat', web: 'chat' },
   schedule: { ios: 'clock.fill', android: 'schedule', web: 'schedule' },
   idea: { ios: 'lightbulb.fill', android: 'lightbulb', web: 'lightbulb' },
+  eye: { ios: 'eye', android: 'visibility', web: 'visibility' },
+  eyeOff: { ios: 'eye.slash', android: 'visibility_off', web: 'visibility_off' },
   close: { ios: 'xmark', android: 'close', web: 'close' },
 };
 
@@ -78,6 +82,8 @@ const fallbacks: Record<AppIconName, string> = {
   feedback: '●',
   schedule: '◷',
   idea: '●',
+  eye: '◉',
+  eyeOff: '⊙',
   close: '×',
 };
 

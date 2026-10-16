@@ -6,11 +6,12 @@ import { workspaceExportText } from '@/lib/workspace-export';
 import type { ProjectSettings } from '@/lib/topic-workspace';
 import { saveFile } from '@/utils/export/saveFile';
 import { workspacePdf } from '@/utils/export/workspacePdf';
-import { WorkspaceButton as Button, WorkspaceField as Field, workspaceStyles as s, confirmWorkspaceAction } from './controls';
+import { WorkspaceButton as Button, WorkspaceField as Field, workspaceStyles as s, useWorkspaceConfirm } from './controls';
 import type { WorkspaceController } from './types';
 import { MarkdownPreview } from './markdown-preview';
 
 export function ProjectResultPanel({ workspace: w, report, settings, topicUpdatedAt, onEdit, onResources }: { workspace: WorkspaceController; report: boolean; settings: ProjectSettings; topicUpdatedAt: string; onEdit: () => void; onResources: () => void }) {
+  const confirmWorkspaceAction = useWorkspaceConfirm();
   const [selectedVersion, setSelectedVersion] = useState(''), [error, setError] = useState(''), [exportBusy, setExportBusy] = useState(false);
   const count = manuscriptCount(w.data), version = w.data.versions.find(v => v.id === selectedVersion);
   const stale = w.data.finalFingerprint !== manuscriptFingerprint(w.data) || w.data.finalTopicUpdatedAt !== topicUpdatedAt;

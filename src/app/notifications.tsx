@@ -173,7 +173,7 @@ export default function NotificationsScreen() {
             </Pressable>
           </View> : null}
 
-          {isLoading || !notificationsEnabledReady ? <LoadingSkeleton rows={4} /> : visible.length === 0 ? (
+          {(isLoading && notifications.length === 0) || !notificationsEnabledReady ? <LoadingSkeleton rows={4} /> : visible.length === 0 ? (
             <EmptyState icon="notifications" title="새로운 알림이 없어요"
               description={filter === 'team' ? '팀에서 확인할 일이 생기면 여기에 표시돼요.' : '확인할 소식이 생기면 여기에 표시돼요.'}
               actionLabel="과제 보기" onAction={() => router.push('/projects' as Href)} />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { normalizeTopicDetails } from '@/lib/topic-workspace';
 import { useAuth } from '@/hooks/use-auth';
@@ -114,16 +114,27 @@ export function useIdeas(projectId?: string) {
   const { user } = useAuth();
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [isLoadingIdeas, setIsLoadingIdeas] = useState(true);
+  const [loadedProjectKey, setLoadedProjectKey] = useState('');
   const [ideaError, setIdeaError] = useState('');
+  const requestId = useRef(0);
+  const loadedProjectKeyRef = useRef('');
+  const projectKey = `${user?.id ?? ''}:${projectId ?? ''}`;
 
   const loadIdeas = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user || !projectId) {
       setIdeas([]);
+      loadedProjectKeyRef.current = '';
+      setLoadedProjectKey('');
       setIsLoadingIdeas(false);
       return;
     }
 
-    setIsLoadingIdeas(true);
+    // A background refresh must not replace the live board with a skeleton.
+    if (loadedProjectKeyRef.current !== projectKey) {
+      setIsLoadingIdeas(true);
+      setIdeas([]);
+    }
     setIdeaError('');
 
     let { data, error } = await supabase
@@ -139,15 +150,18 @@ export function useIdeas(projectId?: string) {
       error = legacy.error;
     }
 
+    if (currentRequestId !== requestId.current) return;
+
     if (error) {
       setIdeaError(error.message);
-      setIdeas([]);
     } else {
       setIdeas((data ?? []).map((row) => normalizeIdea(row as Partial<Idea>)));
     }
 
+    loadedProjectKeyRef.current = projectKey;
+    setLoadedProjectKey(projectKey);
     setIsLoadingIdeas(false);
-  }, [projectId, user]);
+  }, [projectId, projectKey, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => {
@@ -324,7 +338,7 @@ export function useIdeas(projectId?: string) {
   );
 
   return {
-    ideas,
+    ideas: loadedProjectKey === projectKey ? ideas : [],
     isLoadingIdeas,
     ideaError,
     loadIdeas,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
@@ -39,15 +39,23 @@ export function useIdeaLikes(projectId?: string) {
   const [likes, setLikes] = useState<IdeaLike[]>([]);
   const [isLoadingLikes, setIsLoadingLikes] = useState(true);
   const [likeError, setLikeError] = useState('');
+  const loadedProjectKey = useRef('');
+  const requestId = useRef(0);
+  const projectKey = `${user?.id ?? ''}:${projectId ?? ''}`;
 
   const loadLikes = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user || !projectId) {
       setLikes([]);
+      loadedProjectKey.current = '';
       setIsLoadingLikes(false);
       return;
     }
 
-    setIsLoadingLikes(true);
+    if (loadedProjectKey.current !== projectKey) {
+      setIsLoadingLikes(true);
+      setLikes([]);
+    }
     setLikeError('');
 
     const { data: ideaRows, error: ideaError } = await supabase
@@ -56,9 +64,11 @@ export function useIdeaLikes(projectId?: string) {
       .eq('legacystructural', false)
       .eq('projectid', projectId);
 
+    if (currentRequestId !== requestId.current) return;
+
     if (ideaError) {
       setLikeError(ideaError.message);
-      setLikes([]);
+      loadedProjectKey.current = projectKey;
       setIsLoadingLikes(false);
       return;
     }
@@ -69,6 +79,7 @@ export function useIdeaLikes(projectId?: string) {
 
     if (ideaIds.length === 0) {
       setLikes([]);
+      loadedProjectKey.current = projectKey;
       setIsLoadingLikes(false);
       return;
     }
@@ -79,15 +90,17 @@ export function useIdeaLikes(projectId?: string) {
       .in('ideaid', ideaIds)
       .order('createdat', { ascending: false });
 
+    if (currentRequestId !== requestId.current) return;
+
     if (error) {
       setLikeError(error.message);
-      setLikes([]);
     } else {
       setLikes((data ?? []).map((row) => normalizeLike(row as LikeRow)));
     }
 
+    loadedProjectKey.current = projectKey;
     setIsLoadingLikes(false);
-  }, [projectId, user]);
+  }, [projectId, projectKey, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => {

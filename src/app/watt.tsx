@@ -18,7 +18,7 @@ type Preview = { starts_at: string; ends_at: string; next_renewal_at: string; ne
 type Entitlement = WattSnapshot['entitlements'][number];
 const formatDate = (value?: string|null) => value ? new Intl.DateTimeFormat('ko-KR',{year:'numeric',month:'long',day:'numeric'}).format(new Date(value)) : '—';
 const prices = (amount: number) => `${amount.toLocaleString('ko-KR')}원`;
-const displayProductLabel = (label: string) => label.replace(/\s+[SM]$/, '');
+const displayProductLabel = (label: string) => label;
 const remainingDays = (value: string) => Math.max(0,Math.ceil((new Date(value).getTime()-Date.now())/86400000));
 const productName = (id?: string) => id==='personal_30'?'개인 30일 구독':id==='personal_120'?'개인 120일 구독':id==='team_30'?'팀 30일 구독':id==='team_120'?'팀 120일 구독':id==='trial_personal'?'개인 무료체험':id==='trial_team'?'팀 무료체험':'Watt 구독';
 

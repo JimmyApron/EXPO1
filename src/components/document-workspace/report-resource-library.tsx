@@ -5,10 +5,11 @@ import { workspaceId } from '@/lib/document-workspace';
 import { importTextFile } from '@/utils/import-text-file';
 import type { ResearchResource } from '@/types/document-workspace';
 import type { Idea } from '@/types/idea';
-import { WorkspaceButton as Button, WorkspaceField as Field, workspaceStyles as s, confirmWorkspaceAction } from './controls';
+import { WorkspaceButton as Button, WorkspaceField as Field, workspaceStyles as s, useWorkspaceConfirm } from './controls';
 import type { WorkspaceAssistant, WorkspaceController } from './types';
 
 export function ReportResourceLibrary({ workspace: w, assistant: ai, topic }: { workspace: WorkspaceController; assistant: WorkspaceAssistant; topic: Idea | null }) {
+  const confirmWorkspaceAction = useWorkspaceConfirm();
   const [activeId, setActiveId] = useState(''), [compareIds, setCompareIds] = useState<string[]>([]), [error, setError] = useState('');
   const resource = w.data.resources.find(r => r.id === activeId);
   function add(content = '', name = '') {

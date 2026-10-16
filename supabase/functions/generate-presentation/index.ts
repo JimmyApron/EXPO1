@@ -34,6 +34,7 @@ const presentationToolName = 'record_presentation_materials';
 // Keep enough headroom below Supabase's 150-second request idle timeout.
 const deepSeekTimeoutMs = 120_000;
 const presentationMaxTokens = 16_000;
+const presentationThemes = ['minimal-light', 'modern-dark', 'soft-color', 'business'] as const;
 
 const systemInstruction = `당신은 대학생 팀 프로젝트의 최종 발표 자료를 작성하는 AI 코치입니다.
 제공된 아이디어, 프로젝트 조건, MVP 계획만 근거로 사용하세요.
@@ -41,6 +42,7 @@ const systemInstruction = `당신은 대학생 팀 프로젝트의 최종 발표
 발표 슬라이드는 논리적인 이야기 흐름을 갖추고, 발표 대본은 실제로 읽기 쉬운 자연스러운 한국어로 작성하세요.
 예상 질문은 평가자가 물을 법한 현실적인 내용으로 구성하고 답변에는 제공된 근거를 반영하세요.
 사업계획서와 최종 결과 보고서는 바로 제출해도 될 만큼 구체적이고 전문적인 마크다운 문서로 작성하세요.
+요청된 페이지 수에 맞춰 표지와 마무리를 포함한 슬라이드를 정확히 생성하세요. 표지는 1번, 마무리는 마지막 번호를 사용하고 중간은 제공된 근거를 기반으로 자연스럽게 구성하세요. 근거 없는 내용이나 반복 슬라이드로 페이지 수를 채우지 마세요.
 각 슬라이드 대본은 2~4문장으로 간결하게 작성하세요.
 두 문서는 각각 2,000~3,000자 분량으로 작성하고, 짧은 개조식 문장만 나열하지 말고 근거와 실행 방법이 드러나는 문단을 포함하세요.
 사업계획서는 반드시 '# [아이디어명] 사업계획서'로 시작하고 다음 순서의 2단계 제목을 사용하세요: 1. Executive Summary, 2. 추진 배경 및 문제 정의, 3. 제안 솔루션과 핵심 가치, 4. 목표 사용자 및 활용 시나리오, 5. MVP 구성과 구현 범위, 6. 실행 일정 및 운영 계획, 7. 기대 효과와 검증 지표, 8. 리스크 및 대응 전략, 9. 향후 확장 계획.
@@ -56,7 +58,7 @@ const responseSchema = {
     presentationTitle: { type: 'string' },
     slides: {
       type: 'array',
-      description: '문제 정의부터 기대 효과까지 자연스럽게 이어지는 슬라이드 5~8장',
+    description: '요청된 페이지 수와 정확히 같은 슬라이드 수. 표지부터 마무리까지 자연스러운 발표 흐름',
       items: {
         type: 'object',
         additionalProperties: false,
@@ -183,18 +185,35 @@ function normalizeMvpPlan(value: unknown) {
   return plan.essentialFeatures.length > 0 ? plan : null;
 }
 
+function normalizeSettings(value: unknown) {
+  if (!isRecord(value)) return null;
+  const pageCount = Number(value.pageCount);
+  const theme = cleanString(value.theme, 40);
+  if (!Number.isInteger(pageCount) || pageCount < 3 || pageCount > 20 || !presentationThemes.includes(theme as typeof presentationThemes[number])) return null;
+  const duration = value.durationMinutes == null ? null : Number(value.durationMinutes);
+  if (duration !== null && (![5, 10, 15].includes(duration))) return null;
+  return {
+    title: cleanString(value.title, 200),
+    pageCount,
+    theme,
+    durationMinutes: duration,
+    purpose: cleanString(value.purpose, 500),
+    additionalRequests: cleanString(value.additionalRequests, 1000),
+  };
+}
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function isPresentationData(value: unknown): value is PresentationData {
+function isPresentationData(value: unknown, expectedSlides?: number): value is PresentationData {
   if (!isRecord(value) || !Array.isArray(value.slides) || !Array.isArray(value.expectedQna)) {
     return false;
   }
 
   return (
     typeof value.presentationTitle === 'string' &&
-    value.slides.length > 0 &&
+    value.slides.length > 0 && (expectedSlides === undefined || value.slides.length === expectedSlides) &&
     value.slides.every(
       (slide) =>
         isRecord(slide) &&
@@ -202,7 +221,7 @@ function isPresentationData(value: unknown): value is PresentationData {
         typeof slide.title === 'string' &&
         isStringArray(slide.bulletPoints) &&
         typeof slide.speakerScript === 'string',
-    ) &&
+    ) && value.slides.every((slide, index) => isRecord(slide) && slide.slideNumber === index + 1) &&
     value.expectedQna.length > 0 &&
     value.expectedQna.every(
       (item) => isRecord(item) && typeof item.question === 'string' && typeof item.answer === 'string',
@@ -300,7 +319,8 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', as
   const projectConditions = normalizeConditions(requestBody.projectConditions);
   const selectedIdea = normalizeIdea(requestBody.selectedIdea);
   const mvpPlan = normalizeMvpPlan(requestBody.mvpPlan);
-  if (!projectConditions || !selectedIdea || !mvpPlan) {
+  const settings = normalizeSettings(requestBody.settings);
+  if (!projectConditions || !selectedIdea || !mvpPlan || !settings) {
     return jsonResponse(
       { error: 'invalid_input', message: '선정 아이디어와 MVP 계획 정보를 확인해주세요.' },
       400,
@@ -314,7 +334,7 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', as
     (typeof requestBody.instruction !== 'string' || requestBody.instruction.length > 1000)) {
     return jsonResponse({ error: 'invalid_instruction', message: '발표자료 재생성 요청은 1,000자 이내로 입력해 주세요.' }, 400);
   }
-const generationInstruction = cleanString(requestBody.instruction, 1000);
+  const generationInstruction = cleanString(requestBody.instruction, 1000);
   const previousPresentation = requestBody.previousPresentation;
   if (previousPresentation !== undefined && !isPresentationData(previousPresentation)) {
     return jsonResponse({ error: 'invalid_previous', message: '이전 발표자료 형식을 확인해 주세요.' }, 400);
@@ -340,6 +360,7 @@ const generationInstruction = cleanString(requestBody.instruction, 1000);
     projectConditions,
     selectedIdea,
     mvpPlan,
+    presentationSettings: settings,
     outputLanguage: 'Korean',
     ...(generationInstruction ? { generationInstruction } : {}),
     ...(previousPresentation ? { previousPresentation } : {}),
@@ -432,7 +453,7 @@ const generationInstruction = cleanString(requestBody.instruction, 1000);
   }
 
   const presentationData = getDeepSeekToolInput(deepSeekBody);
-  if (!isPresentationData(presentationData)) {
+  if (!isPresentationData(presentationData, settings.pageCount)) {
     const stopReason = getDeepSeekStopReason(deepSeekBody);
     if (stopReason === 'max_tokens') {
       return jsonResponse({ error: 'ai_response_too_long', message: '발표자료가 너무 길어 생성이 중단되었습니다. 다시 시도해주세요.' }, 502);

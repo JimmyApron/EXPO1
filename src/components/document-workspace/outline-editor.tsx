@@ -6,11 +6,13 @@ import type { ProjectSettings } from '@/lib/topic-workspace';
 import type { ProjectTemplate } from '@/types/project';
 import type { OutlineItem } from '@/types/document-workspace';
 import type { WorkspaceAiResult } from '@/hooks/use-workspace-assistant';
-import { WorkspaceButton as Button, WorkspaceField as Field, workspaceStyles as s, confirmWorkspaceAction } from './controls';
+import { WorkspaceButton as Button, WorkspaceField as Field, workspaceStyles as s, useWorkspaceConfirm } from './controls';
 import type { WorkspaceAssistant, WorkspaceController } from './types';
 
 export function OutlineEditor({ template, settings, workspace: w, assistant: ai, context }: { template: ProjectTemplate; settings: ProjectSettings; workspace: WorkspaceController; assistant: WorkspaceAssistant; context: unknown }) {
   const [suggestion, setSuggestion] = useState<WorkspaceAiResult | null>(null);
+  const [addedSuggestionIndexes, setAddedSuggestionIndexes] = useState<Set<number>>(() => new Set());
+  const confirmWorkspaceAction = useWorkspaceConfirm();
   const edit = (id: string, patch: Partial<OutlineItem>) => w.update(v => ({ ...v, outline: v.outline.map(i => i.id === id ? { ...i, ...patch } : i) }));
   const add = (parentId: string | null = null) => w.update(v => {
     const item = newOutlineItem('', parentId);
@@ -35,9 +37,9 @@ export function OutlineEditor({ template, settings, workspace: w, assistant: ai,
     <ThemedText type="small" themeColor="textSecondary">제목·작성 안내를 설정하고 위·아래 버튼으로 순서를 바꾸세요. 작성한 본문은 항목 ID에 연결되어 순서 변경 후에도 유지됩니다.</ThemedText>
     <View style={s.row}><Button onPress={() => add()}>항목 추가</Button>
       <Button onPress={() => w.update(v => ({ ...v, outline: [...v.outline, ...defaultOutline(template, settings)] }))}>유형별 기본 구성 추가</Button>
-      <Button disabled={ai.busy} onPress={async () => setSuggestion(await ai.request('outline', { context, settings, resources: w.data.resources, evidence: w.data.evidence, existingOutline: w.data.outline.map(i => ({ title: i.title, guidance: i.guidance })) }))}>AI 목차·개요 추천 / 개선</Button></View>
+      <Button disabled={ai.busy} onPress={async () => { setAddedSuggestionIndexes(new Set()); setSuggestion(await ai.request('outline', { context, settings, resources: w.data.resources, evidence: w.data.evidence, existingOutline: w.data.outline.map(i => ({ title: i.title, guidance: i.guidance })) })); }}>AI 목차·개요 추천 / 개선</Button></View>
     {suggestion ? <View style={s.item}><ThemedText type="small">{suggestion.text}</ThemedText>
-      {suggestion.outline.map((i, index) => <View key={index} style={s.group}><ThemedText type="smallBold">{i.title}</ThemedText><ThemedText>{i.guidance}</ThemedText><Button onPress={() => { w.update(v => ({ ...v, outline: [...v.outline, { ...newOutlineItem(i.title), guidance: i.guidance }] })); setSuggestion(v => v ? { ...v, outline: v.outline.filter((_, n) => n !== index) } : v); }}>이 제안을 새 항목으로 추가</Button></View>)}
+      {suggestion.outline.map((i, index) => <View key={index} style={s.group}><ThemedText type="smallBold">{i.title}</ThemedText><ThemedText>{i.guidance}</ThemedText><Button disabled={addedSuggestionIndexes.has(index)} onPress={() => { w.update(v => ({ ...v, outline: [...v.outline, { ...newOutlineItem(i.title), guidance: i.guidance }] })); setAddedSuggestionIndexes(v => new Set(v).add(index)); }}>{addedSuggestionIndexes.has(index) ? '목차에 추가됨' : '이 제안을 새 항목으로 추가'}</Button></View>)}
       <Button onPress={() => setSuggestion(null)}>제안 닫기</Button></View> : null}
     {w.data.outline.filter(i => !hidden.has(i.id)).map(item => <View key={item.id} style={[s.item, item.parentId ? { marginLeft: 12 } : null]}>
       <View style={s.row}><Button onPress={() => edit(item.id, { collapsed: !item.collapsed })}>{`${item.title || '새 항목'} ${item.collapsed ? '펼치기' : '접기'}`}</Button>
