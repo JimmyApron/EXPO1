@@ -1,5 +1,9 @@
 import { StyleSheet, View } from 'react-native';
 
+import type { DocumentWorkspace } from '@/types/document-workspace';
+import type { ProjectTemplate } from '@/types/project';
+import type { ProjectSettings } from '@/lib/topic-workspace';
+import { manuscriptCount } from '@/lib/document-workspace';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
@@ -20,6 +24,9 @@ const PALETTE = {
 };
 
 type ProjectHomeSummaryProps = {
+  template?: ProjectTemplate;
+  workspace?: DocumentWorkspace;
+  settings?: ProjectSettings;
   deadline?: string | null;
   ideaCount: number;
   selectedIdeaTitle?: string;
@@ -30,6 +37,7 @@ type ProjectHomeSummaryProps = {
 };
 
 export function ProjectHomeSummary({
+  template = 'service_app', workspace, settings,
   deadline,
   ideaCount,
   selectedIdeaTitle,
@@ -63,27 +71,20 @@ export function ProjectHomeSummary({
         </View>
       </View>
 
-      {/* 통계 / 핵심 요약 지표 영역 */}
-      <View style={styles.metricGrid}>
-        {/* 등록된 아이디어 개수 카드 */}
-        <View style={[styles.metric, styles.countMetric]}>
-          <ThemedText style={styles.metricLabel}>등록된 아이디어</ThemedText>
-          <ThemedText style={styles.metricCountValue}>{ideaCount}개</ThemedText>
-        </View>
+      {template !== 'service_app' && workspace ? <View style={styles.metricGrid}>
+        {(template === 'report_research' ? [
+          ['등록한 조사 자료', `${workspace.resources.length}개`], ['핵심 근거', `${workspace.evidence.length}개`],
+          ['목차 구성', `${workspace.outline.length}개 항목`], ['본문 작성', `${manuscriptCount(workspace)}자`],
+        ] : [
+          ['저장한 소재', `${ideaCount}개`], ['개요 구성', `${workspace.outline.length}개 항목`],
+          ['작성 분량', `${manuscriptCount(workspace)}자`], ['목표 분량', settings?.targetLength ? `${settings.targetLength}자` : '미설정'],
+          ['원고 상태', workspace.finalVersionId ? '최종본 보관됨' : '초안'],
+        ]).map(([label, value]) => <View key={label} style={[styles.metric, styles.countMetric]}><ThemedText style={styles.metricLabel}>{label}</ThemedText><ThemedText style={styles.metricCountValue}>{value}</ThemedText></View>)}
+      </View> : <View style={styles.metricGrid}>
+        <View style={[styles.metric, styles.countMetric]}><ThemedText style={styles.metricLabel}>등록된 아이디어</ThemedText><ThemedText style={styles.metricCountValue}>{ideaCount}개</ThemedText></View>
+        <View style={[styles.metric, styles.selectedMetric]}><ThemedText style={styles.metricLabel}>현재 최종 선정 아이디어</ThemedText><ThemedText style={[styles.selectedTitleText, !selectedIdeaTitle && styles.emptyTitleText]} numberOfLines={2}>{selectedIdeaTitle || '아직 선정되지 않음'}</ThemedText></View>
+      </View>}
 
-        {/* 현재 최종 선정 아이디어 카드 */}
-        <View style={[styles.metric, styles.selectedMetric]}>
-          <ThemedText style={styles.metricLabel}>현재 최종 선정 아이디어</ThemedText>
-          <ThemedText
-            style={[
-              styles.selectedTitleText,
-              !selectedIdeaTitle && styles.emptyTitleText,
-            ]}
-            numberOfLines={2}>
-            {selectedIdeaTitle || '아직 선정되지 않음'}
-          </ThemedText>
-        </View>
-      </View>
     </View>
   );
 }

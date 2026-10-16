@@ -14,6 +14,8 @@ import {
 } from '@/lib/mind-map-export';
 import type { Idea } from '@/types/idea';
 import type { MindMapNode } from '@/types/mind-map';
+import type { ProjectTemplate } from '@/types/project';
+import { getTopicLabels } from '@/lib/topic-workspace';
 import { saveFile } from '@/utils/export/saveFile';
 
 type PreviewKind = 'script' | 'outline' | 'markdown' | 'figma';
@@ -25,12 +27,13 @@ const labels: Record<PreviewKind, string> = {
   figma: 'Figma용 구조화 텍스트',
 };
 
-export function MindMapExport({ title, nodes, ideas }: { title: string; nodes: MindMapNode[]; ideas: Idea[] }) {
+export function MindMapExport({ title, nodes, ideas, template = 'service_app' }: { title: string; nodes: MindMapNode[]; ideas: Idea[]; template?: ProjectTemplate }) {
   const [preview, setPreview] = useState<PreviewKind | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [saveError, setSaveError] = useState('');
-  const payload = useMemo(() => createMindMapExportPayload(title, nodes, ideas), [title, nodes, ideas]);
+  const topicLabels = getTopicLabels(template);
+  const payload = useMemo(() => createMindMapExportPayload(title, nodes, ideas, template), [title, nodes, ideas, template]);
   const texts = useMemo(() => ({
     script: mindMapToScript(payload),
     outline: mindMapToOutline(payload),
@@ -84,8 +87,8 @@ export function MindMapExport({ title, nodes, ideas }: { title: string; nodes: M
 
   return (
     <View style={styles.section}>
-      <ThemedText type="smallBold">마인드맵 내보내기</ThemedText>
-      <ThemedText type="caption" themeColor="textSecondary">아이디어 구조와 노드, 아이디어 상세 정보를 내보냅니다. 접힌 노드도 포함됩니다.</ThemedText>
+      <ThemedText type="smallBold">{topicLabels.map} 내보내기</ThemedText>
+      <ThemedText type="caption" themeColor="textSecondary">{topicLabels.item} 구조와 노드, 상세 정보를 내보냅니다. 접힌 노드도 포함됩니다.</ThemedText>
       <View style={styles.actions}>
         <ExportAction label="발표 대본 뼈대 복사" onPress={() => open('script')} />
         <ExportAction label="PPT 슬라이드 목차 복사" onPress={() => open('outline')} />

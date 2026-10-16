@@ -9,6 +9,7 @@ export type Project = {
   deadline: string | null;
   template: ProjectTemplate;
   haspresentation: boolean;
+  settings?: import('../lib/topic-workspace').ProjectSettings;
   createdat: string;
   updatedat: string;
 };
@@ -19,4 +20,5 @@ export type ProjectInput = {
   deadline: string;
   template: ProjectTemplate;
   hasPresentation: boolean;
+  settings?: import('../lib/topic-workspace').ProjectSettings;
 };

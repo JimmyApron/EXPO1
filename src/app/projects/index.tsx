@@ -78,7 +78,7 @@ export default function ProjectsScreen() {
               </ThemedView>
             ) : null}
 
-            {favoritesStatus !== 'unavailable' ? <Pressable accessibilityRole="button" accessibilityLabel="즐겨찾기 과제만 보기" accessibilityState={{ selected: favoriteOnly, disabled: favoritesStatus === 'loading' }} disabled={favoritesStatus === 'loading'} onPress={() => setFavoriteOnly((value) => !value)} style={{ minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: Spacing.three, borderWidth: 1, borderRadius: Radius.medium, borderColor: favoriteOnly ? theme.primary : theme.border }}><ThemedText type="smallBold">★ 즐겨찾기만 보기</ThemedText></Pressable> : null}
+            {favoritesStatus !== 'unavailable' ? <Pressable accessibilityRole="button" accessibilityLabel="즐겨찾기 과제만 보기" accessibilityState={{ selected: favoriteOnly, disabled: favoritesStatus === 'loading' }} disabled={favoritesStatus === 'loading'} onPress={() => setFavoriteOnly((value) => !value)} style={{ minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: Spacing.three, borderWidth: 1, borderRadius: Radius.medium, borderColor: favoriteOnly ? theme.primaryHover : theme.primary }}><ThemedText type="smallBold">★ 즐겨찾기만 보기</ThemedText></Pressable> : null}
             {isloadingprojects || ideaCountsStatus === 'loading' || favoritesStatus === 'loading' ? <LoadingSkeleton rows={4} /> : sortedProjects.length === 0 ? (
               favoriteOnly ? <EmptyState icon="projects" title="즐겨찾기한 과제가 없어요" description="과제 카드의 별을 누르면 여기에 표시됩니다." />
                 : <EmptyState icon="projects" title="아직 과제가 없어요" description="새 과제를 만들고 아이디어를 모아 보세요." actionLabel="새 과제 만들기" onAction={openCreate} />

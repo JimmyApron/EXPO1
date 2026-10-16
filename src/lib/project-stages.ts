@@ -24,13 +24,14 @@ export function getProjectStages(template?: string | null, hasPresentation = tru
     : selected === 'report_research'
       ? [
           { id: 'extraction', label: '주제 선정' },
-          { id: 'selection', label: '자료·핵심 내용 정리' },
+          { id: 'selection', label: '자료 조사·정리' },
           { id: 'mvp', label: '목차 구성' },
-          { id: 'result', label: '결과물 작성' },
+          { id: 'result', label: '보고서 작성' },
+          { id: 'revision', label: '검토·제출' },
         ]
       : [
           { id: 'extraction', label: '주제·소재 정하기' },
-          { id: 'selection', label: '개요/표현 방향' },
+          { id: 'selection', label: '개요·표현 방향' },
           { id: 'draft', label: '초안 작성' },
           { id: 'revision', label: 'AI 피드백·수정' },
           { id: 'result', label: '최종 결과물' },

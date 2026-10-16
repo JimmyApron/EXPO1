@@ -8,9 +8,9 @@ test('each template has its own ordered stages and presentation is optional', ()
   assert.deepEqual(getProjectStages('service_app', true).map((stage) => stage.label),
     ['아이디어 도출', '비교·선정', 'MVP 기획', '발표자료']);
   assert.deepEqual(getProjectStages('report_research', false).map((stage) => stage.label),
-    ['주제 선정', '자료·핵심 내용 정리', '목차 구성', '결과물 작성']);
+    ['주제 선정', '자료 조사·정리', '목차 구성', '보고서 작성', '검토·제출']);
   assert.deepEqual(getProjectStages('writing_creative', false).map((stage) => stage.label),
-    ['주제·소재 정하기', '개요/표현 방향', '초안 작성', 'AI 피드백·수정', '최종 결과물']);
+    ['주제·소재 정하기', '개요·표현 방향', '초안 작성', 'AI 피드백·수정', '최종 결과물']);
   assert.equal(getProjectStages('writing_creative', true).length, 6);
   assert.equal(normalizeProjectTemplate(null), 'service_app');
   assert.equal(getProjectStages(undefined, undefined).length, 4);

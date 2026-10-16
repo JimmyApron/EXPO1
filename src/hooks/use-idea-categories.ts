@@ -47,17 +47,19 @@ function mergeCategories(...categoryGroups: IdeaCategory[][]) {
 export function useIdeaCategories(projectid?: string, usedCategories: IdeaCategory[] = []) {
   const { user } = useAuth();
   const [customCategories, setCustomCategories] = useState<IdeaCategory[]>([]);
+  const [sharedCategories, setSharedCategories] = useState<IdeaCategory[]>([]);
   const [isloadingcategories, setIsloadingcategories] = useState(true);
   const [categoryerror, setCategoryerror] = useState('');
 
   const categories = useMemo(
-    () => mergeCategories([...IdeaCategories], customCategories, usedCategories),
-    [customCategories, usedCategories],
+    () => mergeCategories([...IdeaCategories], customCategories, sharedCategories, usedCategories),
+    [customCategories, sharedCategories, usedCategories],
   );
 
   const loadCategories = useCallback(async () => {
     if (!user || !projectid) {
       setCustomCategories([]);
+      setSharedCategories([]);
       setIsloadingcategories(false);
       return;
     }
@@ -68,14 +70,20 @@ export function useIdeaCategories(projectid?: string, usedCategories: IdeaCatego
     const { data, error } = await supabase
       .from('ideacategories')
       .select(categorySelect)
-      .eq('projectid', projectid)
+      // Reuse my categories across every project type, while retaining this
+      // project's team categories. Other users' unrelated categories stay out.
+      .or(`userid.eq.${user.id},projectid.eq.${projectid}`)
       .order('createdat', { ascending: true });
 
     if (error) {
       setCategoryerror(error.message);
       setCustomCategories([]);
+      setSharedCategories([]);
     } else {
-      setCustomCategories((data ?? []).map((row) => normalizeIdeaCategory((row as IdeaCategoryRow).name)));
+      const rows = (data ?? []) as IdeaCategoryRow[];
+      // Category management continues to affect only the current project.
+      setCustomCategories(rows.filter(row => row.projectid === projectid).map(row => normalizeIdeaCategory(row.name)));
+      setSharedCategories(rows.filter(row => row.userid === user.id && row.projectid !== projectid).map(row => normalizeIdeaCategory(row.name)));
     }
 
     setIsloadingcategories(false);
@@ -92,10 +100,13 @@ export function useIdeaCategories(projectid?: string, usedCategories: IdeaCatego
   }, [loadCategories]);
 
   useRealtimeRefresh({
-    channelName: `idea-categories:${projectid ?? 'none'}`,
+    channelName: `idea-categories:${user?.id ?? 'none'}:${projectid ?? 'none'}`,
     enabled: Boolean(user && projectid),
     onRefresh: loadCategories,
-    tables: [{ table: 'ideacategories', filter: `projectid=eq.${projectid}` }],
+    tables: [
+      { table: 'ideacategories', filter: `userid=eq.${user?.id}` },
+      { table: 'ideacategories', filter: `projectid=eq.${projectid}` },
+    ],
   });
 
   const createCategory = useCallback(

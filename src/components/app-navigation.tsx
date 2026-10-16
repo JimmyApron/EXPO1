@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon, type AppIconName } from '@/components/app-icon';
+import { useProject } from '@/hooks/use-project';
+import { getTopicLabels } from '@/lib/topic-workspace';
 import { BrandIcon } from '@/components/brand-icon';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
@@ -65,11 +67,13 @@ export function AppNavigation() {
   const routeProjectId = Array.isArray(params.id) ? params.id[0] : params.id;
   const fallbackProjectId = isProjectDetail ? pathname.slice('/projects/'.length) : '';
   const projectId = routeProjectId || fallbackProjectId;
+  const { project } = useProject(isProjectDetail ? projectId : undefined);
+  const topicLabels = getTopicLabels(project?.template);
   const projectLocation = resolveProjectWorkspaceLocation(params);
 
   const navigationItems: NavigationItem[] = isProjectDetail && projectId
     ? projectSections.map((section) => ({
-        label: section.label,
+        label: section.id === 'ideas' ? topicLabels.list : section.id === 'mindmap' ? topicLabels.map : section.label,
         icon: section.icon,
         href: `/projects/${encodeURIComponent(projectId)}?projectView=${section.id}&flowStep=${projectLocation.step}` as Href,
         matches: () => projectLocation.section === section.id,

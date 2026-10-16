@@ -37,6 +37,8 @@ export type MindMapComposeOptions = {
 };
 
 export type MindMapIdeaDetailsInput = {
+  content?: string;
+  details?: import('../lib/topic-workspace').TopicDetails;
   title: string;
   summary: string;
   problem: string;

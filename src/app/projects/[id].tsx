@@ -22,7 +22,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import { resolveProjectWorkspaceLocation, type ProjectWorkspaceLocation } from '@/lib/project-workspace';
 import { getProjectStageSummary } from '@/lib/project-progress';
-import { normalizeProjectTemplate } from '@/lib/project-stages';
+import { PROJECT_TEMPLATES, normalizeProjectTemplate } from '@/lib/project-stages';
 import type { ProjectInput } from '@/types/project';
 
 function confirmDelete(onConfirm: () => void) {
@@ -180,20 +180,21 @@ export default function ProjectDetailScreen() {
                     <View style={[styles.dayChip, { backgroundColor: theme.warningSoft }]}><ThemedText type="captionStrong" style={{ color: theme.warning }}>{getDDayLabel(project.deadline)}</ThemedText></View>
                     <ThemedText type="caption" themeColor="textSecondary">{formatDeadlineLabel(project.deadline)}</ThemedText>
                   </View>
+                  <ThemedText type="captionStrong" themeColor="textSecondary">{PROJECT_TEMPLATES.find(t => t.id === project.template)?.label}</ThemedText>
                   <ThemedText type="screenTitle">{project.title}</ThemedText>
                   <ThemedText type="body" themeColor="textSecondary">{project.description || '과제 설명이 아직 없어요. 목표나 조건을 추가해 보세요.'}</ThemedText>
                   <View style={styles.nextAction}>
                     <View style={styles.nextActionCopy}>
                       <ThemedText type="caption" themeColor="textSecondary">현재 단계 · {isWorkflowLoading ? '확인 중' : isWorkflowUnavailable ? '확인할 수 없음' : stageSummary.completedStageCount === stageSummary.totalStageCount ? '모든 단계 완료' : `${stageSummary.currentStage.label} 중`}</ThemedText>
-                      {!isWorkflowLoading && !isWorkflowUnavailable ? <ThemedText type="caption" themeColor="textSecondary">{stageSummary.completedStageCount}/{stageSummary.totalStageCount} 단계 완료</ThemedText> : null}
+                      {!isWorkflowLoading && !isWorkflowUnavailable ? <ThemedText type="caption" themeColor="textSecondary">{stageSummary.completedStageCount}/{stageSummary.totalStageCount} 단계 완료 · {stageSummary.percent}%</ThemedText> : null}
                       {!isWorkflowLoading && !isWorkflowUnavailable ? <ThemedText type="smallBold">다음 할 일</ThemedText> : null}
                     </View>
                     {!isWorkflowLoading && !isWorkflowUnavailable ? <Pressable accessibilityRole="button" accessibilityLabel={nextActionLabel} onPress={handleContinue} style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
                       <ThemedText type="button" style={styles.whiteText}>{nextActionLabel}</ThemedText>
                     </Pressable> : null}
                   </View>
-                  {evaluationProgress.error ? <ThemedText accessibilityLiveRegion="polite">{evaluationProgress.error}</ThemedText> : null}
-                  <View style={styles.evaluationRow}>
+                  {isServiceTemplate && evaluationProgress.error ? <ThemedText accessibilityLiveRegion="polite">{evaluationProgress.error}</ThemedText> : null}
+                  {isServiceTemplate ? <View style={styles.evaluationRow}>
                     <View
                       accessibilityLabel={`평가 진행률 ${evaluationProgress.completedCount}/${evaluationProgress.totalCount}명 완료`}
                       style={[
@@ -209,9 +210,9 @@ export default function ProjectDetailScreen() {
                         {evaluationProgress.isLoading ? '평가 현황을 불러오는 중…' : evaluationProgress.error ? '평가 현황 확인 필요' : `평가 진행률 ${evaluationProgress.completedCount}/${evaluationProgress.totalCount}명 완료`}
                       </ThemedText>
                     </View>
-                  </View>
+                  </View> : null}
                 </View>
-                {projectRoom && evaluationIdeaIds.length > 0 && !evaluationProgress.isLoading && !evaluationProgress.error ? <ReminderActions key={project.id} projectId={project.id} title={project.title} deadline={project.deadline} completedCount={evaluationProgress.completedCount} totalCount={projectRoom.members.length} /> : null}
+                {isServiceTemplate && projectRoom && evaluationIdeaIds.length > 0 && !evaluationProgress.isLoading && !evaluationProgress.error ? <ReminderActions key={project.id} projectId={project.id} title={project.title} deadline={project.deadline} completedCount={evaluationProgress.completedCount} totalCount={projectRoom.members.length} /> : null}
               </View>
               {mutationError ? <ThemedText type="caption" style={{ color: theme.danger }}>{mutationError} 다시 시도해 주세요.</ThemedText> : null}
               {stageProgressError && !isServiceTemplate ? <ThemedText accessibilityRole="alert" type="caption" style={{ color: theme.danger }}>{stageProgressError}</ThemedText> : null}
@@ -221,6 +222,8 @@ export default function ProjectDetailScreen() {
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
           <View onLayout={(event) => { boardOffset.current = event.nativeEvent.layout.y; }}>
           <IdeaBoard
+            key={project.id + project.template}
+            projectSettings={project.settings}
             projectId={project.id}
             projectOwnerId={project.userid}
             projectTitle={project.title}

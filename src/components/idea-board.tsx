@@ -22,7 +22,10 @@ import { MvpWorkflowPanel } from '@/components/mvp-workflow-panel';
 import { PresentationWorkflowPanel } from '@/components/presentation-workflow-panel';
 import { ProjectFlowSteps } from '@/components/project-flow-steps';
 import { ProjectHomeSummary } from '@/components/project-home-summary';
-import { TemplateStagePanel } from '@/components/template-stage-panel';
+import { DocumentStagePanel } from '@/components/document-workspace/document-stage-panel';
+import { TopicFields } from '@/components/topic-fields';
+import { useDocumentWorkspace } from '@/hooks/use-document-workspace';
+import { getTopicLabels, getTopicFields, getTopicBranches, normalizeProjectSettings, normalizeTopicDetails, topicSearchText, type ProjectSettings } from '@/lib/topic-workspace';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
 import { useIdeaCategories } from '@/hooks/use-idea-categories';
@@ -33,7 +36,7 @@ import { useIdeas } from '@/hooks/use-ideas';
 import { useMindMap } from '@/hooks/use-mind-map';
 import { useProjectFlow } from '@/hooks/use-project-flow';
 import { candidateIdeaToIdeaInput } from '@/lib/candidate-idea';
-import { validateMindMapIdeaField } from '@/lib/mind-map';
+import { parseIdeaFieldLines, validateMindMapIdeaField } from '@/lib/mind-map';
 import { isMvpPlanCurrent, isPresentationCurrent } from '@/lib/project-flow';
 import { getProjectStages, getStageProgress, getValidStageId, normalizeProjectTemplate } from '@/lib/project-stages';
 import type { ProjectStageRecord } from '@/hooks/use-project-stage-progress';
@@ -82,6 +85,7 @@ type IdeaBoardProps = {
   projectTitle: string;
   projectDeadline?: string | null;
   projectTemplate: ProjectTemplate;
+  projectSettings?: ProjectSettings;
   isTeamProject: boolean;
   hasPresentation: boolean;
   stageRecords: ProjectStageRecord[];
@@ -92,6 +96,7 @@ type IdeaBoardProps = {
 };
 
 type IdeaFormProps = {
+  template: ProjectTemplate;
   idea?: Idea;
   categories: IdeaCategory[];
   draftKey?: string;
@@ -99,12 +104,13 @@ type IdeaFormProps = {
   submitLabel: string;
   isBusy?: boolean;
   error?: string;
-  onSubmit: (input: IdeaInput) => void | Promise<void>;
+  onSubmit: (input: IdeaInput) => boolean | Promise<boolean>;
   onCreateCategory: (name: string) => Promise<{ category?: IdeaCategory; error?: string }>;
   onCancel?: () => void;
 };
 
 type IdeaCardProps = {
+  template: ProjectTemplate;
   idea: Idea;
   feedbacks: IdeaFeedback[];
   likesCount: number;
@@ -401,6 +407,7 @@ function IdeaDraftCoach({
 }
 
 function IdeaForm({
+  template,
   idea,
   categories,
   draftKey,
@@ -412,6 +419,10 @@ function IdeaForm({
   onCreateCategory,
   onCancel,
 }: IdeaFormProps) {
+  const labels = getTopicLabels(template);
+  const [details, setDetails] = useState(() => normalizeTopicDetails(idea?.details));
+  const [keywords, setKeywords] = useState(idea?.keywords.join('\n') ?? '');
+  const [serviceFields, setServiceFields] = useState({ problem: idea?.problem ?? '', targetusers: idea?.targetusers.join('\n') ?? '', solution: idea?.solution ?? '', corefeatures: idea?.corefeatures.join('\n') ?? '' });
   const [title, setTitle] = useState(idea?.title ?? '');
   const [content, setContent] = useState(idea?.content ?? '');
   const [category, setCategory] = useState<IdeaCategory>(normalizeIdeaCategory(idea?.category));
@@ -429,7 +440,7 @@ function IdeaForm({
     clearAnalysis,
     isAnalyzing,
   } = useIdeaDraftAnalysis(projectId);
-  const showDraftCoach = !idea;
+  const showDraftCoach = !idea && template === 'service_app';
 
   useEffect(() => {
     if (!draftKey || idea) {
@@ -446,6 +457,9 @@ function IdeaForm({
         const draft = JSON.parse(value) as Partial<IdeaInput>;
         setTitle(typeof draft.title === 'string' ? draft.title : '');
         setContent(typeof draft.content === 'string' ? draft.content : '');
+        setDetails(normalizeTopicDetails(draft.details));
+        setKeywords(draft.keywords?.join('\n') ?? '');
+        setServiceFields({ problem: draft.problem ?? '', targetusers: draft.targetusers?.join('\n') ?? '', solution: draft.solution ?? '', corefeatures: draft.corefeatures?.join('\n') ?? '' });
         setCategory(normalizeIdeaCategory(draft.category));
         setStatus(normalizeIdeaStatus(draft.status));
       } catch {
@@ -470,7 +484,7 @@ function IdeaForm({
           title,
           content,
           category,
-          status,
+          status, details, keywords: parseIdeaFieldLines(keywords), ...serviceFields, targetusers: parseIdeaFieldLines(serviceFields.targetusers), corefeatures: parseIdeaFieldLines(serviceFields.corefeatures),
         } satisfies IdeaInput),
       );
     }, 300);
@@ -478,11 +492,11 @@ function IdeaForm({
     return () => {
       globalThis.clearTimeout(timeout);
     };
-  }, [category, content, draftKey, idea, status, title]);
+  }, [category, content, details, draftKey, idea, keywords, serviceFields, status, title]);
 
   const handleSubmit = async () => {
-    const nextTitleError = title.trim() ? '' : '아이디어 제목을 입력해 주세요.';
-    const nextContentError = content.trim() ? '' : '아이디어 내용을 입력해 주세요.';
+    const nextTitleError = title.trim() ? '' : `${labels.title}을 입력해 주세요.`;
+    const nextContentError = content.trim() ? '' : `${labels.description}을 입력해 주세요.`;
 
     setTitleError(nextTitleError);
     setContentError(nextContentError);
@@ -491,7 +505,8 @@ function IdeaForm({
       return;
     }
 
-    await onSubmit({ title, content, category, status });
+    const success = await onSubmit({ title, content, category, status, details, keywords: parseIdeaFieldLines(keywords), ...serviceFields, targetusers: parseIdeaFieldLines(serviceFields.targetusers), corefeatures: parseIdeaFieldLines(serviceFields.corefeatures) });
+    if (!success) return;
 
     if (!idea) {
       if (draftKey) {
@@ -527,8 +542,8 @@ function IdeaForm({
   };
 
   const handleAnalyzeDraft = () => {
-    const nextTitleError = title.trim() ? '' : '아이디어 제목을 입력해 주세요.';
-    const nextContentError = content.trim() ? '' : '아이디어 내용을 입력해 주세요.';
+    const nextTitleError = title.trim() ? '' : `${labels.title}을 입력해 주세요.`;
+    const nextContentError = content.trim() ? '' : `${labels.description}을 입력해 주세요.`;
 
     setTitleError(nextTitleError);
     setContentError(nextContentError);
@@ -543,8 +558,9 @@ function IdeaForm({
   return (
     <View style={[styles.form, Shadows.card]}>
       <View style={styles.field}>
-        <ThemedText type="smallBold" style={{ color: PALETTE.text }}>아이디어 제목</ThemedText>
+        <ThemedText type="smallBold" style={{ color: PALETTE.text }}>{labels.title}</ThemedText>
         <TextInput
+          accessibilityLabel={labels.title}
           value={title}
           onChangeText={(value) => {
             setTitle(value);
@@ -565,8 +581,9 @@ function IdeaForm({
       </View>
 
       <View style={styles.field}>
-        <ThemedText type="smallBold" style={{ color: PALETTE.text }}>아이디어 내용</ThemedText>
+        <ThemedText type="smallBold" style={{ color: PALETTE.text }}>{labels.description}</ThemedText>
         <TextInput
+          accessibilityLabel={labels.description}
           value={content}
           onChangeText={(value) => {
             setContent(value);
@@ -587,6 +604,10 @@ function IdeaForm({
         ) : null}
       </View>
 
+      {template !== 'service_app' ? <TopicFields template={template} details={details} keywords={keywords} onDetails={setDetails} onKeywords={setKeywords} disabled={isBusy} /> : <>
+        {(['problem', 'targetusers', 'solution', 'corefeatures'] as const).map((key, index) => <View key={key} style={styles.field}><ThemedText type="smallBold">{['문제', '대상 사용자 (한 줄에 하나씩)', '해결 방법', '핵심 기능 (한 줄에 하나씩)'][index]}</ThemedText><TextInput accessibilityLabel={['문제', '대상 사용자', '해결 방법', '핵심 기능'][index]} multiline value={serviceFields[key]} onChangeText={value => setServiceFields(current => ({ ...current, [key]: value }))} style={[styles.input, styles.multilineInput]} /></View>)}
+        <View style={styles.field}><ThemedText type="smallBold">키워드 (한 줄에 하나씩)</ThemedText><TextInput accessibilityLabel="키워드" multiline value={keywords} onChangeText={setKeywords} style={styles.input} /></View>
+      </>}
       <View style={styles.field}>
         <ThemedText type="smallBold" style={{ color: PALETTE.text }}>카테고리</ThemedText>
         <CategorySelector
@@ -837,6 +858,7 @@ function IdeaDetailSection({ label, value }: { label: string; value: string }) {
 }
 
 function IdeaCard({
+  template,
   idea,
   feedbacks,
   likesCount,
@@ -860,7 +882,7 @@ function IdeaCard({
   const currentStatusIndex = IdeaStatuses.indexOf(status);
   const statusAfterCurrent = IdeaStatuses[currentStatusIndex + 1];
   const nextStatus = statusAfterCurrent === 'selected' ? undefined : statusAfterCurrent;
-  const hasStructuredDetails = Boolean(
+  const hasStructuredDetails = template === 'service_app' && Boolean(
     idea.summary || idea.problem || idea.targetusers.length || idea.solution || idea.corefeatures.length || idea.keywords.length,
   );
   const summary = idea.summary || (!hasStructuredDetails ? idea.content : idea.problem || idea.solution);
@@ -945,6 +967,7 @@ function IdeaCard({
       </Pressable>
       {isExpanded ? (
         <View style={styles.structuredDetails}>
+          {getTopicFields(template).map(field => <IdeaDetailSection key={field.key} label={field.label} value={normalizeTopicDetails(idea.details)[field.key]} />)}
           {hasStructuredDetails ? (
             <>
               {idea.summary ? <IdeaDetailSection label="요약" value={idea.summary} /> : null}
@@ -1120,6 +1143,7 @@ function CategoryManager({
 }
 
 function FilterBlock({
+  itemLabel = '아이디어',
   categories,
   customCategories,
   categoryFilter,
@@ -1137,6 +1161,7 @@ function FilterBlock({
   onDeleteCategory,
   isBusy,
 }: {
+  itemLabel?: string;
   categories: IdeaCategory[];
   customCategories: IdeaCategory[];
   categoryFilter: CategoryFilter;
@@ -1165,13 +1190,14 @@ function FilterBlock({
           onChangeText={onChangeSearchDraft}
           onSubmitEditing={onSubmitSearch}
           returnKeyType="search"
-          placeholder="아이디어 검색"
+          accessibilityLabel={`${itemLabel} 검색어`}
+          placeholder={`${itemLabel} 검색`}
           placeholderTextColor={PALETTE.textSecondary}
           style={[styles.input, styles.searchInput]}
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="아이디어 검색"
+          accessibilityLabel={`${itemLabel} 검색`}
           onPress={onSubmitSearch}
           style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}>
           <AppIcon name="search" color={PALETTE.text} size={18} />
@@ -1357,6 +1383,7 @@ export function IdeaBoard({
   projectTitle,
   projectDeadline,
   projectTemplate,
+  projectSettings,
   isTeamProject,
   hasPresentation,
   stageRecords,
@@ -1375,6 +1402,9 @@ export function IdeaBoard({
     deleteIdea,
     loadIdeas,
   } = useIdeas(projectId);
+  const settings = normalizeProjectSettings(projectSettings);
+  const topicLabels = getTopicLabels(projectTemplate);
+  const workspace = useDocumentWorkspace(projectId, projectTemplate, projectTitle, stageRecords);
   const flowController = useProjectFlow(projectId);
   const {
     mindMap,
@@ -1389,7 +1419,8 @@ export function IdeaBoard({
     placeIdeaUnderBranch,
     updateBranch,
     deleteBranch,
-  } = useMindMap(projectId, projectTitle);
+    addDefaultBranches,
+  } = useMindMap(projectId, projectTitle, projectTemplate, settings.writingKind);
   const usedCategories = useMemo(
     () => ideas.map((idea) => normalizeIdeaCategory(idea.category)),
     [ideas],
@@ -1451,7 +1482,7 @@ export function IdeaBoard({
         const ideaFeedbacks = feedbacksByIdeaId.get(idea.id) ?? [];
         const searchableText = [
           idea.title,
-          idea.content,
+          topicSearchText(idea),
           getIdeaCategoryLabel(normalizeIdeaCategory(idea.category)),
           getStatusLabel(normalizeIdeaStatus(idea.status)),
           ...ideaFeedbacks.map((feedback) => feedback.content),
@@ -1491,9 +1522,9 @@ export function IdeaBoard({
   );
   const editingIdea = editingIdeaId ? ideas.find((idea) => idea.id === editingIdeaId) : undefined;
   const currentError = ideaError || mindMapError || mutationError || categoryerror || feedbackError || likeError;
-  const selectedIdeaId = flowController.flow?.selectedideaid
-    ?? ideas.find((idea) => normalizeIdeaStatus(idea.status) === 'selected')?.id
-    ?? null;
+  const selectedIdeaId = projectTemplate === 'service_app'
+    ? flowController.flow?.selectedideaid ?? ideas.find((idea) => normalizeIdeaStatus(idea.status) === 'selected')?.id ?? null
+    : workspace.data.selectedIdeaId;
   const selectedIdea = ideas.find((idea) => idea.id === selectedIdeaId) ?? null;
   const currentSelectedIdeaId = selectedIdea?.id ?? null;
   const workflowIdeas = ideas.filter(
@@ -1533,12 +1564,13 @@ export function IdeaBoard({
     } else if (result.idea && mindMap) {
       const composed = await composeIdeas([result.idea], mindMap.title);
       if (composed.error) setMutationError(composed.error);
-      else setIsCreateIdeaOpen(false);
+      setIsCreateIdeaOpen(false);
     } else {
       setIsCreateIdeaOpen(false);
     }
 
     setIsMutating(false);
+    return !result.error;
   };
 
   const handleUpdateMindMapNode = async (ideaId: string, input: IdeaInput) => {
@@ -1602,9 +1634,10 @@ export function IdeaBoard({
 
     const created = await createIdea({
       title: input.title,
-      content: [input.summary, input.problem, input.solution, ...input.corefeatures].filter(Boolean).join('\n\n') || '마인드맵에서 추가한 아이디어입니다.',
+      details: input.details,
+      content: input.content || [input.summary, input.problem, input.solution, ...input.corefeatures].filter(Boolean).join('\n\n') || '마인드맵에서 추가한 아이디어입니다.',
       status: 'thought',
-      category: 'planning',
+      category: projectTemplate === 'report_research' ? 'research' : 'planning',
       summary: input.summary,
       problem: input.problem,
       targetusers: input.targetusers,
@@ -1626,12 +1659,13 @@ export function IdeaBoard({
       globalThis.setTimeout(() => setHighlightedIdeaIds(new Set()), 4000);
     }
     setIsMutating(false);
-    return placed;
+    // The card already exists; retries must not create a duplicate on a placement failure.
+    return {};
   };
 
   const handleUpdate = async (input: IdeaInput) => {
     if (!editingIdeaId) {
-      return;
+      return false;
     }
 
     setIsMutating(true);
@@ -1643,12 +1677,13 @@ export function IdeaBoard({
     } else if (result.idea && mindMap) {
       const composed = await composeIdeas([result.idea], mindMap.title);
       if (composed.error) setMutationError(composed.error);
-      else setEditingIdeaId(null);
+      setEditingIdeaId(null);
     } else {
       setEditingIdeaId(null);
     }
 
     setIsMutating(false);
+    return !result.error;
   };
 
   const handleToggleFavorite = async (idea: Idea) => {
@@ -1854,7 +1889,7 @@ export function IdeaBoard({
       <View style={styles.boardHeader}>
         <View style={styles.boardTitleBlock}>
           <ThemedText style={styles.boardHeaderMainTitle}>
-            {section === 'home' ? '과제 홈' : section === 'ideas' ? '아이디어 목록' : '마인드맵'}
+            {section === 'home' ? '과제 홈' : section === 'ideas' ? topicLabels.list : topicLabels.map}
           </ThemedText>
           <ThemedText style={styles.boardHeaderSub}>
             전체 {ideas.length}개 · 공감 {likeCount}개 · 즐겨찾기 {favoriteCount}개 · 피드백 {feedbacks.length}개
@@ -1866,6 +1901,9 @@ export function IdeaBoard({
         <>
           <View style={styles.homeOverview}>
             <ProjectHomeSummary
+              template={projectTemplate}
+              workspace={workspace.data}
+              settings={settings}
               deadline={projectDeadline}
               ideaCount={workflowIdeas.length}
               selectedIdeaTitle={selectedIdea?.title}
@@ -1887,10 +1925,16 @@ export function IdeaBoard({
             />
           </View>
 
-          {!isServiceTemplate ? <TemplateStagePanel key={`${projectId}:${workflowStep}`} stage={stages.find((stage) => stage.id === workflowStep) ?? stages[0]}
-            record={stageRecords.find((record) => record.stageid === workflowStep)}
-            isTeamProject={isTeamProject}
-            onSave={(content, isCompleted) => onSaveStage(workflowStep, content, isCompleted)} /> : null}
+          {!isServiceTemplate ? <DocumentStagePanel
+            template={projectTemplate} projectId={projectId} projectTitle={projectTitle} settings={settings}
+            stage={workflowStep} stages={stages} records={stageRecords} workspace={workspace}
+            ideas={ideas} selectedIdea={selectedIdea} mindMapNodes={mindMapNodes}
+            onOpenList={() => navigateTo('ideas')} onOpenMap={() => navigateTo('mindmap')}
+            onEditIdea={ideaId => { navigateTo('ideas'); setEditingIdeaId(ideaId); }}
+            onAddIdea={() => { navigateTo('ideas'); setIsCreateIdeaOpen(true); }}
+            onNavigate={handleFlowStepPress} onSaveStage={onSaveStage} onSetTopic={updateTopic}
+            onCreateIdea={async input => { const result = await createIdea(input); if (result.idea && mindMap) { const synced = await composeIdeas([result.idea], mindMap.title); if (synced.error) setMutationError(synced.error); } return result; }}
+          /> : null}
 
           {isServiceTemplate && workflowStep === 'extraction' ? (
             <IdeaExtractionPanel
@@ -1958,14 +2002,14 @@ export function IdeaBoard({
       {section === 'ideas' ? (
         <>
           <View style={styles.listToolbar}>
-            <ThemedText style={styles.listToolbarText}>아이디어를 모으고 공감으로 우선순위를 정하세요.</ThemedText>
+            <ThemedText style={styles.listToolbarText}>{topicLabels.item}를 모으고 공감으로 우선순위를 정하세요.</ThemedText>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="아이디어 추가"
+              accessibilityLabel={`${topicLabels.item} 추가`}
               onPress={() => { setMutationError(''); setIsCreateIdeaOpen(true); }}
               style={({ pressed }) => [styles.addIdeaButton, pressed && styles.pressed]}>
               <AppIcon name="add" color={PALETTE.text} size={18} />
-              <ThemedText type="smallBold" style={styles.primaryButtonText}>아이디어 추가</ThemedText>
+              <ThemedText type="smallBold" style={styles.primaryButtonText}>{topicLabels.item} 추가</ThemedText>
             </Pressable>
           </View>
 
@@ -1978,7 +2022,7 @@ export function IdeaBoard({
               <View style={[styles.ideaModalPanel, Shadows.floating]}>
                 <View style={styles.ideaModalHeader}>
                   <View style={styles.boardTitleBlock}>
-                    <ThemedText style={styles.modalTitle}>{editingIdea ? '아이디어 수정' : '아이디어 추가'}</ThemedText>
+                    <ThemedText style={styles.modalTitle}>{`${topicLabels.item} ${editingIdea ? '수정' : '추가'}`}</ThemedText>
                     <ThemedText style={styles.modalSubtitle}>핵심을 짧게 적고 필요하면 AI 도움으로 다듬어 보세요.</ThemedText>
                   </View>
                   <Pressable
@@ -1989,13 +2033,15 @@ export function IdeaBoard({
                     <AppIcon name="close" color={PALETTE.textSecondary} size={20} />
                   </Pressable>
                 </View>
-                <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.ideaModalContent}>
+                <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.ideaModalContent}>
                   <IdeaForm
+                    key={editingIdea?.id ?? `new:${projectTemplate}`}
+                    template={projectTemplate}
                     idea={editingIdea}
                     categories={categories}
-                    draftKey={editingIdea ? undefined : `ideadraft:${projectId}`}
+                    draftKey={editingIdea ? undefined : `ideadraft:${projectId}:${projectTemplate}`}
                     projectId={editingIdea ? undefined : projectId}
-                    submitLabel={editingIdea ? '저장' : '아이디어 등록'}
+                    submitLabel={editingIdea ? '저장' : `${topicLabels.item} 등록`}
                     isBusy={isMutating}
                     error={mutationError}
                     onSubmit={editingIdea ? handleUpdate : handleCreate}
@@ -2008,6 +2054,7 @@ export function IdeaBoard({
           </Modal>
 
           <FilterBlock
+            itemLabel={topicLabels.item}
             categories={categories}
             customCategories={customCategories}
             categoryFilter={categoryFilter}
@@ -2037,9 +2084,9 @@ export function IdeaBoard({
           ) : visibleIdeas.length === 0 ? (
             <EmptyState
               icon="idea"
-              title={ideas.length === 0 ? '첫 아이디어를 추가해 보세요' : '조건에 맞는 아이디어가 없어요'}
+              title={ideas.length === 0 ? `첫 ${topicLabels.item}를 추가해 보세요` : `조건에 맞는 ${topicLabels.item}가 없어요`}
               description={ideas.length === 0 ? '완성된 문장일 필요 없어요. 떠오른 생각부터 기록해 보세요.' : '검색어나 상세 필터를 바꿔 보세요.'}
-              actionLabel="아이디어 추가"
+              actionLabel={`${topicLabels.item} 추가`}
               onAction={() => setIsCreateIdeaOpen(true)}
             />
           ) : (
@@ -2047,6 +2094,7 @@ export function IdeaBoard({
               {visibleIdeas.map((idea) => (
                 <IdeaCard
                   key={idea.id}
+                  template={projectTemplate}
                   idea={idea}
                   feedbacks={feedbacksByIdeaId.get(idea.id) ?? []}
                   likesCount={likeCountsByIdeaId.get(idea.id) ?? 0}
@@ -2085,6 +2133,9 @@ export function IdeaBoard({
             </View>
           ) : (
             <IdeaMindMap
+              template={projectTemplate}
+              onAddDefaultBranches={!isServiceTemplate && getTopicBranches(projectTemplate, settings.writingKind).length ? addDefaultBranches : undefined}
+              onPlaceIdea={placeIdeaUnderBranch}
               mindMap={mindMap}
               nodes={mindMapNodes}
               ideas={ideas}
@@ -2100,7 +2151,7 @@ export function IdeaBoard({
               onUpdateBranch={updateBranch}
               onDeleteBranch={deleteBranch}
               onDeleteIdea={handleDeleteMindMapIdea}
-              onGoToAnalysis={() => handleFlowStepPress('selection')}
+              onGoToAnalysis={isServiceTemplate ? () => handleFlowStepPress('selection') : undefined}
             />
           )}
         </>
@@ -2600,6 +2651,7 @@ const styles = StyleSheet.create({
   },
   ideaModalOverlay: {
     flex: 1,
+    ...Platform.select({ web: { position: 'fixed' as const, top: 0, right: 0, bottom: 0, left: 0 } }),
     justifyContent: 'flex-end',
     alignItems: 'center',
     backgroundColor: PALETTE.overlay,
@@ -2608,6 +2660,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 680,
     maxHeight: '92%',
+    flexShrink: 1,
     borderWidth: 1,
     borderColor: PALETTE.cardBorder,
     backgroundColor: PALETTE.card,

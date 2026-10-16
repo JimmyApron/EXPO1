@@ -14,6 +14,9 @@ import {
 } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 
+import { TopicFields } from '@/components/topic-fields';
+import { getTopicLabels, normalizeTopicDetails, type TopicDetails } from '@/lib/topic-workspace';
+import type { ProjectTemplate } from '@/types/project';
 import { ThemedText } from '@/components/themed-text';
 import { MindMapExport } from '@/components/mind-map-export';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
@@ -59,6 +62,9 @@ type MutationResult = Promise<{ error?: string }>;
 type ViewMode = 'map' | 'list';
 
 type IdeaMindMapProps = {
+  template?: ProjectTemplate;
+  onPlaceIdea: (idea: Idea, branchId: string) => MutationResult;
+  onAddDefaultBranches?: () => MutationResult;
   mindMap: MindMap | null;
   nodes: MindMapNode[];
   ideas: Idea[];
@@ -74,7 +80,7 @@ type IdeaMindMapProps = {
   onUpdateBranch: (nodeId: string, title: string, summary: string) => MutationResult;
   onDeleteBranch: (nodeId: string) => MutationResult;
   onDeleteIdea: (ideaId: string) => MutationResult;
-  onGoToAnalysis: () => void;
+  onGoToAnalysis?: () => void;
 };
 
 const nodeWidth = 220;
@@ -85,6 +91,8 @@ const maxMapZoom = 1.6;
 const mapZoomStep = 0.1;
 
 type IdeaDetailsDraft = {
+  content: string;
+  details: TopicDetails;
   title: string;
   summary: string;
   problem: string;
@@ -95,7 +103,7 @@ type IdeaDetailsDraft = {
 };
 
 function emptyIdeaDetailsDraft(): IdeaDetailsDraft {
-  return { title: '', summary: '', problem: '', targetusers: '', solution: '', corefeatures: '', keywords: '' };
+  return { content: '', details: normalizeTopicDetails(), title: '', summary: '', problem: '', targetusers: '', solution: '', corefeatures: '', keywords: '' };
 }
 
 function getBounds(nodes: MindMapNode[]) {
@@ -115,6 +123,7 @@ function getBounds(nodes: MindMapNode[]) {
 function ideaDetailsDraftToInput(draft: IdeaDetailsDraft): MindMapIdeaDetailsInput {
   return {
     title: draft.title.trim(),
+    content: draft.content.trim(), details: draft.details,
     summary: draft.summary.trim(),
     problem: draft.problem.trim(),
     targetusers: parseIdeaFieldLines(draft.targetusers),
@@ -218,6 +227,9 @@ function StructuredIdeaFields({
 }
 
 export function IdeaMindMap({
+  template = 'service_app',
+  onPlaceIdea,
+  onAddDefaultBranches,
   mindMap,
   nodes,
   ideas,
@@ -235,6 +247,9 @@ export function IdeaMindMap({
   onDeleteIdea,
   onGoToAnalysis,
 }: IdeaMindMapProps) {
+  const labels = getTopicLabels(template);
+  const isService = template === 'service_app';
+  const [placingIdeaId, setPlacingIdeaId] = useState<string | null>(null);
   const { width } = useWindowDimensions();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [topicDraft, setTopicDraft] = useState('');
@@ -260,7 +275,7 @@ export function IdeaMindMap({
   const selectedIdea = selectedNode?.ideaid ? ideaById.get(selectedNode.ideaid) ?? null : null;
   const addTargetNode = addTargetNodeId ? nodeById.get(addTargetNodeId) ?? null : null;
   const addIdeaField = addTargetNode ? getMindMapNodeIdeaField(addTargetNode, nodes) : null;
-  const selectedIdeaField = selectedNode?.nodetype === 'idea_field' ? selectedNode.ideafield : null;
+  const selectedIdeaField = isService && selectedNode?.nodetype === 'idea_field' ? selectedNode.ideafield : null;
   const branches = useMemo(() => nodes.filter((node) => node.nodetype === 'branch'), [nodes]);
   const rootNode = useMemo(() => nodes.find((node) => node.nodetype === 'root') ?? null, [nodes]);
   const topLevelBranches = useMemo(() => branches.filter((branch) => !branch.parentnodeid || !nodeById.has(branch.parentnodeid) || branch.parentnodeid === rootNode?.id), [branches, nodeById, rootNode]);
@@ -327,6 +342,7 @@ export function IdeaMindMap({
     setBranchSummaryDraft(node.summary);
     if (idea) {
       setForm({
+        content: idea.content, details: normalizeTopicDetails(idea.details),
         title: idea.title,
         summary: idea.summary,
         problem: idea.problem,
@@ -365,6 +381,9 @@ export function IdeaMindMap({
       result = await onUpdateBranch(selectedNode.id, topicDraft, branchSummaryDraft);
     } else if (selectedIdea) {
       const details = ideaDetailsDraftToInput(form);
+      if (!details.title || (!isService && !details.content)) {
+        setIsSaving(false); setLocalError(`${labels.title}과 설명을 입력해 주세요.`); return;
+      }
       if (selectedIdeaField) {
         const validationError = validateMindMapIdeaField(details, selectedIdeaField);
         if (validationError) {
@@ -375,10 +394,11 @@ export function IdeaMindMap({
       }
       result = await onUpdateIdea(selectedIdea.id, {
         title: details.title,
-        content: selectedIdea.content || details.summary || details.problem || details.solution || details.title,
+        content: (!isService ? details.content : selectedIdea.content) || details.summary || details.problem || details.solution || details.title,
         status: normalizeIdeaStatus(selectedIdea.status),
         category: normalizeIdeaCategory(selectedIdea.category),
         sourceid: selectedIdea.sourceid,
+        details: details.details,
         summary: details.summary,
         problem: details.problem,
         targetusers: details.targetusers,
@@ -440,8 +460,8 @@ export function IdeaMindMap({
 
   const submitNewNode = async () => {
     if (!addTargetNode) return;
-    if (!addForm.title.trim()) {
-      setAddError(addTargetNode.nodetype === 'root' ? '분류 이름을 입력해 주세요.' : '아이디어 제목을 입력해 주세요.');
+    if (!addForm.title.trim() || (!isService && addTargetNode.nodetype !== 'root' && !addForm.content.trim())) {
+      setAddError(addTargetNode.nodetype === 'root' ? '분류 이름을 입력해 주세요.' : `${labels.title}과 설명을 입력해 주세요.`);
       return;
     }
     let input = ideaDetailsDraftToInput(addForm);
@@ -646,7 +666,7 @@ export function IdeaMindMap({
             style={({ pressed }) => [styles.secondaryButton, (pressed || isBusy) && styles.pressed]}>
             <ThemedText style={styles.secondaryButtonText}>재정렬</ThemedText>
           </Pressable>
-          <Pressable
+          {onGoToAnalysis ? <Pressable
             accessibilityRole="button"
             accessibilityLabel="정리한 아이디어 AI 분석으로 넘기기"
             disabled={isBusy || ideas.length === 0}
@@ -656,11 +676,17 @@ export function IdeaMindMap({
               (pressed || isBusy || ideas.length === 0) && styles.pressed,
             ]}>
             <ThemedText style={styles.whiteText}>AI 분석으로 넘기기</ThemedText>
-          </Pressable>
+          </Pressable> : null}
         </View>
       </View>
 
-      <MindMapExport title={mindMap.title} nodes={nodes} ideas={ideas} />
+      {!isService && ideas.length > 0 ? <View style={styles.field}>
+        <ThemedText type="smallBold">목록의 {labels.item} 배치</ThemedText>
+        <View style={styles.branchChoices}>{ideas.map(idea => <Pressable key={idea.id} accessibilityRole="button" accessibilityState={{ selected: placingIdeaId === idea.id }} onPress={() => setPlacingIdeaId(idea.id)} style={styles.branchChoice}><ThemedText>{placingIdeaId === idea.id ? '선택됨 · ' : ''}{idea.title}</ThemedText></Pressable>)}</View>
+        {placingIdeaId ? <View style={styles.branchChoices}>{branches.map(branch => <Pressable key={branch.id} accessibilityRole="button" disabled={isBusy || isSaving} onPress={async () => { const idea = ideaById.get(placingIdeaId); if (!idea) return; setIsSaving(true); const result = await onPlaceIdea(idea, branch.id); setIsSaving(false); setMapStatus(result.error || `${idea.title} → ${branch.title} 배치 완료`); if (!result.error) setPlacingIdeaId(null); }} style={styles.branchChoice}><ThemedText>{branch.title}에 배치</ThemedText></Pressable>)}</View> : null}
+      </View> : null}
+      <MindMapExport title={mindMap.title} nodes={nodes} ideas={ideas} template={template} />
+      {onAddDefaultBranches ? <Pressable accessibilityRole="button" disabled={isBusy || isSaving} onPress={async () => { setIsSaving(true); const result = await onAddDefaultBranches(); setIsSaving(false); setMapStatus(result.error || '현재 과제 종류의 기본 가지를 추가했습니다.'); }} style={styles.secondaryButton}><ThemedText style={styles.secondaryButtonText}>현재 과제 종류의 기본 가지 추가</ThemedText></Pressable> : null}
 
       {/* 맵 프레임 */}
       {viewMode === 'list' ? renderListView() : (
@@ -835,7 +861,7 @@ export function IdeaMindMap({
             <ScrollView contentContainerStyle={styles.addNodeContent} keyboardShouldPersistTaps="handled">
               <View style={styles.addNodeCopy}>
                 <ThemedText style={styles.modalHeadingTitle}>
-                  {addTargetNode?.nodetype === 'root' ? '새 분류 가지' : '새 아이디어'}
+                  {addTargetNode?.nodetype === 'root' ? '새 분류 가지' : `새 ${labels.item}`}
                 </ThemedText>
                 <ThemedText style={styles.modalHeadingSub}>
                   {addTargetNode?.nodetype === 'root'
@@ -844,7 +870,7 @@ export function IdeaMindMap({
                 </ThemedText>
               </View>
               <DetailField
-                label={addTargetNode?.nodetype === 'root' ? '분류 이름' : '아이디어 제목'}
+                label={addTargetNode?.nodetype === 'root' ? '분류 이름' : labels.title}
                 value={addForm.title}
                 multiline={false}
                 onChangeText={(value) => {
@@ -858,7 +884,7 @@ export function IdeaMindMap({
                   value={addForm.summary}
                   onChangeText={(value) => setAddForm((current) => ({ ...current, summary: value }))}
                 />
-              ) : addIdeaField ? (
+              ) : !isService ? <><DetailField label={labels.description} value={addForm.content} onChangeText={content => setAddForm(v => ({ ...v, content }))} /><TopicFields template={template} details={addForm.details} keywords={addForm.keywords} onDetails={details => setAddForm(v => ({ ...v, details }))} onKeywords={keywords => setAddForm(v => ({ ...v, keywords }))} /></> : addIdeaField ? (
                 <>
                   <DetailField
                     label={`${getIdeaFieldLabel(addIdeaField)}${isListIdeaField(addIdeaField) ? ' (한 줄에 하나씩)' : ''}`}
@@ -983,12 +1009,13 @@ export function IdeaMindMap({
                   {isFullIdeaEditorOpen ? (
                     <>
                       <DetailField label="제목" value={form.title} multiline={false} onChangeText={(value) => setForm((current) => ({ ...current, title: value }))} />
-                      <DetailField label="요약" value={form.summary} onChangeText={(value) => setForm((current) => ({ ...current, summary: value }))} />
-                      <StructuredIdeaFields
-                        draft={form}
-                        excludedField={selectedIdeaField}
-                        onChange={(field, value) => setForm((current) => ({ ...current, [field]: value }))}
-                      />
+                      {isService ? <>
+                        <DetailField label="요약" value={form.summary} onChangeText={(value) => setForm((current) => ({ ...current, summary: value }))} />
+                        <StructuredIdeaFields draft={form} excludedField={selectedIdeaField} onChange={(field, value) => setForm((current) => ({ ...current, [field]: value }))} />
+                      </> : <>
+                        <DetailField label={labels.description} value={form.content} onChangeText={content => setForm(v => ({ ...v, content }))} />
+                        <TopicFields template={template} details={form.details} keywords={form.keywords} onDetails={details => setForm(v => ({ ...v, details }))} onKeywords={keywords => setForm(v => ({ ...v, keywords }))} />
+                      </>}
                       {(selectedNode?.nodetype === 'idea' || selectedNode?.nodetype === 'idea_field') && branches.length > 0 ? (
                         <View style={styles.field}>
                           <ThemedText style={styles.fieldLabel}>다른 가지로 이동</ThemedText>

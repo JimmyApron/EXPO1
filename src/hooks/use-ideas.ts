@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { normalizeTopicDetails } from '@/lib/topic-workspace';
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
@@ -20,7 +21,8 @@ type IdeaMutationResult = {
 };
 
 const ideaSelect =
-  'id, projectid, userid, title, content, status, category, isfavorite, legacystructural, parentnodeid, x, y, side, sourceid, summary, problem, targetusers, solution, keywords, corefeatures, createdat, updatedat';
+  'id, projectid, userid, title, content, status, category, isfavorite, legacystructural, parentnodeid, x, y, side, sourceid, summary, problem, targetusers, solution, keywords, corefeatures, details, createdat, updatedat';
+const legacyIdeaSelect = 'id, projectid, userid, title, content, status, category, isfavorite, legacystructural, parentnodeid, x, y, side, sourceid, summary, problem, targetusers, solution, keywords, corefeatures, createdat, updatedat';
 
 function normalizeStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
@@ -48,6 +50,7 @@ function normalizeIdea(row: Partial<Idea>): Idea {
     solution: typeof row.solution === 'string' ? row.solution : '',
     keywords: normalizeStringArray(row.keywords),
     corefeatures: normalizeStringArray(row.corefeatures),
+    details: normalizeTopicDetails(row.details),
     createdat: row.createdat ?? '',
     updatedat: row.updatedat ?? '',
   };
@@ -55,6 +58,7 @@ function normalizeIdea(row: Partial<Idea>): Idea {
 
 function cleanIdeaInput(input: IdeaInput) {
   const structured = {
+    ...(input.details !== undefined ? { details: normalizeTopicDetails(input.details) } : {}),
     ...(input.sourceid !== undefined ? { sourceid: input.sourceid } : {}),
     ...(input.summary !== undefined ? { summary: input.summary.trim() } : {}),
     ...(input.problem !== undefined ? { problem: input.problem.trim() } : {}),
@@ -122,12 +126,18 @@ export function useIdeas(projectId?: string) {
     setIsLoadingIdeas(true);
     setIdeaError('');
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('ideas')
       .select(ideaSelect)
       .eq('projectid', projectId)
       .eq('legacystructural', false)
       .order('createdat', { ascending: false });
+
+    if (error && (error.code === '42703' || error.code === 'PGRST204') && /\bdetails\b/.test(error.message)) {
+      const legacy = await supabase.from('ideas').select(legacyIdeaSelect).eq('projectid', projectId).eq('legacystructural', false).order('createdat', { ascending: false });
+      data = legacy.data?.map(row => ({ ...row, details: {} })) ?? null;
+      error = legacy.error;
+    }
 
     if (error) {
       setIdeaError(error.message);

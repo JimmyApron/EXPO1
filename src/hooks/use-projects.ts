@@ -4,8 +4,9 @@ import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { Project, ProjectInput } from '@/types/project';
+import { normalizeProjectSettings } from '@/lib/topic-workspace';
 import { normalizeProjectTemplate } from '@/lib/project-stages';
-import { isMissingProjectTemplateColumn, LEGACY_PROJECT_SELECT, normalizeProjectRow, PROJECT_SELECT } from '@/lib/project-schema';
+import { isMissingProjectSettings, isMissingProjectTemplateColumn, LEGACY_PROJECT_SELECT, TEMPLATE_PROJECT_SELECT, normalizeProjectRow, PROJECT_SELECT } from '@/lib/project-schema';
 
 type ProjectMutationResult = {
   project?: Project;
@@ -21,6 +22,7 @@ function cleanProjectInput(input: ProjectInput) {
     deadline: deadline || null,
     template: normalizeProjectTemplate(input.template),
     haspresentation: input.hasPresentation,
+    settings: normalizeProjectSettings(input.settings),
   };
 }
 
@@ -59,7 +61,14 @@ export function useProjects(roomid?: string) {
       query = query.eq('userid', user.id).is('roomid', null);
     }
 
-    const { data, error } = await query;
+    let { data, error } = await query;
+    if (isMissingProjectSettings(error)) {
+      let fallback = supabase.from('projects').select(TEMPLATE_PROJECT_SELECT).order('createdat', { ascending: false });
+      fallback = roomid ? fallback.eq('roomid', roomid) : fallback.eq('userid', user.id).is('roomid', null);
+      const result = await fallback;
+      data = result.data?.map(row => ({ ...row, settings: {} })) ?? null;
+      error = result.error;
+    }
     let rows: Record<string, unknown>[] = data ?? [];
     let loadError = error;
     if (isMissingProjectTemplateColumn(error)) {

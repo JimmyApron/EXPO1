@@ -9,7 +9,7 @@ import type { ProjectFlowSummary } from '@/hooks/use-project-flow-summaries';
 import type { ProjectStageRecord } from '@/hooks/use-project-stage-progress';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import { getProjectStageSummary } from '@/lib/project-progress';
-import { normalizeProjectTemplate } from '@/lib/project-stages';
+import { PROJECT_TEMPLATES, normalizeProjectTemplate } from '@/lib/project-stages';
 import type { Project } from '@/types/project';
 
 // 🎨 디자인 가이드 컬러
@@ -43,6 +43,7 @@ type ProjectCardProps = {
 };
 
 export function ProjectCard({ project, stats, flow, flowStatus = 'ready', featured = false, stageRecords = [], stageStatus = 'ready', ideaCountsStatus = 'ready', favorite = false, favoriteBusy = false, onToggleFavorite }: ProjectCardProps) {
+  const templateLabel = PROJECT_TEMPLATES.find(t => t.id === normalizeProjectTemplate(project.template))!.label;
   const summary = getProjectStageSummary(project, stats.total, stats.selected, flow, stageRecords);
   const progress = summary.percent;
   const isCompleted = progress === 100;
@@ -55,17 +56,14 @@ export function ProjectCard({ project, stats, flow, flowStatus = 'ready', featur
     <View style={[styles.card, featured ? styles.featuredCard : styles.standardCard, Shadows.card]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${project.title} 과제, ${getDDayLabel(project.deadline)}, ${summary.completedStageCount}/${summary.totalStageCount} 단계 완료, ${stageLabel}`}
+        accessibilityLabel={`${templateLabel} 과제, ${project.title}, ${getDDayLabel(project.deadline)}, ${summary.completedStageCount}/${summary.totalStageCount} 단계 완료, ${stageLabel}`}
         accessibilityHint="과제 상세 화면으로 이동합니다"
         onPress={() => router.push(`/projects/${project.id}?projectView=home${status === 'ready' ? `&flowStep=${workflowStep}` : ''}` as Href)}
         style={({ pressed }) => [styles.cardContent, featured && styles.featuredContent, pressed && styles.pressed]}>
-      <View style={[styles.topRow, onToggleFavorite && styles.topRowWithFavorite]}>
+      {featured ? <View style={[styles.featuredBadge, { minHeight: 30, paddingRight: 44 }]}><ThemedText style={styles.featuredBadgeText}>최근 업데이트한 과제</ThemedText></View> : null}
+      <View style={[styles.topRow, !featured && onToggleFavorite && styles.topRowWithFavorite]}>
         <View style={styles.titleBlock}>
-          {featured ? (
-            <View style={styles.featuredBadge}>
-              <ThemedText style={styles.featuredBadgeText}>최근 업데이트한 과제</ThemedText>
-            </View>
-          ) : null}
+          <View style={styles.templateChip}><ThemedText numberOfLines={1} style={styles.templateChipText}>{templateLabel}</ThemedText></View>
           <ThemedText
             type={featured ? 'sectionTitle' : 'cardTitle'}
             style={[styles.titleText, featured && styles.featuredTitleText]}
@@ -171,6 +169,8 @@ const styles = StyleSheet.create({
     top: Spacing.four + 2,
     right: Spacing.four + 2,
   },
+  templateChip: { alignSelf: 'flex-start', borderRadius: 6, backgroundColor: '#F1F0ED', paddingHorizontal: 8, paddingVertical: 3, marginBottom: 2 },
+  templateChipText: { fontSize: 11, lineHeight: 16, fontWeight: '600', color: '#475569' },
   titleBlock: {
     flex: 1,
     gap: 4,

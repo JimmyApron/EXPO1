@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
+import { getTopicBranches, type WritingKind } from '@/lib/topic-workspace';
+import type { ProjectTemplate } from '@/types/project';
 import { useAuth } from '@/hooks/use-auth';
 import {
   createIdeaFieldNodes,
@@ -14,7 +17,7 @@ import type { MindMap, MindMapNode } from '@/types/mind-map';
 const mapSelect = 'id, projectid, userid, title, createdat, updatedat';
 const nodeSelect = 'id, mindmapid, parentnodeid, ideaid, ideafield, branchfield, nodetype, title, summary, x, y, sortorder, ismanualposition, createdat, updatedat';
 
-export function useMindMap(projectId?: string, defaultTopic = '') {
+export function useMindMap(projectId?: string, defaultTopic = '', template: ProjectTemplate = 'service_app', writingKind: WritingKind = 'essay') {
   const { user } = useAuth();
   const [mindMap, setMindMap] = useState<MindMap | null>(null);
   const [nodes, setNodes] = useState<MindMapNode[]>([]);
@@ -54,16 +57,20 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
     }
     setMindMap(nextMap);
     if (nextMap) {
+      if (template !== 'service_app') {
+        const initialized = await supabase.rpc('sync_topic_map', { p_projectid: projectId, p_ideaids: [], p_topic: nextMap.title, p_branches: getTopicBranches(template, writingKind) });
+        if (initialized.error) { setMindMapError(initialized.error.message); setIsLoadingMindMap(false); return; }
+      }
       const result = await supabase.from('mind_map_nodes').select(nodeSelect).eq('mindmapid', nextMap.id).order('sortorder');
       if (result.error) setMindMapError(result.error.message);
       else if ((result.data ?? []).length === 0) {
         const root = await supabase.from('mind_map_nodes').insert({ mindmapid: nextMap.id, userid: user.id, nodetype: 'root', title: nextMap.title, summary: '프로젝트의 중심 주제', x: 0, y: 0, sortorder: 0 }).select(nodeSelect).single();
         if (root.error) setMindMapError(root.error.message);
         else setNodes([root.data as MindMapNode]);
-      } else setNodes(getVisibleMindMapNodes((result.data ?? []) as MindMapNode[]));
+      } else { const visible = getVisibleMindMapNodes((result.data ?? []) as MindMapNode[], template); setNodes(template === 'service_app' ? visible : layoutMindMapNodes(visible)); }
     }
     setIsLoadingMindMap(false);
-  }, [defaultTopic, projectId, user]);
+  }, [defaultTopic, projectId, template, user, writingKind]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => void loadMindMap(), 0);
@@ -98,6 +105,12 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
   }, []);
 
   const composeIdeas = useCallback(async (ideas: Idea[], topic: string, _reclassifyExisting = false) => {
+    if (template !== 'service_app') {
+      const result = await supabase.rpc('sync_topic_map', { p_projectid: projectId, p_ideaids: ideas.map(idea => idea.id), p_topic: topic, p_branches: getTopicBranches(template, writingKind) });
+      if (result.error) return { error: result.error.message };
+      await loadMindMap();
+      return {};
+    }
     const ensured = await ensureMindMap(topic);
     if (!ensured.map || !user) return { error: ensured.error || '마인드맵을 만들지 못했습니다.' };
     const map = ensured.map;
@@ -225,7 +238,7 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
     if (layoutResult.error) return { error: layoutResult.error };
     await loadMindMap();
     return {};
-  }, [ensureMindMap, loadMindMap, persistLayout, user]);
+  }, [ensureMindMap, loadMindMap, persistLayout, projectId, template, user, writingKind]);
 
   const updateTopic = useCallback(async (title: string) => {
     if (!mindMap || !title.trim()) return { error: '중심 주제를 입력해 주세요.' };
@@ -284,6 +297,11 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
     if (!mindMap || !user) return { error: '마인드맵을 찾을 수 없습니다.' };
     const branch = nodes.find((node) => node.id === branchId && node.nodetype === 'branch');
     if (!branch) return { error: '아이디어를 추가할 가지를 찾을 수 없습니다.' };
+    if (template !== 'service_app') {
+      const result = await supabase.rpc('sync_topic_map', { p_projectid: projectId, p_ideaids: [idea.id], p_topic: mindMap.title, p_branches: getTopicBranches(template, writingKind), p_target: branchId });
+      if (result.error) return { error: result.error.message };
+      await loadMindMap(); return {};
+    }
     if (branch.branchfield) return composeIdeas([idea], mindMap.title);
     const existing = nodes.find((node) => node.nodetype === 'idea' && node.ideaid === idea.id && node.parentnodeid === branchId);
     if (existing) return {};
@@ -304,26 +322,26 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
     if (layoutResult.error) return { error: layoutResult.error };
     const syncResult = await composeIdeas([idea], mindMap.title);
     return syncResult.error ? { error: syncResult.error } : {};
-  }, [composeIdeas, mindMap, nodes, persistLayout, user]);
+  }, [composeIdeas, loadMindMap, mindMap, nodes, persistLayout, projectId, template, user, writingKind]);
 
   const updateBranch = useCallback(async (nodeId: string, title: string, summary: string) => {
     if (!mindMap || !title.trim()) return { error: '분류 이름을 입력해 주세요.' };
     const branch = nodes.find((node) => node.id === nodeId && node.nodetype === 'branch');
     if (!branch) return { error: '분류 가지를 찾을 수 없습니다.' };
-    if (branch.branchfield) return { error: '고정 필드 가지는 이름이나 설명을 변경할 수 없습니다.' };
+    if (template === 'service_app' && branch.branchfield) return { error: '고정 필드 가지는 이름이나 설명을 변경할 수 없습니다.' };
     const duplicate = nodes.some((node) => node.id !== nodeId && node.nodetype === 'branch' && node.title.trim().toLocaleLowerCase() === title.trim().toLocaleLowerCase());
     if (duplicate) return { error: '같은 이름의 가지가 이미 있습니다.' };
     const result = await supabase.from('mind_map_nodes').update({ title: title.trim(), summary: summary.trim(), updatedat: new Date().toISOString() }).eq('id', nodeId).eq('mindmapid', mindMap.id).eq('nodetype', 'branch');
     if (result.error) return { error: result.error.message };
     await loadMindMap();
     return {};
-  }, [loadMindMap, mindMap, nodes]);
+  }, [loadMindMap, mindMap, nodes, template]);
 
   const deleteBranch = useCallback(async (nodeId: string) => {
     if (!mindMap) return { error: '마인드맵을 찾을 수 없습니다.' };
     const branch = nodes.find((node) => node.id === nodeId && node.nodetype === 'branch');
     if (!branch) return { error: '삭제할 분류 가지를 찾을 수 없습니다.' };
-    if (branch.branchfield) return { error: '고정 필드 가지는 삭제할 수 없습니다.' };
+    if (template === 'service_app' && branch.branchfield) return { error: '고정 필드 가지는 삭제할 수 없습니다.' };
     const result = await supabase.from('mind_map_nodes').delete().eq('id', nodeId).eq('mindmapid', mindMap.id).eq('nodetype', 'branch');
     if (result.error) return { error: result.error.message };
     const remaining = nodes.filter((node) => node.id !== nodeId && node.parentnodeid !== nodeId);
@@ -331,7 +349,18 @@ export function useMindMap(projectId?: string, defaultTopic = '') {
     if (layoutResult.error) return { error: layoutResult.error };
     await loadMindMap();
     return {};
-  }, [loadMindMap, mindMap, nodes, persistLayout]);
+  }, [loadMindMap, mindMap, nodes, persistLayout, template]);
 
-  return { mindMap, nodes, isLoadingMindMap, mindMapError, loadMindMap, composeIdeas, updateTopic, moveIdeaNode, createBranch, placeIdeaUnderBranch, updateBranch, deleteBranch };
+  useRealtimeRefresh({ channelName: `mind-map:${projectId}`, enabled: Boolean(user && projectId), onRefresh: loadMindMap, tables: [{ table: 'mind_map_nodes', filter: `mindmapid=eq.${mindMap?.id}` }] });
+
+  const addDefaultBranches = useCallback(async () => {
+    for (const title of getTopicBranches(template, writingKind)) {
+      if (nodes.some(node => node.nodetype === 'branch' && node.title === title)) continue;
+      const result = await createBranch(title);
+      if (result.error) return result;
+    }
+    return {};
+  }, [createBranch, nodes, template, writingKind]);
+
+  return { mindMap, nodes, isLoadingMindMap, mindMapError, loadMindMap, composeIdeas, updateTopic, moveIdeaNode, createBranch, placeIdeaUnderBranch, updateBranch, deleteBranch, addDefaultBranches };
 }

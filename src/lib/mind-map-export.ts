@@ -1,5 +1,7 @@
 import type { Idea } from '../types/idea';
 import type { MindMapNode } from '../types/mind-map';
+import { getTopicFields, normalizeTopicDetails } from './topic-workspace.ts';
+import type { ProjectTemplate } from '../types/project';
 
 export type ExportNode = {
   id: string;
@@ -20,7 +22,7 @@ const fields = [
 ] as const;
 
 /** Exports the complete hierarchy, including descendants hidden by a view's collapse state. */
-export function createMindMapExportPayload(title: string, nodes: MindMapNode[], ideas: Idea[]): MindMapExportPayload {
+export function createMindMapExportPayload(title: string, nodes: MindMapNode[], ideas: Idea[], template: ProjectTemplate = 'service_app'): MindMapExportPayload {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const byIdeaId = new Map(ideas.map((idea) => [idea.id, idea]));
   const children = new Map<string, MindMapNode[]>();
@@ -33,7 +35,13 @@ export function createMindMapExportPayload(title: string, nodes: MindMapNode[], 
   const sort = (items: MindMapNode[]) => [...items].sort((a, b) => a.sortorder - b.sortorder || a.title.localeCompare(b.title));
   const visit = (node: MindMapNode, ancestors: Set<string>): ExportNode => {
     const idea = node.ideaid ? byIdeaId.get(node.ideaid) : undefined;
-    const details = idea ? fields.flatMap(([key, label]) => {
+    const details = idea && template !== 'service_app' ? [
+      ...getTopicFields(template).flatMap(field => {
+        const value = normalizeTopicDetails(idea.details)[field.key].trim();
+        return value ? [{ label: field.label, values: [value] }] : [];
+      }),
+      ...(idea.keywords.length ? [{ label: '키워드', values: idea.keywords }] : []),
+    ] : idea ? fields.flatMap(([key, label]) => {
       const raw = idea[key];
       const values = (Array.isArray(raw) ? raw : [raw]).map((value) => typeof value === 'string' ? value.trim() : '').filter(Boolean);
       return values.length ? [{ label, values }] : [];
@@ -43,7 +51,7 @@ export function createMindMapExportPayload(title: string, nodes: MindMapNode[], 
     return {
       id: node.id,
       title: (idea?.title || node.title).trim() || '제목 없음',
-      summary: (node.nodetype === 'idea_field' ? node.summary : idea?.summary || node.summary).trim(),
+      summary: (template !== 'service_app' && idea ? idea.content : node.nodetype === 'idea_field' ? node.summary : idea?.summary || node.summary).trim(),
       details,
       children: sort(children.get(node.id) ?? []).filter((child) => !next.has(child.id)).map((child) => visit(child, next)),
     };

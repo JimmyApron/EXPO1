@@ -329,7 +329,7 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
         </ThemedText>
       ) : null}
       {favoritesError ? <ThemedText accessibilityRole="alert" type="small" style={styles.errorText}>{favoritesError}</ThemedText> : null}
-      {favoritesStatus !== 'unavailable' ? <Pressable accessibilityRole="button" accessibilityLabel="즐겨찾기 과제만 보기" accessibilityState={{ selected: favoriteOnly, disabled: favoritesStatus === 'loading' }} disabled={favoritesStatus === 'loading'} onPress={() => setFavoriteOnly((value) => !value)} style={{ minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderColor: theme.border, borderRadius: 8 }}><ThemedText type="smallBold">★ 즐겨찾기만 보기</ThemedText></Pressable> : null}
+      {favoritesStatus !== 'unavailable' ? <Pressable accessibilityRole="button" accessibilityLabel="즐겨찾기 과제만 보기" accessibilityState={{ selected: favoriteOnly, disabled: favoritesStatus === 'loading' }} disabled={favoritesStatus === 'loading'} onPress={() => setFavoriteOnly((value) => !value)} style={{ minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderColor: favoriteOnly ? theme.primaryHover : theme.primary, borderRadius: 8 }}><ThemedText type="smallBold">★ 즐겨찾기만 보기</ThemedText></Pressable> : null}
 
       {isloadingprojects ? (
         <ThemedView type="backgroundElement" style={styles.emptyState}>

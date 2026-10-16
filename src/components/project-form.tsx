@@ -2,6 +2,8 @@ import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
 
+import { ProjectSettingsFields } from '@/components/project-settings-fields';
+import { normalizeProjectSettings } from '@/lib/topic-workspace';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
@@ -179,6 +181,7 @@ export function ProjectForm({
   const [description, setDescription] = useState(project?.description ?? '');
   const [deadline, setDeadline] = useState(project?.deadline ?? '');
   const [template, setTemplate] = useState<ProjectTemplate>(project?.template ?? 'service_app');
+  const [settings, setSettings] = useState(() => normalizeProjectSettings(project?.settings));
   const [hasPresentation, setHasPresentation] = useState(project?.haspresentation ?? true);
   const [isDeadlineCleared, setIsDeadlineCleared] = useState(false);
   const [titleError, setTitleError] = useState('');
@@ -199,13 +202,14 @@ export function ProjectForm({
       return;
     }
 
-    const saved = await onSubmit({ title, description, deadline: deadline.trim(), template, hasPresentation });
+    const saved = await onSubmit({ title, description, deadline: deadline.trim(), template, hasPresentation, settings });
 
     if (saved && !project) {
       setTitle('');
       setDescription('');
       setDeadline('');
       setTemplate('service_app');
+      setSettings(normalizeProjectSettings());
       setHasPresentation(true);
       setIsDeadlineCleared(false);
     }
@@ -297,6 +301,8 @@ export function ProjectForm({
           onClose={() => setIsCalendarOpen(false)}
         />
       ) : null}
+
+      <ProjectSettingsFields template={template} value={settings} onChange={setSettings} disabled={isbusy} />
 
       {error ? (
         <ThemedText type="small" style={styles.errorText}>
