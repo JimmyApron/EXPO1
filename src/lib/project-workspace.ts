@@ -1,9 +1,10 @@
 import { isMvpPlanCurrent, isPresentationCurrent } from './project-flow.ts';
 import type { MvpPlan } from '@/types/mvp-plan';
 import type { PresentationData } from '@/types/presentation';
+import type { ProjectStageId } from './project-stages.ts';
 
 export type ProjectSection = 'home' | 'ideas' | 'mindmap';
-export type ProjectWorkflowStep = 'extraction' | 'selection' | 'mvp' | 'presentation';
+export type ProjectWorkflowStep = ProjectStageId;
 
 export type ProjectWorkspaceLocation = {
   section: ProjectSection;
@@ -25,7 +26,7 @@ function isProjectSection(value?: string): value is ProjectSection {
 }
 
 function isProjectWorkflowStep(value?: string): value is ProjectWorkflowStep {
-  return value === 'extraction' || value === 'selection' || value === 'mvp' || value === 'presentation';
+  return value === 'extraction' || value === 'selection' || value === 'mvp' || value === 'draft' || value === 'revision' || value === 'result' || value === 'presentation';
 }
 
 export function resolveProjectWorkspaceLocation({ projectView, flowStep, ideaTab }: WorkspaceParams): ProjectWorkspaceLocation {

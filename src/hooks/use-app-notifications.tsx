@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { enableDevicePush, disableDevicePush } from '@/lib/notification-push';
+import { allNotificationTogglePatch, notificationsAreEnabled } from '@/lib/notification-settings';
 import { supabase } from '@/lib/supabase';
 import type { AppNotification, NotificationKind } from '@/types/notification';
 
@@ -48,12 +49,13 @@ type Row = {
   createdat: string; readat: string | null; dismissedat: string | null;
 };
 
-function legacyKey(sourcekey: string) {
+function legacyKey(row: Row) {
+  const { sourcekey } = row;
   if (sourcekey.startsWith('deadline:')) return sourcekey.split(':').slice(0, 3).join(':');
   if (sourcekey.startsWith('review:')) return `ideareview:${sourcekey.split(':')[1]}`;
   if (sourcekey.startsWith('selection:')) return `finalselection:${sourcekey.split(':')[1]}`;
   if (sourcekey.startsWith('stalled:')) return `stalledidea:${sourcekey.split(':')[1]}`;
-  if (sourcekey.startsWith('likes:')) return `likesurge:${sourcekey.split(':')[1]}:${sourcekey.split(':')[2]}:${sourcekey.split(':')[3]}`;
+  if (sourcekey.startsWith('likes:')) return `likesurge:${row.projectid}:${sourcekey.split(':')[1]}:${sourcekey.split(':')[2]}`;
   return sourcekey;
 }
 
@@ -62,6 +64,9 @@ type Value = {
   unreadCount: number;
   isLoading: boolean;
   error: string;
+  notificationsEnabled: boolean;
+  notificationsEnabledReady: boolean;
+  setNotificationsEnabled: (enabled: boolean, pushEnabled?: boolean) => Promise<void>;
   preferences: AppNotificationPreferences;
   updatePreferences: (patch: Partial<AppNotificationPreferences>) => Promise<void>;
   enablePush: () => Promise<string>;
@@ -79,10 +84,14 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
   const { user } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [preferences, setPreferences] = useState<AppNotificationPreferences>(defaults);
+  const [preferencesOwnerId, setPreferencesOwnerId] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [tick, setTick] = useState(0);
   const requestSequence = useRef(0);
+  const notificationsEnabledReady = Boolean(user && preferencesOwnerId === user.id);
+  const notificationsEnabled = notificationsEnabledReady
+    && notificationsAreEnabled(preferences);
 
   useRealtimeRefresh({
     channelName: `inbox:${user?.id ?? 'signed-out'}`,
@@ -93,7 +102,7 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
 
   const refresh = useCallback(async () => {
     const requestId = ++requestSequence.current;
-    if (!user) { setRows([]); setPreferences(defaults); setIsLoading(false); return; }
+    if (!user) { setRows([]); setPreferences(defaults); setPreferencesOwnerId(''); setIsLoading(false); return; }
     setIsLoading(true);
     const [inbox, settings] = await Promise.all([
       supabase.from('app_notifications')
@@ -104,30 +113,43 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
     if (requestId !== requestSequence.current) return;
     if (inbox.error || settings.error) {
       setError(inbox.error?.message ?? settings.error?.message ?? '알림을 불러오지 못했어요.');
+      if (preferencesOwnerId !== user.id) { setRows([]); setPreferences(defaults); }
+      setPreferencesOwnerId(user.id);
       setIsLoading(false);
       return;
     }
     let nextRows = (inbox.data ?? []) as Row[];
     let nextPreferences = { ...defaults, ...(settings.data ?? {}) } as AppNotificationPreferences;
     let migrationError = '';
-    const legacy = await AsyncStorage.getItem(`notifications:${user.id}`);
-    if (legacy) {
-      try {
+    try {
+      const legacy = await AsyncStorage.getItem(`notifications:${user.id}`);
+      if (legacy) {
         const parsed = JSON.parse(legacy) as StoredLegacyState;
-        if (!settings.data && parsed.settings) {
-          nextPreferences = { ...nextPreferences, ...parsed.settings };
+        const migrationKey = `notification-preferences-migrated:${user.id}`;
+        const preferencesMigrated = await AsyncStorage.getItem(migrationKey);
+        if (!preferencesMigrated && parsed.settings) {
+          const legacySettings = parsed.settings;
+          nextPreferences = {
+            ...nextPreferences,
+            ...Object.fromEntries(([
+              'deadline', 'ideareview', 'finalselection', 'stalledidea', 'feedback', 'likesurge',
+              'deadlinedays', 'stalledideadays', 'likesurgethreshold',
+            ] as const).filter((key) => legacySettings[key] !== undefined)
+              .map((key) => [key, legacySettings[key]])),
+          };
           const { error: saveError } = await supabase.from('notification_preferences')
             .upsert({ userid: user.id, ...nextPreferences }, { onConflict: 'userid' });
           if (saveError) throw saveError;
+          await AsyncStorage.setItem(migrationKey, '1');
         }
         const readIds = new Set(parsed.readIds ?? []);
         const deletedIds = new Set(parsed.deletedIds ?? []);
         const updates = nextRows.filter((row) => {
-          const key = legacyKey(row.sourcekey);
+          const key = legacyKey(row);
           return (readIds.has(key) && !row.readat) || (deletedIds.has(key) && !row.dismissedat);
         });
         for (const row of updates) {
-          const key = legacyKey(row.sourcekey);
+          const key = legacyKey(row);
           const patch = {
             ...(readIds.has(key) && !row.readat ? { readat: new Date().toISOString() } : {}),
             ...(deletedIds.has(key) && !row.dismissedat ? { dismissedat: new Date().toISOString() } : {}),
@@ -139,18 +161,19 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
         if (updates.length > 0) {
           const updated = new Map(updates.map((row) => [row.id, row]));
           nextRows = nextRows.map((row) => updated.has(row.id)
-            ? { ...row, readat: readIds.has(legacyKey(row.sourcekey)) ? new Date().toISOString() : row.readat,
-                dismissedat: deletedIds.has(legacyKey(row.sourcekey)) ? new Date().toISOString() : row.dismissedat }
+            ? { ...row, readat: readIds.has(legacyKey(row)) ? new Date().toISOString() : row.readat,
+                dismissedat: deletedIds.has(legacyKey(row)) ? new Date().toISOString() : row.dismissedat }
             : row);
         }
-      } catch (cause) { migrationError = cause instanceof Error ? cause.message : '이전 알림 설정을 가져오지 못했어요.'; }
-    }
+      }
+    } catch (cause) { migrationError = cause instanceof Error ? cause.message : '이전 알림 설정을 가져오지 못했어요.'; }
     if (requestId !== requestSequence.current) return;
     setRows(nextRows);
     setPreferences(nextPreferences);
+    setPreferencesOwnerId(user.id);
     setError(migrationError);
     setIsLoading(false);
-  }, [user]);
+  }, [preferencesOwnerId, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => void refresh(), 0);
@@ -165,6 +188,10 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
     if (saveError) { setError(saveError.message); throw saveError; }
     setPreferences(next);
   }, [preferences, user]);
+
+  const setNotificationsEnabled = useCallback(async (enabled: boolean, pushEnabled = enabled) => {
+    await updatePreferences(allNotificationTogglePatch(enabled, pushEnabled));
+  }, [updatePreferences]);
 
   const markAsRead = useCallback(async (id: string) => {
     if (!user) return;
@@ -230,9 +257,11 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
 
   const value = useMemo<Value>(() => ({
     notifications, unreadCount: notifications.filter((item) => !item.isread).length,
-    isLoading, error, preferences, updatePreferences, enablePush, disablePush,
+    isLoading, error, notificationsEnabled, notificationsEnabledReady, setNotificationsEnabled,
+    preferences, updatePreferences, enablePush, disablePush,
     markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications, refresh,
-  }), [notifications, isLoading, error, preferences, updatePreferences, enablePush, disablePush,
+  }), [notifications, isLoading, error, notificationsEnabled, notificationsEnabledReady, setNotificationsEnabled,
+    preferences, updatePreferences, enablePush, disablePush,
     markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications, refresh]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

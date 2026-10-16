@@ -35,7 +35,6 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
   const [instruction, setInstruction] = useState('');
   const [pendingInstruction, setPendingInstruction] = useState('');
   const [activeTab, setActiveTab] = useState<'slides' | 'qna' | 'report'>('slides');
-  const [showRevisionTools, setShowRevisionTools] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -105,16 +104,15 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
     <ThemedText themeColor="textSecondary">선정 아이디어와 MVP 계획을 바탕으로 발표자료와 문서를 만듭니다.</ThemedText>
     <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}><ThemedText type="smallBold">기준 아이디어: {selectedIdea.title}</ThemedText><ThemedText type="small" themeColor="textSecondary">{selectedIdea.summary || '아이디어 설명이 없습니다.'}</ThemedText></ThemedView>
     {hasPreviousPresentation && !saved ? <ThemedText style={{ color: theme.warning }}>이전 아이디어의 발표자료가 보관되어 있습니다. 현재 아이디어의 새 자료를 생성해 주세요.</ThemedText> : null}
-    {saved ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: showRevisionTools }} onPress={() => setShowRevisionTools((open) => !open)} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">{showRevisionTools ? '수정 요청 접기' : '발표자료 수정 요청'}</ThemedText></Pressable> : null}
-    {saved && showRevisionTools ? <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+    {saved ? <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
       <ThemedText type="smallBold">전체 발표자료 재생성</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">요청을 입력하면 슬라이드, Q&A, 문서 전체를 다시 만듭니다. 새 결과를 적용하기 전까지 저장된 자료는 유지됩니다.</ThemedText>
       <View style={styles.row}>{['더 간결하게', '전문적으로', '근거를 자세히'].map((preset) => <Pressable key={preset} accessibilityRole="button" accessibilityLabel={`${preset} 요청 입력`} disabled={loading || saving} onPress={() => setInstruction(preset)} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">{preset}</ThemedText></Pressable>)}</View>
       <TextInput accessibilityLabel="발표자료 전체 재생성 요청" value={instruction} onChangeText={setInstruction} editable={!loading && !saving} multiline maxLength={1000} placeholder="예: 5분 발표에 맞게 간결하게 구성해 줘" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
     </ThemedView> : null}
-    {(!saved || showRevisionTools) ? <Pressable accessibilityRole="button" accessibilityLabel={saved ? '발표자료 전체 재생성 요청' : '발표자료 생성 및 저장'} accessibilityState={{ disabled: loading || saving || !canGenerate || Boolean(saved && !instruction.trim()) }} disabled={loading || saving || !canGenerate || Boolean(saved && !instruction.trim())} onPress={() => void generate()} style={[styles.primaryButton, { backgroundColor: theme.primary }, (loading || saving || !canGenerate || Boolean(saved && !instruction.trim())) && styles.disabled]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={saved ? '발표자료 전체 재생성 요청' : '발표자료 생성 및 저장'} accessibilityState={{ disabled: loading || saving || !canGenerate || Boolean(saved && !instruction.trim()) }} disabled={loading || saving || !canGenerate || Boolean(saved && !instruction.trim())} onPress={() => void generate()} style={[styles.primaryButton, { backgroundColor: theme.primary }, (loading || saving || !canGenerate || Boolean(saved && !instruction.trim())) && styles.disabled]}>
       {loading ? <ActivityIndicator color={theme.primaryText} /> : <ThemedText type="smallBold" style={{ color: theme.primaryText }}>{saved ? '요청 반영해 전체 재생성' : '발표자료 생성·저장'}</ThemedText>}
-    </Pressable> : null}
+    </Pressable>
     {!canGenerate ? <ThemedText type="small" themeColor="textSecondary">로그인 후 발표자료를 생성할 수 있습니다.</ThemedText> : null}
     {error ? <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>{error}</ThemedText> : null}
     {notice ? <ThemedText accessibilityLiveRegion="polite" style={{ color: theme.success }}>{notice}</ThemedText> : null}

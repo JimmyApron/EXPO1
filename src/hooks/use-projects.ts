@@ -4,6 +4,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { Project, ProjectInput } from '@/types/project';
+import { normalizeProjectTemplate } from '@/lib/project-stages';
+import { isMissingProjectTemplateColumn, LEGACY_PROJECT_SELECT, normalizeProjectRow, PROJECT_SELECT } from '@/lib/project-schema';
 
 type ProjectMutationResult = {
   project?: Project;
@@ -17,6 +19,8 @@ function cleanProjectInput(input: ProjectInput) {
     title: input.title.trim(),
     description: input.description.trim(),
     deadline: deadline || null,
+    template: normalizeProjectTemplate(input.template),
+    haspresentation: input.hasPresentation,
   };
 }
 
@@ -27,8 +31,6 @@ function validateProjectInput(input: ProjectInput) {
 
   return '';
 }
-
-const projectSelect = 'id, userid, roomid, title, description, deadline, createdat, updatedat';
 
 export function useProjects(roomid?: string) {
   const { user } = useAuth();
@@ -48,7 +50,7 @@ export function useProjects(roomid?: string) {
 
     let query = supabase
       .from('projects')
-      .select(projectSelect)
+      .select(PROJECT_SELECT)
       .order('createdat', { ascending: false });
 
     if (roomid) {
@@ -58,12 +60,26 @@ export function useProjects(roomid?: string) {
     }
 
     const { data, error } = await query;
+    let rows: Record<string, unknown>[] = data ?? [];
+    let loadError = error;
+    if (isMissingProjectTemplateColumn(error)) {
+      let legacyQuery = supabase.from('projects').select(LEGACY_PROJECT_SELECT)
+        .order('createdat', { ascending: false });
+      if (roomid) {
+        legacyQuery = legacyQuery.eq('roomid', roomid);
+      } else {
+        legacyQuery = legacyQuery.eq('userid', user.id).is('roomid', null);
+      }
+      const legacy = await legacyQuery;
+      rows = legacy.data ?? [];
+      loadError = legacy.error;
+    }
 
-    if (error) {
-      setProjecterror(error.message);
+    if (loadError) {
+      setProjecterror(loadError.message);
       setProjects([]);
     } else {
-      setProjects((data ?? []) as Project[]);
+      setProjects(rows.map(normalizeProjectRow));
     }
 
     setIsloadingprojects(false);
@@ -112,15 +128,18 @@ export function useProjects(roomid?: string) {
           createdat: now,
           updatedat: now,
         })
-        .select(projectSelect)
+        .select(PROJECT_SELECT)
         .single();
 
       if (error) {
-        setProjecterror(error.message);
-        return { error: error.message };
+        const message = isMissingProjectTemplateColumn(error)
+          ? '과제 템플릿 기능을 사용하려면 프로젝트 DB 마이그레이션을 적용해야 합니다.'
+          : error.message;
+        setProjecterror(message);
+        return { error: message };
       }
 
-      const project = data as Project;
+      const project = normalizeProjectRow(data as Record<string, unknown>);
       setProjects((current) => [project, ...current]);
       return { project };
     },
@@ -152,14 +171,17 @@ export function useProjects(roomid?: string) {
         query = query.eq('userid', user.id).is('roomid', null);
       }
 
-      const { data, error } = await query.select(projectSelect).single();
+      const { data, error } = await query.select(PROJECT_SELECT).single();
 
       if (error) {
-        setProjecterror(error.message);
-        return { error: error.message };
+        const message = isMissingProjectTemplateColumn(error)
+          ? '과제 템플릿 기능을 사용하려면 프로젝트 DB 마이그레이션을 적용해야 합니다.'
+          : error.message;
+        setProjecterror(message);
+        return { error: message };
       }
 
-      const project = data as Project;
+      const project = normalizeProjectRow(data as Record<string, unknown>);
       setProjects((current) => current.map((item) => (item.id === id ? project : item)));
       return { project };
     },

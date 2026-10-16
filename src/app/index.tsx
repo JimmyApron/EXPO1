@@ -12,7 +12,11 @@ import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAppNotifications } from '@/hooks/use-app-notifications';
 import { useProjectIdeaStats } from '@/hooks/use-project-idea-stats';
+import { useProjectIdeaCounts } from '@/hooks/use-project-idea-counts';
 import { useProjectFlowSummaries } from '@/hooks/use-project-flow-summaries';
+import { useProjectStageProgress } from '@/hooks/use-project-stage-progress';
+import { useProjectFavorites } from '@/hooks/use-project-favorites';
+import { sortProjectsWithFavorites } from '@/lib/project-favorites';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
 import type { ProjectInput } from '@/types/project';
@@ -22,15 +26,18 @@ export default function HomeScreen() {
   const { projects, isloadingprojects, projecterror, createProject } = useProjects();
   const { unreadCount } = useAppNotifications();
   const projectIds = useMemo(() => projects.map((p) => p.id), [projects]);
-  const { getStatsForProject, totals, isLoadingStats } = useProjectIdeaStats();
+  const { totals, isLoadingStats } = useProjectIdeaStats();
+  const { countsByProjectId, ideaCountsStatus, ideaCountsError } = useProjectIdeaCounts(projectIds);
   const { flowsByProjectId, flowStatus } = useProjectFlowSummaries(projectIds);
+  const { progressByProjectId, stageProgressStatus, stageProgressError } = useProjectStageProgress(projectIds);
+  const { favoriteProjectIds, favoritesStatus, favoritesError, busyProjectId, toggleFavorite } = useProjectFavorites(projectIds);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [formError, setFormError] = useState('');
 
   const recentProjects = useMemo(
-    () => [...projects].sort((a, b) => b.updatedat.localeCompare(a.updatedat)),
-    [projects],
+    () => sortProjectsWithFavorites(projects, favoriteProjectIds, 'updated'),
+    [favoriteProjectIds, projects],
   );
   const featuredProject = recentProjects[0] ?? null;
   const otherProjects = recentProjects.slice(1);
@@ -47,12 +54,13 @@ export default function HomeScreen() {
     setIsCreating(false);
     if (result.error) {
       setFormError(result.error);
-      return;
+      return false;
     }
     if (result.project) {
       setIsCreateOpen(false);
       router.push(`/projects/${result.project.id}` as Href);
     }
+    return true;
   };
 
   return (
@@ -135,7 +143,7 @@ export default function HomeScreen() {
         </View>
 
         {/* 프로젝트 목록 */}
-        {projecterror ? <ThemedText style={{ color: theme.danger }}>{projecterror}</ThemedText> : null}
+        {projecterror || ideaCountsError || favoritesError || stageProgressError ? <ThemedText style={{ color: theme.danger }}>{projecterror || ideaCountsError || favoritesError || stageProgressError}</ThemedText> : null}
         {isloadingprojects || isLoadingStats ? <LoadingSkeleton rows={3} /> : projects.length === 0 ? (
           <EmptyState
             icon="projects"
@@ -150,9 +158,11 @@ export default function HomeScreen() {
               <ProjectCard
                 key={featuredProject.id}
                 project={featuredProject}
-                stats={getStatsForProject(featuredProject.id)}
+                stats={countsByProjectId.get(featuredProject.id) ?? { total: 0, selected: 0 }} ideaCountsStatus={ideaCountsStatus}
                 flow={flowsByProjectId.get(featuredProject.id)}
                 flowStatus={flowStatus}
+                stageRecords={progressByProjectId.get(featuredProject.id)} stageStatus={stageProgressStatus}
+                favorite={favoriteProjectIds.has(featuredProject.id)} favoriteBusy={busyProjectId === featuredProject.id || favoritesStatus === 'loading'} onToggleFavorite={favoritesStatus === 'unavailable' ? undefined : () => void toggleFavorite(featuredProject.id)}
                 featured
               />
             ) : null}
@@ -163,9 +173,11 @@ export default function HomeScreen() {
                   <ProjectCard
                     key={project.id}
                     project={project}
-                    stats={getStatsForProject(project.id)}
+                    stats={countsByProjectId.get(project.id) ?? { total: 0, selected: 0 }} ideaCountsStatus={ideaCountsStatus}
                     flow={flowsByProjectId.get(project.id)}
                     flowStatus={flowStatus}
+                    stageRecords={progressByProjectId.get(project.id)} stageStatus={stageProgressStatus}
+                    favorite={favoriteProjectIds.has(project.id)} favoriteBusy={busyProjectId === project.id || favoritesStatus === 'loading'} onToggleFavorite={favoritesStatus === 'unavailable' ? undefined : () => void toggleFavorite(project.id)}
                   />
                 ))}
               </View>

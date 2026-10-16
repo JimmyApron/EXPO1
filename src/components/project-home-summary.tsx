@@ -24,6 +24,9 @@ type ProjectHomeSummaryProps = {
   ideaCount: number;
   selectedIdeaTitle?: string;
   workflowState: ProjectWorkflowState;
+  stageLabel?: string;
+  completedStageCount?: number;
+  totalStageCount?: number;
 };
 
 export function ProjectHomeSummary({
@@ -31,8 +34,11 @@ export function ProjectHomeSummary({
   ideaCount,
   selectedIdeaTitle,
   workflowState,
+  stageLabel,
+  completedStageCount,
+  totalStageCount,
 }: ProjectHomeSummaryProps) {
-  const progressLabel = getProjectProgressLabel(workflowState);
+  const progressLabel = stageLabel ?? getProjectProgressLabel(workflowState);
 
   return (
     <View
@@ -45,6 +51,7 @@ export function ProjectHomeSummary({
         <View style={styles.headingCopy}>
           <ThemedText style={styles.subTitle}>현재 과제 진행 상태</ThemedText>
           <ThemedText style={styles.mainTitle}>{progressLabel}</ThemedText>
+          {totalStageCount ? <ThemedText type="smallBold">{completedStageCount ?? 0}/{totalStageCount} 단계 완료</ThemedText> : null}
         </View>
         <View style={styles.deadlineChip}>
           <ThemedText style={styles.dayText}>

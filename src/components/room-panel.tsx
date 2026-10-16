@@ -11,6 +11,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useProjects } from '@/hooks/use-projects';
+import { useProjectFavorites } from '@/hooks/use-project-favorites';
+import { sortProjectsWithFavorites } from '@/lib/project-favorites';
 import { useRooms } from '@/hooks/use-rooms';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
@@ -216,19 +218,16 @@ function RoomForm({ room, submitLabel, isbusy = false, error, onSubmit, onCancel
   );
 }
 
-function RoomProjectCard({ project }: { project: Project }) {
+function RoomProjectCard({ project, favorite, favoriteBusy, onToggleFavorite }: { project: Project; favorite: boolean; favoriteBusy: boolean; onToggleFavorite?: () => void }) {
   const theme = useTheme();
 
   return (
-    <Pressable
-      onPress={() => router.push(`/projects/${project.id}` as Href)}
-      accessibilityRole="button"
-      accessibilityLabel={`${project.title} 과제 열기`}
-      style={({ pressed }) => [
-        styles.projectButton,
-        { backgroundColor: theme.surface, borderColor: theme.border },
-        pressed && styles.pressed,
-      ]}>
+    <View style={[styles.projectButton, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <Pressable
+        onPress={() => router.push(`/projects/${project.id}` as Href)}
+        accessibilityRole="button"
+        accessibilityLabel={`${project.title} 과제 열기`}
+        style={({ pressed }) => [styles.projectOpenButton, onToggleFavorite && styles.projectOpenWithFavorite, pressed && styles.pressed]}>
       <View style={styles.projectTitleBlock}>
         <ThemedText type="smallBold" style={styles.projectTitle} numberOfLines={2}>
           {project.title}
@@ -245,7 +244,9 @@ function RoomProjectCard({ project }: { project: Project }) {
       <ThemedText type="small" themeColor="textSecondary">
         {formatDeadlineLabel(project.deadline)}
       </ThemedText>
-    </Pressable>
+      </Pressable>
+      {onToggleFavorite ? <Pressable accessibilityRole="button" accessibilityLabel={favorite ? '과제 즐겨찾기 해제' : '과제 즐겨찾기'} accessibilityState={{ selected: favorite, disabled: favoriteBusy }} disabled={favoriteBusy} onPress={onToggleFavorite} style={styles.projectFavoriteButton}><ThemedText type="sectionTitle" style={{ color: favorite ? theme.primary : theme.textSecondary }}>{favorite ? '★' : '☆'}</ThemedText></Pressable> : null}
+    </View>
   );
 }
 
@@ -278,6 +279,10 @@ function InviteCodeCopyButton({ code }: { code: string }) {
 function RoomWorkspace({ roomid }: { roomid: string }) {
   const theme = useTheme();
   const { projects, isloadingprojects, projecterror, createProject } = useProjects(roomid);
+  const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
+  const { favoriteProjectIds, favoritesStatus, favoritesError, busyProjectId, toggleFavorite } = useProjectFavorites(projectIds);
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
+  const visibleProjects = useMemo(() => sortProjectsWithFavorites(projects, favoriteProjectIds, 'created', favoriteOnly && favoritesStatus !== 'unavailable'), [favoriteOnly, favoriteProjectIds, favoritesStatus, projects]);
   const [iscreateopen, setIscreateopen] = useState(false);
   const [iscreating, setIscreating] = useState(false);
   const [formerror, setFormerror] = useState('');
@@ -294,6 +299,7 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
     }
 
     setIscreating(false);
+    return !result.error;
   };
 
   return (
@@ -322,22 +328,24 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
           {projecterror}
         </ThemedText>
       ) : null}
+      {favoritesError ? <ThemedText accessibilityRole="alert" type="small" style={styles.errorText}>{favoritesError}</ThemedText> : null}
+      {favoritesStatus !== 'unavailable' ? <Pressable accessibilityRole="button" accessibilityLabel="즐겨찾기 과제만 보기" accessibilityState={{ selected: favoriteOnly, disabled: favoritesStatus === 'loading' }} disabled={favoritesStatus === 'loading'} onPress={() => setFavoriteOnly((value) => !value)} style={{ minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderColor: theme.border, borderRadius: 8 }}><ThemedText type="smallBold">★ 즐겨찾기만 보기</ThemedText></Pressable> : null}
 
       {isloadingprojects ? (
         <ThemedView type="backgroundElement" style={styles.emptyState}>
           <ActivityIndicator />
         </ThemedView>
-      ) : projects.length === 0 ? (
+      ) : visibleProjects.length === 0 ? (
         <ThemedView type="backgroundElement" style={styles.emptyState}>
-          <ThemedText type="smallBold">아직 방 과제가 없습니다.</ThemedText>
+          <ThemedText type="smallBold">{favoriteOnly ? '즐겨찾기한 과제가 없습니다.' : '아직 방 과제가 없습니다.'}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
             과제를 만든 뒤 들어가면 팀원들과 같은 아이디어 보드를 보게 됩니다.
           </ThemedText>
         </ThemedView>
       ) : (
         <View style={styles.projectList}>
-          {projects.map((project) => (
-            <RoomProjectCard key={project.id} project={project} />
+          {visibleProjects.map((project) => (
+            <RoomProjectCard key={project.id} project={project} favorite={favoriteProjectIds.has(project.id)} favoriteBusy={busyProjectId === project.id || favoritesStatus === 'loading'} onToggleFavorite={favoritesStatus === 'unavailable' ? undefined : () => void toggleFavorite(project.id)} />
           ))}
         </View>
       )}
@@ -355,13 +363,13 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
                 <ThemedText type="smallBold">닫기</ThemedText>
               </Pressable>
             </View>
-            <ProjectForm
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1 }}><ProjectForm
               submitLabel="등록"
               isbusy={iscreating}
               error={formerror}
               onSubmit={handleCreateProject}
               onCancel={() => setIscreateopen(false)}
-            />
+            /></ScrollView>
           </ThemedView>
         </View>
       </Modal>
@@ -1114,14 +1122,29 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     maxWidth: '100%',
     minWidth: 0,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+  },
+  projectOpenButton: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
     borderRadius: Radius.medium,
-    borderWidth: 1,
     padding: Spacing.three,
+  },
+  projectOpenWithFavorite: {
+    paddingRight: Spacing.three + 44 + Spacing.two,
+  },
+  projectFavoriteButton: {
+    position: 'absolute',
+    top: Spacing.three,
+    right: Spacing.three,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   projectTitleBlock: {
     flex: 1,
@@ -1322,6 +1345,7 @@ const styles = StyleSheet.create({
   modalPanel: {
     width: '100%',
     maxWidth: 560,
+    maxHeight: '92%',
     gap: Spacing.three,
     borderWidth: 1,
     borderRadius: Radius.large,

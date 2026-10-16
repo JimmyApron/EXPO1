@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "891148017292",
+    "project_id": "watt-885a6",
+    "storage_bucket": "watt-885a6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:891148017292:android:4acaed1427e8a5b60665a9",
+        "android_client_info": {
+          "package_name": "com.pbl1.watt"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCVnprVRYxx0PIeKzTs1oHU0VFPTwvV1Cs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -10,6 +10,9 @@ function storedTokenKey(userId: string) {
 
 export async function enableDevicePush(userId: string): Promise<string> {
   if (Platform.OS === 'web') return '웹에서는 앱 안 알림을 사용할 수 있어요.';
+  if (Platform.OS === 'android' && Constants.appOwnership === 'expo') {
+    return 'Android Expo Go에서는 휴대폰 푸시를 켤 수 없어요. 개발 빌드에서 실행해 주세요.';
+  }
   const Notifications = await import('expo-notifications');
   await Notifications.setNotificationChannelAsync('personal', {
     name: '개인 과제', importance: Notifications.AndroidImportance.DEFAULT,

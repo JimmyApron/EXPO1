@@ -1,4 +1,4 @@
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppIcon } from '@/components/app-icon';
 import { ProjectForm } from '@/components/project-form';
@@ -13,7 +13,7 @@ type ProjectCreateModalProps = {
   isBusy: boolean;
   error: string;
   onClose: () => void;
-  onSubmit: (input: ProjectInput) => void | Promise<void>;
+  onSubmit: (input: ProjectInput) => boolean | Promise<boolean>;
 };
 
 export function ProjectCreateModal({ visible, isBusy, error, onClose, onSubmit }: ProjectCreateModalProps) {
@@ -32,7 +32,7 @@ export function ProjectCreateModal({ visible, isBusy, error, onClose, onSubmit }
               <AppIcon name="close" color={theme.textSecondary} size={22} />
             </Pressable>
           </View>
-          <ProjectForm submitLabel="과제 만들기" isbusy={isBusy} error={error} onSubmit={onSubmit} onCancel={onClose} />
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1 }}><ProjectForm submitLabel="과제 만들기" isbusy={isBusy} error={error} onSubmit={onSubmit} onCancel={onClose} /></ScrollView>
         </ThemedView>
       </View>
     </Modal>

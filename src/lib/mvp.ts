@@ -35,7 +35,7 @@ export function formatMvpDuration(weeks: number): string {
   if (!Number.isFinite(weeks) || weeks <= 0) return '1주';
 
   if (weeks < 1) {
-    return `${Math.max(0.1, Math.round(weeks * 10) / 10)}주`;
+    return `${Math.max(1, Math.round(weeks * 7 - 1e-9))}일`;
   }
 
   const roundedWeeks = Math.round(weeks * 2) / 2;

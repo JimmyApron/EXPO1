@@ -22,6 +22,7 @@ import { MvpWorkflowPanel } from '@/components/mvp-workflow-panel';
 import { PresentationWorkflowPanel } from '@/components/presentation-workflow-panel';
 import { ProjectFlowSteps } from '@/components/project-flow-steps';
 import { ProjectHomeSummary } from '@/components/project-home-summary';
+import { TemplateStagePanel } from '@/components/template-stage-panel';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
 import { useIdeaCategories } from '@/hooks/use-idea-categories';
@@ -34,6 +35,9 @@ import { useProjectFlow } from '@/hooks/use-project-flow';
 import { candidateIdeaToIdeaInput } from '@/lib/candidate-idea';
 import { validateMindMapIdeaField } from '@/lib/mind-map';
 import { isMvpPlanCurrent, isPresentationCurrent } from '@/lib/project-flow';
+import { getProjectStages, getStageProgress, getValidStageId, normalizeProjectTemplate } from '@/lib/project-stages';
+import type { ProjectStageRecord } from '@/hooks/use-project-stage-progress';
+import type { ProjectTemplate } from '@/types/project';
 import type { ProjectSection, ProjectWorkflowStep, ProjectWorkspaceLocation } from '@/lib/project-workspace';
 import type { CandidateIdea, CandidateIdeaSaveResult } from '@/types/candidate-idea';
 import type { IdeaFeedback } from '@/types/feedback';
@@ -77,6 +81,11 @@ type IdeaBoardProps = {
   projectOwnerId: string;
   projectTitle: string;
   projectDeadline?: string | null;
+  projectTemplate: ProjectTemplate;
+  isTeamProject: boolean;
+  hasPresentation: boolean;
+  stageRecords: ProjectStageRecord[];
+  onSaveStage: (stageId: ProjectWorkflowStep, content: string, isCompleted: boolean) => Promise<{ error?: string }>;
   initialSection?: ProjectSection;
   initialStep?: ProjectWorkflowStep;
   onLocationChange: (location: ProjectWorkspaceLocation) => void;
@@ -1347,6 +1356,11 @@ export function IdeaBoard({
   projectOwnerId,
   projectTitle,
   projectDeadline,
+  projectTemplate,
+  isTeamProject,
+  hasPresentation,
+  stageRecords,
+  onSaveStage,
   initialSection = 'home',
   initialStep = 'extraction',
   onLocationChange,
@@ -1405,7 +1419,9 @@ export function IdeaBoard({
     toggleLike,
   } = useIdeaLikes(projectId);
   const section = initialSection;
-  const workflowStep = initialStep;
+  const stages = getProjectStages(projectTemplate, hasPresentation);
+  const workflowStep = getValidStageId(stages, initialStep);
+  const isServiceTemplate = normalizeProjectTemplate(projectTemplate) === 'service_app';
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(allCategoryFilter);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(allStatusFilter);
   const [searchDraft, setSearchDraft] = useState('');
@@ -1489,12 +1505,15 @@ export function IdeaBoard({
     currentSelectedIdeaId,
     flowController.flow?.mvpplan,
   );
-  const completedSteps = {
+  const serviceCompletedSteps = {
     extraction: workflowIdeas.length > 0,
     selection: Boolean(selectedIdea),
     mvp: hasCurrentMvp,
     presentation: hasCurrentPresentation,
   };
+  const completedSteps = isServiceTemplate ? serviceCompletedSteps
+    : Object.fromEntries(stageRecords.filter((record) => record.template === projectTemplate).map((record) => [record.stageid, record.iscompleted]));
+  const stageProgress = getStageProgress(stages, completedSteps);
 
   const navigateTo = (nextSection: ProjectSection, nextStep = workflowStep) => {
     onLocationChange({ section: nextSection, step: nextStep });
@@ -1850,6 +1869,9 @@ export function IdeaBoard({
               deadline={projectDeadline}
               ideaCount={workflowIdeas.length}
               selectedIdeaTitle={selectedIdea?.title}
+              stageLabel={stageProgress.completedStageCount === stageProgress.totalStageCount ? '모든 단계 완료' : `${stageProgress.currentStage.label} 중`}
+              completedStageCount={stageProgress.completedStageCount}
+              totalStageCount={stageProgress.totalStageCount}
               workflowState={{
                 hasIdeas: completedSteps.extraction,
                 hasSelectedIdea: completedSteps.selection,
@@ -1858,13 +1880,19 @@ export function IdeaBoard({
               }}
             />
             <ProjectFlowSteps
+              stages={stages}
               current={workflowStep}
               completed={completedSteps}
               onStepPress={handleFlowStepPress}
             />
           </View>
 
-          {workflowStep === 'extraction' ? (
+          {!isServiceTemplate ? <TemplateStagePanel key={`${projectId}:${workflowStep}`} stage={stages.find((stage) => stage.id === workflowStep) ?? stages[0]}
+            record={stageRecords.find((record) => record.stageid === workflowStep)}
+            isTeamProject={isTeamProject}
+            onSave={(content, isCompleted) => onSaveStage(workflowStep, content, isCompleted)} /> : null}
+
+          {isServiceTemplate && workflowStep === 'extraction' ? (
             <IdeaExtractionPanel
               projectId={projectId}
               defaultTopic={mindMap?.title || projectTitle}
@@ -1877,7 +1905,7 @@ export function IdeaBoard({
             />
           ) : null}
 
-          {workflowStep === 'selection' ? (
+          {isServiceTemplate && workflowStep === 'selection' ? (
             <BlindSwipeEvaluation
               projectId={projectId}
               projectOwnerId={projectOwnerId}
@@ -1896,12 +1924,13 @@ export function IdeaBoard({
             />
           ) : null}
 
-          {workflowStep === 'mvp' ? (
+          {isServiceTemplate && workflowStep === 'mvp' ? (
             selectedIdea ? (
               <MvpWorkflowPanel
                 idea={selectedIdea}
                 flowController={flowController}
                 onGoToPresentation={() => handleFlowStepPress('presentation')}
+                hasPresentation={hasPresentation}
               />
             ) : (
               <View style={[styles.prerequisiteCard, Shadows.card]}>
@@ -1914,7 +1943,7 @@ export function IdeaBoard({
             )
           ) : null}
 
-          {workflowStep === 'presentation' ? (
+          {isServiceTemplate && hasPresentation && workflowStep === 'presentation' ? (
             <PresentationWorkflowPanel
               projectId={projectId}
               idea={selectedIdea}

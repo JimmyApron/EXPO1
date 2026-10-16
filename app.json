@@ -18,7 +18,8 @@
         "foregroundImage": "./assets/images/brand-icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.EXPO1"
+      "googleServicesFile": "./google-services.json",
+      "package": "com.pbl1.watt"
     },
     "web": {
       "output": "static",
@@ -61,6 +62,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "08b2475f-6b65-46c0-8400-19d2de21cb8f"
+      }
+    },
+    "owner": "jimmyapron"
   }
 }

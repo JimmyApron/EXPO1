@@ -1,8 +1,9 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
 import type { ProjectWorkflowStep } from '@/lib/project-workspace';
+import type { ProjectStage } from '@/lib/project-stages';
 
 // 🎨 디자인 가이드 팔레트
 const PALETTE = {
@@ -17,26 +18,22 @@ const PALETTE = {
   completeBg: '#ECFDF5',     // 완료 단계 배경
 };
 
-const steps: { id: ProjectWorkflowStep; label: string; stepNumber: number }[] = [
-  { id: 'extraction', label: '아이디어 추출', stepNumber: 1 },
-  { id: 'selection', label: 'AI 비교·선정', stepNumber: 2 },
-  { id: 'mvp', label: 'MVP 기획', stepNumber: 3 },
-  { id: 'presentation', label: '발표자료', stepNumber: 4 },
-];
-
 type ProjectFlowStepsProps = {
+  stages: ProjectStage[];
   current: ProjectWorkflowStep;
   completed?: Partial<Record<ProjectWorkflowStep, boolean>>;
   onStepPress: (step: ProjectWorkflowStep) => void;
 };
 
-export function ProjectFlowSteps({ current, completed = {}, onStepPress }: ProjectFlowStepsProps) {
+export function ProjectFlowSteps({ stages, current, completed = {}, onStepPress }: ProjectFlowStepsProps) {
+  const { width } = useWindowDimensions();
+  const columns = width < 600 ? 2 : stages.length > 4 ? 3 : stages.length;
   return (
     <View
       accessibilityRole="tablist"
       accessibilityLabel="과제 작업 흐름"
       style={[styles.container, Shadows.card]}>
-      {steps.map((step, index) => {
+      {stages.map((step, index) => {
         const isCurrent = step.id === current;
         const isComplete = Boolean(completed[step.id]);
         const stateLabel = isCurrent ? '현재 단계' : isComplete ? '완료' : '시작 전';
@@ -50,7 +47,9 @@ export function ProjectFlowSteps({ current, completed = {}, onStepPress }: Proje
             onPress={() => onStepPress(step.id)}
             style={({ pressed }) => [
               styles.step,
-              index > 0 && styles.stepBorderLeft,
+              index % columns > 0 && styles.stepBorderLeft,
+              index >= columns && styles.stepBorderTop,
+              { flexBasis: `${100 / columns}%`, flexGrow: 0 },
               isCurrent && styles.currentStep,
               !isCurrent && isComplete && styles.completedStep,
               pressed && styles.pressed,
@@ -69,7 +68,7 @@ export function ProjectFlowSteps({ current, completed = {}, onStepPress }: Proje
                     isCurrent && styles.currentStepBadgeText,
                     !isCurrent && isComplete && styles.completedStepBadgeText,
                   ]}>
-                  {isComplete && !isCurrent ? '✓' : step.stepNumber}
+                  {isComplete && !isCurrent ? '✓' : index + 1}
                 </ThemedText>
               </View>
 
@@ -95,6 +94,7 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: PALETTE.border,
@@ -114,6 +114,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderLeftColor: PALETTE.stepDivider,
   },
+  stepBorderTop: { borderTopWidth: 1, borderTopColor: PALETTE.stepDivider },
   currentStep: {
     backgroundColor: PALETTE.primary,
   },

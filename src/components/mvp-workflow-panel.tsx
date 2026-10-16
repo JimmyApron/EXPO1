@@ -18,6 +18,7 @@ type MvpWorkflowPanelProps = {
   idea: Idea;
   flowController: ReturnType<typeof useProjectFlow>;
   onGoToPresentation: () => void;
+  hasPresentation?: boolean;
 };
 
 function BulletList({ items }: { items: string[] }) {
@@ -40,7 +41,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: MvpWorkflowPanelProps) {
+export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation, hasPresentation = true }: MvpWorkflowPanelProps) {
   const theme = useTheme();
   const { flow, conditions, saveMvpPlan } = flowController;
   const mvpIdea: MvpIdea = useMemo(() => ({
@@ -204,13 +205,13 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
               </View>
             </Section>
           </MvpSummaryCard>
-          <Pressable
+          {hasPresentation ? <Pressable
             accessibilityRole="button"
             accessibilityLabel="발표자료 단계로 이동"
             onPress={onGoToPresentation}
             style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
             <ThemedText type="smallBold" style={styles.whiteText}>발표자료로 이동</ThemedText>
-          </Pressable>
+          </Pressable> : null}
         </>
       ) : null}
     </View>

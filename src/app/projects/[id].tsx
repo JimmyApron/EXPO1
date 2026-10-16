@@ -15,11 +15,14 @@ import { ControlHeight, MaxContentWidth, Radius, Spacing } from '@/constants/the
 import { useIdeas } from '@/hooks/use-ideas';
 import { useProject } from '@/hooks/use-project';
 import { useProjectFlow } from '@/hooks/use-project-flow';
+import { useProjectStageProgress } from '@/hooks/use-project-stage-progress';
 import { useRooms } from '@/hooks/use-rooms';
 import { useTeamEvaluationProgress } from '@/hooks/use-team-evaluation-progress';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
-import { getNextProjectWorkflowStep, getProjectProgressLabel, getProjectWorkflowState, resolveProjectWorkspaceLocation, type ProjectWorkspaceLocation } from '@/lib/project-workspace';
+import { resolveProjectWorkspaceLocation, type ProjectWorkspaceLocation } from '@/lib/project-workspace';
+import { getProjectStageSummary } from '@/lib/project-progress';
+import { normalizeProjectTemplate } from '@/lib/project-stages';
 import type { ProjectInput } from '@/types/project';
 
 function confirmDelete(onConfirm: () => void) {
@@ -45,6 +48,7 @@ export default function ProjectDetailScreen() {
   const initialLocation = resolveProjectWorkspaceLocation({ ideaTab, projectView, flowStep });
   const { project, isloadingproject, projecterror, updateProject, deleteProject } = useProject(projectId);
   const { conditions, flow, isloadingflow, flowerror } = useProjectFlow(projectId);
+  const { progressByProjectId, stageProgressStatus, stageProgressError, saveStage } = useProjectStageProgress(projectId ? [projectId] : []);
   const { ideas, isLoadingIdeas, ideaError } = useIdeas(projectId);
   const { rooms } = useRooms();
   const projectRoom = rooms.find((item) => item.room.id === project?.roomid);
@@ -68,12 +72,15 @@ export default function ProjectDetailScreen() {
   const hasCompletedEvaluations = evaluationProgress.completedCount >= evaluationProgress.totalCount;
   const workflowIdeaCount = ideas.filter((idea) => !idea.legacystructural && Boolean(idea.title.trim() || idea.content.trim())).length;
   const selectedIdeaCount = ideas.filter((idea) => idea.status === 'selected').length;
-  const workflowState = getProjectWorkflowState(workflowIdeaCount, selectedIdeaCount, flow);
-  const isWorkflowLoading = isloadingflow || isLoadingIdeas;
-  const isWorkflowUnavailable = Boolean(flowerror || ideaError);
-  const nextStep = getNextProjectWorkflowStep(workflowState);
-  const nextActionLabel = workflowState.hasCurrentPresentation
+  const stageRecords = (progressByProjectId.get(projectId ?? '') ?? []).filter((record) => record.template === project?.template);
+  const stageSummary = getProjectStageSummary(project ?? { template: 'service_app', haspresentation: true }, workflowIdeaCount, selectedIdeaCount, flow, stageRecords);
+  const isServiceTemplate = normalizeProjectTemplate(project?.template) === 'service_app';
+  const isWorkflowLoading = (isServiceTemplate && (isloadingflow || isLoadingIdeas)) || (!isServiceTemplate && stageProgressStatus === 'loading');
+  const isWorkflowUnavailable = Boolean((isServiceTemplate && (flowerror || ideaError)) || (!isServiceTemplate && stageProgressError));
+  const nextStep = stageSummary.currentStage.id;
+  const nextActionLabel = stageSummary.completedStageCount === stageSummary.totalStageCount
     ? '완성된 결과물 보기'
+    : !isServiceTemplate ? `${stageSummary.currentStage.label} 이어서 하기`
     : nextStep === 'extraction'
       ? '아이디어 시작하기'
       : nextStep === 'selection'
@@ -99,13 +106,14 @@ export default function ProjectDetailScreen() {
   };
 
   const handleSave = async (input: ProjectInput) => {
-    if (!projectId) return;
+    if (!projectId) return false;
     setIsBusy(true);
     setMutationError('');
     const result = await updateProject(input);
     if (result.error) setMutationError(result.error);
     else setIsEditing(false);
     setIsBusy(false);
+    return !result.error;
   };
 
   const handleDelete = () => {
@@ -176,7 +184,8 @@ export default function ProjectDetailScreen() {
                   <ThemedText type="body" themeColor="textSecondary">{project.description || '과제 설명이 아직 없어요. 목표나 조건을 추가해 보세요.'}</ThemedText>
                   <View style={styles.nextAction}>
                     <View style={styles.nextActionCopy}>
-                      <ThemedText type="caption" themeColor="textSecondary">현재 단계 · {isWorkflowLoading ? '확인 중' : isWorkflowUnavailable ? '확인할 수 없음' : getProjectProgressLabel(workflowState)}</ThemedText>
+                      <ThemedText type="caption" themeColor="textSecondary">현재 단계 · {isWorkflowLoading ? '확인 중' : isWorkflowUnavailable ? '확인할 수 없음' : stageSummary.completedStageCount === stageSummary.totalStageCount ? '모든 단계 완료' : `${stageSummary.currentStage.label} 중`}</ThemedText>
+                      {!isWorkflowLoading && !isWorkflowUnavailable ? <ThemedText type="caption" themeColor="textSecondary">{stageSummary.completedStageCount}/{stageSummary.totalStageCount} 단계 완료</ThemedText> : null}
                       {!isWorkflowLoading && !isWorkflowUnavailable ? <ThemedText type="smallBold">다음 할 일</ThemedText> : null}
                     </View>
                     {!isWorkflowLoading && !isWorkflowUnavailable ? <Pressable accessibilityRole="button" accessibilityLabel={nextActionLabel} onPress={handleContinue} style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
@@ -205,6 +214,7 @@ export default function ProjectDetailScreen() {
                 {projectRoom && evaluationIdeaIds.length > 0 && !evaluationProgress.isLoading && !evaluationProgress.error ? <ReminderActions key={project.id} projectId={project.id} title={project.title} deadline={project.deadline} completedCount={evaluationProgress.completedCount} totalCount={projectRoom.members.length} /> : null}
               </View>
               {mutationError ? <ThemedText type="caption" style={{ color: theme.danger }}>{mutationError} 다시 시도해 주세요.</ThemedText> : null}
+              {stageProgressError && !isServiceTemplate ? <ThemedText accessibilityRole="alert" type="caption" style={{ color: theme.danger }}>{stageProgressError}</ThemedText> : null}
             </View>
           )}
 
@@ -215,6 +225,11 @@ export default function ProjectDetailScreen() {
             projectOwnerId={project.userid}
             projectTitle={project.title}
             projectDeadline={project.deadline}
+            projectTemplate={project.template}
+            isTeamProject={Boolean(project.roomid)}
+            hasPresentation={project.haspresentation}
+            stageRecords={stageRecords}
+            onSaveStage={(stageId, content, isCompleted) => saveStage(project.id, project.template, stageId, content, isCompleted)}
             initialSection={initialLocation.section}
             initialStep={initialLocation.step}
             onLocationChange={handleLocationChange}
