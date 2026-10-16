@@ -137,8 +137,8 @@ export default function HomeScreen() {
         </View>
 
         <Pressable accessibilityRole="button" onPress={() => router.push('/watt' as Href)} style={[styles.wattSummary,{backgroundColor:theme.surface,borderColor:theme.border}]}>
-          <View><ThemedText type="smallBold">AI 잔여 사용량</ThemedText><ThemedText type="small" themeColor="textSecondary">작업에 필요한 사용량을 확인해요.</ThemedText></View>
-          <ThemedText type="sectionTitle" style={{color:theme.primary}}>{wattBalance ? `${wattBalance.total}단위` : '확인하기'}</ThemedText>
+          <View style={styles.wattSummaryLabel}><AppIcon name="idea" color={theme.primary} size={18}/><ThemedText type="smallBold">AI 잔여 사용량</ThemedText></View>
+          <View style={styles.wattSummaryValue}><ThemedText type="smallBold" style={{color:theme.text}}>{wattBalance ? `${wattBalance.total}단위` : '확인하기'}</ThemedText><AppIcon name="chevronRight" color={theme.textTertiary} size={18}/></View>
         </Pressable>
 
         {/* 메인 타이틀 안내문구 */}
@@ -267,7 +267,9 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
   },
-  wattSummary: { minHeight: 58, borderWidth: 1, borderRadius: Radius.large, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
+  wattSummary: { minHeight: 56, borderWidth: 1, borderRadius: Radius.large, paddingHorizontal: Spacing.three, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
+  wattSummaryLabel: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  wattSummaryValue: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   statsBadge: {
     flexDirection: 'row',
     alignItems: 'center',

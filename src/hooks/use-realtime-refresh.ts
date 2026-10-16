@@ -1,3 +1,4 @@
+import { AppState } from 'react-native';
 import { useEffect, useRef } from 'react';
 
 import { supabase } from '@/lib/supabase';
@@ -41,6 +42,7 @@ export function useRealtimeRefresh({
     channelSequence += 1;
     const channel = supabase.channel(`${channelName}:${channelSequence}`);
     let refreshTimeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+    let retryRefreshInterval: ReturnType<typeof globalThis.setInterval> | undefined;
 
     const scheduleRefresh = () => {
       if (refreshTimeout) {
@@ -89,18 +91,34 @@ export function useRealtimeRefresh({
 
     channel.subscribe((status, error) => {
       if (status === 'SUBSCRIBED') {
+        if (retryRefreshInterval) {
+          globalThis.clearInterval(retryRefreshInterval);
+          retryRefreshInterval = undefined;
+        }
         scheduleRefresh();
       }
 
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.warn(`[Realtime] ${channelName} subscription failed (${status}).`, error);
+        scheduleRefresh();
+        if (!retryRefreshInterval) {
+          retryRefreshInterval = globalThis.setInterval(scheduleRefresh, 30000);
+        }
       }
+    });
+
+    const appState = AppState.addEventListener('change', state => {
+      if (state === 'active') scheduleRefresh();
     });
 
     return () => {
       if (refreshTimeout) {
         globalThis.clearTimeout(refreshTimeout);
       }
+      if (retryRefreshInterval) {
+        globalThis.clearInterval(retryRefreshInterval);
+      }
+      appState.remove();
 
       void supabase.removeChannel(channel);
     };

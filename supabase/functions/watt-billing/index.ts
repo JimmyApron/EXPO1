@@ -92,6 +92,14 @@ Deno.serve(async (request) => {
         if (typeof body.entitlementId !== 'string') return json({ error: 'invalid_entitlement' }, 400);
         data = await rpc(url, serviceKey, 'watt_cancel', { p_user_id: userId, p_entitlement_id: body.entitlementId });
         break;
+      case 'resume':
+        if (typeof body.entitlementId !== 'string') return json({ error: 'invalid_entitlement' }, 400);
+        data = await rpc(url, serviceKey, 'watt_resume', { p_user_id: userId, p_entitlement_id: body.entitlementId });
+        break;
+      case 'preview':
+        if (typeof body.productId !== 'string') return json({ error: 'invalid_product' }, 400);
+        data = await rpc(url, serviceKey, 'watt_preview', { p_user_id: userId, p_product_id: body.productId, p_room_id: roomId });
+        break;
       case 'topup':
         if (body.productId !== 'topup_s' && body.productId !== 'topup_m') return json({ error: 'invalid_product' }, 400);
         data = await rpc(url, serviceKey, 'watt_add_topup', {
@@ -111,12 +119,23 @@ Deno.serve(async (request) => {
       }
       case 'history': {
         const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
+        let teamUsage: unknown[] = [];
+        if (roomId) {
+          const membership = await fetch(`${url}/rest/v1/roommembers?select=id&roomid=eq.${encodeURIComponent(roomId)}&userid=eq.${encodeURIComponent(userId)}&limit=1`, {
+            headers: { apikey: anonKey, Authorization: authorization }, signal: AbortSignal.timeout(10000),
+          });
+          const members: unknown = membership.ok ? await membership.json() : [];
+          if (!Array.isArray(members) || members.length === 0) return json({ error: 'room_access_denied' }, 403);
+          const roomUsageResponse = await fetch(`${url}/rest/v1/watt_usage?select=id,project_id,room_id,feature,units,state,error_code,created_at,completed_at&room_id=eq.${encodeURIComponent(roomId)}&order=created_at.desc&limit=100`, { headers, signal: AbortSignal.timeout(10000) });
+          if (!roomUsageResponse.ok) throw new Error('history_unavailable');
+          teamUsage = await roomUsageResponse.json();
+        }
         const [purchases, usage] = await Promise.all([
           fetch(`${url}/rest/v1/watt_purchases?select=*,watt_products(label)&user_id=eq.${userId}&order=created_at.desc&limit=100`, { headers }),
           fetch(`${url}/rest/v1/watt_usage?select=id,project_id,room_id,feature,units,state,error_code,created_at,completed_at&user_id=eq.${userId}&order=created_at.desc&limit=100`, { headers }),
         ]);
         if (!purchases.ok || !usage.ok) throw new Error('history_unavailable');
-        data = { purchases: await purchases.json(), usage: await usage.json() };
+        data = { purchases: await purchases.json(), usage: await usage.json(), teamUsage };
         break;
       }
       default: return json({ error: 'unsupported_action' }, 400);
@@ -133,6 +152,7 @@ Deno.serve(async (request) => {
       room_member_limit:{status:409,message:'팀 이용권은 최대 5명까지 사용할 수 있습니다.'},
       team_limit:{status:409,message:'팀 이용권은 최대 5명까지 사용할 수 있습니다.'},
       active_entitlement_exists:{status:409,message:'이미 이용 중인 이용권이 있습니다.'},
+      trial_not_cancellable:{status:409,message:'무료체험은 해지 예약할 수 없습니다.'},
       trial_already_used:{status:409,message:'무료체험은 계정당 한 번만 이용할 수 있습니다.'},
       entitlement_expired:{status:409,message:'이용 기간이 종료된 이용권입니다.'},
       entitlement_not_found:{status:404,message:'이용권을 찾을 수 없습니다.'},

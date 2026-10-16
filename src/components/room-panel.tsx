@@ -1,7 +1,7 @@
 import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import * as Clipboard from 'expo-clipboard';
 import { router, type Href } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { EmptyState } from '@/components/empty-state';
@@ -15,6 +15,7 @@ import { useProjects } from '@/hooks/use-projects';
 import { useProjectFavorites } from '@/hooks/use-project-favorites';
 import { sortProjectsWithFavorites } from '@/lib/project-favorites';
 import { useRooms } from '@/hooks/use-rooms';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { wattAction, type WattSnapshot } from '@/hooks/use-watt';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
@@ -290,13 +291,21 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
   const [formerror, setFormerror] = useState('');
   const [teamWatt, setTeamWatt] = useState<WattSnapshot|null>(null);
 
-  useEffect(() => {
-    let active = true;
-    void wattAction<{team:WattSnapshot|null}>({action:'state',roomId:roomid})
-      .then(result => { if(active) setTeamWatt(result.team); })
-      .catch(() => { if(active) setTeamWatt(null); });
-    return () => { active = false; };
+  const refreshTeamWatt = useCallback(async () => {
+    try { const result=await wattAction<{team:WattSnapshot|null}>({action:'state',roomId:roomid}); setTeamWatt(result.team); }
+    catch { setTeamWatt(null); }
   }, [roomid]);
+  useEffect(() => { const timeout=globalThis.setTimeout(()=>{void refreshTeamWatt();},0);return()=>globalThis.clearTimeout(timeout); }, [refreshTeamWatt]);
+  useRealtimeRefresh({
+    channelName:`room-watt-${roomid}`,
+    enabled:Boolean(roomid),
+    onRefresh:refreshTeamWatt,
+    tables:[
+      {table:'watt_entitlements',filter:`room_id=eq.${roomid}`},
+      {table:'watt_grants',filter:`owner_id=eq.${roomid}`},
+      {table:'watt_usage',filter:`room_id=eq.${roomid}`},
+    ],
+  });
 
   const handleCreateProject = async (input: ProjectInput) => {
     setIscreating(true);
