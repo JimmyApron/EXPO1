@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { MvpEffortTags } from '@/components/mvp-effort-tags';
 import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { MvpSummaryCard } from '@/components/result/mvp-summary-card';
+import { WattCostHint } from '@/components/watt-cost-hint';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
@@ -15,6 +16,7 @@ import type { Idea } from '@/types/idea';
 import type { MvpIdea } from '@/types/mvp-plan';
 
 type MvpWorkflowPanelProps = {
+  projectId: string;
   idea: Idea;
   flowController: ReturnType<typeof useProjectFlow>;
   onGoToPresentation: () => void;
@@ -41,7 +43,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation, hasPresentation = true }: MvpWorkflowPanelProps) {
+export function MvpWorkflowPanel({ projectId, idea, flowController, onGoToPresentation, hasPresentation = true }: MvpWorkflowPanelProps) {
   const theme = useTheme();
   const { flow, conditions, saveMvpPlan } = flowController;
   const mvpIdea: MvpIdea = useMemo(() => ({
@@ -54,6 +56,7 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation, has
     coreFeatures: idea.corefeatures,
   }), [idea]);
   const { plan, isGenerating, error, generatePlan } = useMvpPlan(
+    projectId,
     mvpIdea,
     conditions,
     flow?.mvpplan,
@@ -118,6 +121,7 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation, has
         </ThemedText>
       </ThemedView>
 
+      <WattCostHint projectId={projectId} units={2} />
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled: isGenerating }}

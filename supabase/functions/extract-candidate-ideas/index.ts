@@ -1,3 +1,4 @@
+import { withWattUsage } from '../_shared/watt-usage.ts';
 import {
   anthropicApiVersion,
   deepSeekMessagesUrl,
@@ -92,7 +93,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cleanString(value: unknown, maxLength = 4_000) {
-  return typeof value === 'string' ? value.trim().replace(/\r\n/g, '\n').slice(0, maxLength) : '';
+  return typeof value === 'string' ? value.trim().replace(/\n/g, '\n').slice(0, maxLength) : '';
 }
 
 function cleanStringArray(value: unknown, maxItems = 12) {
@@ -324,7 +325,7 @@ function buildMessageContent(source: ExtractSource, projectConditions: ReturnTyp
   return content;
 }
 
-Deno.serve(async (request) => {
+Deno.serve(async (request) => withWattUsage(request, 'extract-candidate-ideas', async () => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -519,4 +520,4 @@ Deno.serve(async (request) => {
     extractedText: cleanString(toolInput.extractedText, maxTextLength),
     candidateIdeas: normalizeCandidates(toolInput.candidateIdeas),
   });
-});
+}));

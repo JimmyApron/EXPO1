@@ -4,6 +4,7 @@ import { normalizeMvpPlan } from '../../supabase/functions/_shared/mvp-plan';
 import { MVP_EDGE_FUNCTION_NAME } from '@/constants/mvp';
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
+import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import type { ProjectConditions } from '@/types/candidate-idea';
 import type { MvpIdea, MvpPlan } from '@/types/mvp-plan';
 
@@ -53,6 +54,7 @@ async function getMvpErrorMessage(error: unknown) {
 }
 
 export function useMvpPlan(
+  projectId: string,
   idea: MvpIdea,
   conditions?: ProjectConditions,
   savedPlan?: MvpPlan | null,
@@ -85,7 +87,7 @@ export function useMvpPlan(
 
     try {
       const { data, error: invokeError } = await supabase.functions.invoke(MVP_EDGE_FUNCTION_NAME, {
-        body: { selectedIdeaId: idea.id, idea, projectConditions: conditions },
+        body: { projectId, selectedIdeaId: idea.id, idea, projectConditions: conditions },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (invokeError) throw invokeError;
@@ -96,12 +98,13 @@ export function useMvpPlan(
       const saveResult = await onSave?.(normalized) as { error?: string } | undefined;
       if (saveResult?.error) throw new Error(saveResult.error);
       setPlan(normalized);
+      notifyWattBalanceChanged();
     } catch (caughtError) {
       setError(await getMvpErrorMessage(caughtError));
     } finally {
       setIsGenerating(false);
     }
-  }, [accessToken, conditions, idea, isGenerating, onSave, savedPlan]);
+  }, [accessToken, conditions, idea, isGenerating, onSave, projectId, savedPlan]);
 
   return { plan, isGenerating, error, generatePlan };
 }

@@ -2,6 +2,7 @@ import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { ExportPanel } from '@/components/export/ExportPanel';
+import { WattCostHint } from '@/components/watt-cost-hint';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Spacing } from '@/constants/theme';
@@ -110,6 +111,7 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
       <View style={styles.row}>{['더 간결하게', '전문적으로', '근거를 자세히'].map((preset) => <Pressable key={preset} accessibilityRole="button" accessibilityLabel={`${preset} 요청 입력`} disabled={loading || saving} onPress={() => setInstruction(preset)} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">{preset}</ThemedText></Pressable>)}</View>
       <TextInput accessibilityLabel="발표자료 전체 재생성 요청" value={instruction} onChangeText={setInstruction} editable={!loading && !saving} multiline maxLength={1000} placeholder="예: 5분 발표에 맞게 간결하게 구성해 줘" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
     </ThemedView> : null}
+    <WattCostHint projectId={projectId} units={4} />
     <Pressable accessibilityRole="button" accessibilityLabel={saved ? '발표자료 전체 재생성 요청' : '발표자료 생성 및 저장'} accessibilityState={{ disabled: loading || saving || !canGenerate || Boolean(saved && !instruction.trim()) }} disabled={loading || saving || !canGenerate || Boolean(saved && !instruction.trim())} onPress={() => void generate()} style={[styles.primaryButton, { backgroundColor: theme.primary }, (loading || saving || !canGenerate || Boolean(saved && !instruction.trim())) && styles.disabled]}>
       {loading ? <ActivityIndicator color={theme.primaryText} /> : <ThemedText type="smallBold" style={{ color: theme.primaryText }}>{saved ? '요청 반영해 전체 재생성' : '발표자료 생성·저장'}</ThemedText>}
     </Pressable>

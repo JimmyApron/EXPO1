@@ -17,6 +17,7 @@ import { useProjectFlowSummaries } from '@/hooks/use-project-flow-summaries';
 import { useProjectStageProgress } from '@/hooks/use-project-stage-progress';
 import { useProjectFavorites } from '@/hooks/use-project-favorites';
 import { sortProjectsWithFavorites } from '@/lib/project-favorites';
+import { useWattBalance } from '@/hooks/use-watt';
 import { useProjects } from '@/hooks/use-projects';
 import { useTheme } from '@/hooks/use-theme';
 import type { ProjectInput } from '@/types/project';
@@ -31,6 +32,7 @@ export default function HomeScreen() {
   const { flowsByProjectId, flowStatus } = useProjectFlowSummaries(projectIds);
   const { progressByProjectId, stageProgressStatus, stageProgressError } = useProjectStageProgress(projectIds);
   const { favoriteProjectIds, favoritesStatus, favoritesError, busyProjectId, toggleFavorite } = useProjectFavorites(projectIds);
+  const { balance: wattBalance } = useWattBalance();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [formError, setFormError] = useState('');
@@ -133,6 +135,11 @@ export default function HomeScreen() {
             <ThemedText style={styles.statsBadgeValue}>최종 선정 {totals.selectedIdeas}</ThemedText>
           </View>
         </View>
+
+        <Pressable accessibilityRole="button" onPress={() => router.push('/watt' as Href)} style={[styles.wattSummary,{backgroundColor:theme.surface,borderColor:theme.border}]}>
+          <View><ThemedText type="smallBold">AI 잔여 사용량</ThemedText><ThemedText type="small" themeColor="textSecondary">작업에 필요한 사용량을 확인해요.</ThemedText></View>
+          <ThemedText type="sectionTitle" style={{color:theme.primary}}>{wattBalance ? `${wattBalance.total}단위` : '확인하기'}</ThemedText>
+        </Pressable>
 
         {/* 메인 타이틀 안내문구 */}
         <View style={styles.heroSection}>
@@ -260,6 +267,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
   },
+  wattSummary: { minHeight: 58, borderWidth: 1, borderRadius: Radius.large, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
   statsBadge: {
     flexDirection: 'row',
     alignItems: 'center',

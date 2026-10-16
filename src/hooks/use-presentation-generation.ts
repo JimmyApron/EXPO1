@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
+import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import type {
   CandidateIdea,
   PresentationData,
@@ -101,6 +102,7 @@ export function usePresentationGeneration() {
         throw new Error(generationErrorMessage);
       }
 
+      notifyWattBalanceChanged();
       return data;
     },
     [accessToken],

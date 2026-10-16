@@ -49,7 +49,7 @@ const items: NavigationItem[] = [
   },
   { label: '방', href: '/rooms' as Href, icon: 'rooms', matches: (path) => path.startsWith('/rooms') },
   { label: '알림', href: '/notifications', icon: 'notifications', matches: (path) => path.startsWith('/notifications') },
-  { label: '내 정보', href: '/profile' as Href, icon: 'profile', matches: (path) => path.startsWith('/profile') },
+  { label: '내 정보', href: '/profile' as Href, icon: 'profile', matches: (path) => path.startsWith('/profile') || path.startsWith('/watt') },
 ];
 
 export function AppNavigation() {

@@ -19,6 +19,7 @@ import { IdeaExtractionPanel } from '@/components/idea-extraction/idea-extractio
 import { IdeaMindMap } from '@/components/idea-mind-map';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
 import { MvpWorkflowPanel } from '@/components/mvp-workflow-panel';
+import { WattCostHint } from '@/components/watt-cost-hint';
 import { PresentationWorkflowPanel } from '@/components/presentation-workflow-panel';
 import { ProjectFlowSteps } from '@/components/project-flow-steps';
 import { ProjectHomeSummary } from '@/components/project-home-summary';
@@ -97,6 +98,7 @@ type IdeaBoardProps = {
 
 type IdeaFormProps = {
   template: ProjectTemplate;
+  projectContextId: string;
   idea?: Idea;
   categories: IdeaCategory[];
   draftKey?: string;
@@ -288,12 +290,14 @@ function CategorySelector({
 }
 
 function IdeaDraftCoach({
+  projectId,
   analysis,
   analysisError,
   isAnalyzing,
   isDisabled,
   onAnalyze,
 }: {
+  projectId: string;
   analysis: IdeaDraftAnalysisResult | null;
   analysisError: string;
   isAnalyzing: boolean;
@@ -324,6 +328,7 @@ function IdeaDraftCoach({
 
       <View style={styles.draftCoachBubble}>
         <View style={styles.draftCoachBubbleTail} />
+        <WattCostHint projectId={projectId} units={1} />
         {isAnalyzing ? (
           <View style={styles.draftCoachLoading}>
             <ActivityIndicator size="small" color={PALETTE.primaryDark} />
@@ -408,6 +413,7 @@ function IdeaDraftCoach({
 
 function IdeaForm({
   template,
+  projectContextId,
   idea,
   categories,
   draftKey,
@@ -677,6 +683,7 @@ function IdeaForm({
 
       {showDraftCoach ? (
         <IdeaDraftCoach
+          projectId={projectContextId}
           analysis={draftAnalysis}
           analysisError={draftAnalysisError}
           isAnalyzing={isAnalyzing}
@@ -1971,6 +1978,7 @@ export function IdeaBoard({
           {isServiceTemplate && workflowStep === 'mvp' ? (
             selectedIdea ? (
               <MvpWorkflowPanel
+                projectId={projectId}
                 idea={selectedIdea}
                 flowController={flowController}
                 onGoToPresentation={() => handleFlowStepPress('presentation')}
@@ -2037,6 +2045,7 @@ export function IdeaBoard({
                   <IdeaForm
                     key={editingIdea?.id ?? `new:${projectTemplate}`}
                     template={projectTemplate}
+                    projectContextId={projectId}
                     idea={editingIdea}
                     categories={categories}
                     draftKey={editingIdea ? undefined : `ideadraft:${projectId}:${projectTemplate}`}

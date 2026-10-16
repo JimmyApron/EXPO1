@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 
 export type WorkspaceAiTask = 'topics' | 'resource' | 'compare' | 'outline' | 'polish' | 'expand' | 'shorten' | 'continue' | 'tone' | 'dialogue' | 'feedback' | 'presentation';
 export type WorkspaceAiResult = { text: string; suggestions: { title: string; text: string; original: string; reason: string; kind: string }[]; outline: { title: string; guidance: string }[]; slides: { title: string; content: string; script: string }[]; qna: string };
@@ -33,6 +34,7 @@ export function useWorkspaceAssistant(projectId: string) {
         setError(message); return null;
       }
       if (!data || typeof data.text !== 'string' || !Array.isArray(data.suggestions) || !Array.isArray(data.outline) || !Array.isArray(data.slides) || typeof data.qna !== 'string') { setError('AI 응답 형식을 확인할 수 없습니다.'); return null; }
+      notifyWattBalanceChanged();
       return cleanAiResult(data as WorkspaceAiResult);
     } catch { setError('네트워크 연결을 확인한 후 AI 요청을 다시 시도해 주세요.'); return null; }
     finally { running.current = false; setBusy(false); }

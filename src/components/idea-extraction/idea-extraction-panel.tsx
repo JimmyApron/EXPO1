@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { CandidateIdeaCard } from '@/components/idea-extraction/candidate-idea-card';
+import { WattCostHint } from '@/components/watt-cost-hint';
 import {
     ExtractionSourceInput,
     type ExtractionSourceMode,
@@ -440,6 +441,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
           onClearImages={clearImages}
         />
 
+        <WattCostHint projectId={projectId} units={mode === 'image' ? 5 : 1} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="아이디어 추출하기"

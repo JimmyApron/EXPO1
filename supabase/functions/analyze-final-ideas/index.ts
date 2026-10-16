@@ -1,3 +1,4 @@
+import { withWattUsage } from '../_shared/watt-usage.ts';
 import {
   anthropicApiVersion,
   deepSeekMessagesUrl,
@@ -195,7 +196,7 @@ function getDeepSeekToolInput(responseBody: unknown) {
   return null;
 }
 
-Deno.serve(async (request) => {
+Deno.serve(async (request) => withWattUsage(request, 'analyze-final-ideas', async () => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -351,4 +352,4 @@ Deno.serve(async (request) => {
   }
 
   return jsonResponse({ error: 'invalid_analysis_shape', message: parseErrorMessage }, 502);
-});
+}));

@@ -1,3 +1,4 @@
+import { withWattUsage } from '../_shared/watt-usage.ts';
 import {
   anthropicApiVersion,
   deepSeekMessagesUrl,
@@ -269,7 +270,7 @@ function getDeepSeekStopReason(responseBody: unknown) {
     : '';
 }
 
-Deno.serve(async (request) => {
+Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', async () => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -443,4 +444,4 @@ const generationInstruction = cleanString(requestBody.instruction, 1000);
   }
 
   return jsonResponse(presentationData);
-});
+}));

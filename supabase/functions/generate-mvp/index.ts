@@ -1,3 +1,4 @@
+import { withWattUsage } from '../_shared/watt-usage.ts';
 import {
   anthropicApiVersion,
   deepSeekMessagesUrl,
@@ -257,7 +258,7 @@ function getDeepSeekToolInput(responseBody: unknown) {
   return isRecord(toolUse) && isRecord(toolUse.input) ? toolUse.input : null;
 }
 
-Deno.serve(async (request) => {
+Deno.serve(async (request) => withWattUsage(request, 'generate-mvp', async () => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -403,4 +404,4 @@ Deno.serve(async (request) => {
   }
 
   return jsonResponse(mvpPlan);
-});
+}));

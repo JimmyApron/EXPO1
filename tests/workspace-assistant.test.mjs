@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 let handler;
 const originalDeno = globalThis.Deno;
-globalThis.Deno = { env: { get: key => ({ SUPABASE_URL: 'https://test.example', SUPABASE_ANON_KEY: 'test-anon', DEEPSEEK_API_KEY: 'test-provider' })[key] }, serve: value => { handler = value; } };
+globalThis.Deno = { env: { get: key => ({ SUPABASE_URL: 'https://test.example', SUPABASE_ANON_KEY: 'test-anon', SUPABASE_SERVICE_ROLE_KEY: 'test-service', DEEPSEEK_API_KEY: 'test-provider' })[key] }, serve: value => { handler = value; } };
 await import('../supabase/functions/workspace-assistant/index.ts');
 const projectId = '20000000-0000-0000-0000-000000000001';
 const request = (task = 'topics', context = {}, auth = true) => new Request('http://localhost/workspace-assistant', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer test-only-token' } : {}) }, body: JSON.stringify({ projectId, task, context }) });
@@ -11,9 +11,9 @@ test('workspace AI enforces auth and project access before contacting a provider
   const originalFetch = globalThis.fetch;
   let calls = 0;
   try {
-    globalThis.fetch = async () => { calls++; return Response.json([]); };
+    globalThis.fetch = async url => { calls++; if (String(url).includes('/auth/')) return Response.json({id:'user'}); return String(url).includes('watt_reserve_usage') ? Response.json({ usage_id: 'usage-id' }) : Response.json([]); };
     assert.equal((await handler(request('topics', {}, false))).status, 401); assert.equal(calls, 0);
-    assert.equal((await handler(request())).status, 403); assert.equal(calls, 2);
+    assert.equal((await handler(request())).status, 403); assert.equal(calls, 5);
   } finally { globalThis.fetch = originalFetch; }
 });
 test('URL-only research cannot be summarized or compared as if its original was read', async () => {
@@ -22,6 +22,8 @@ test('URL-only research cannot be summarized or compared as if its original was 
   try {
     globalThis.fetch = async url => {
       if (String(url).includes('/auth/')) return Response.json({ id: 'user' });
+      if (String(url).includes('watt_reserve_usage')) return Response.json({ usage_id: 'usage-id' });
+      if (String(url).includes('watt_settle_usage')) return Response.json({ state: 'refunded' });
       if (String(url).includes('/rest/')) return Response.json([{ id: projectId, template: 'report_research' }]);
       providerCalls++; throw new Error('should not call provider');
     };
@@ -38,6 +40,8 @@ test('AI returns reviewable structured proposals and rejects malformed output', 
   try {
     globalThis.fetch = async (url, options) => {
       if (String(url).includes('/auth/')) return Response.json({ id: 'user' });
+      if (String(url).includes('watt_reserve_usage')) return Response.json({ usage_id: 'usage-id' });
+      if (String(url).includes('watt_settle_usage')) return Response.json({ state: 'succeeded' });
       if (String(url).includes('/rest/')) return Response.json([{ id: projectId, template: 'writing_creative' }]);
       const payload = JSON.parse(options.body);
       assert.equal(payload.tool_choice.name, 'record_workspace_assistance');

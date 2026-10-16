@@ -1,3 +1,4 @@
+import { withWattUsage } from '../_shared/watt-usage.ts';
 import { anthropicApiVersion, deepSeekMessagesUrl, resolveDeepSeekModel, withDeepSeekToolInstruction } from '../_shared/deepseek.ts';
 declare const Deno: { env: { get(name: string): string | undefined }; serve(handler: (request: Request) => Response | Promise<Response>): void };
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -11,7 +12,7 @@ const schema = { type: 'object', additionalProperties: false, properties: {
   outline: objects({ title: string, guidance: string }), slides: objects({ title: string, content: string, script: string }), qna: string,
 }, required: ['text', 'suggestions', 'outline', 'slides', 'qna'] };
 
-Deno.serve(async request => {
+Deno.serve(async request => withWattUsage(request, 'workspace-assistant', async () => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (request.method !== 'POST') return json({ message: 'POST 요청만 지원합니다.' }, 405);
   try {
@@ -73,4 +74,4 @@ presentation=최종 결과물에 근거한 발표 슬라이드, 대본, 예상 �
   } catch (error) {
     return json({ message: error instanceof Error && error.name === 'TimeoutError' ? 'AI 요청 시간이 초과되었습니다. 다시 시도해 주세요.' : '요청을 처리하지 못했습니다. 다시 시도해 주세요.' }, 502);
   }
-});
+}));

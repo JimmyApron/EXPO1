@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import { useAuth } from '@/hooks/use-auth';
 import { normalizeExtractCandidateIdeasResponse, maxCandidateTextLength } from '@/lib/candidate-idea';
 import { supabase } from '@/lib/supabase';
+import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import { renderWebImage } from '@/lib/redact-image';
 import type {
   CandidateIdeaImage,
@@ -208,6 +209,7 @@ export function useCandidateIdeaExtraction(projectId: string) {
           setExtractionError('AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요.');
           return null;
         }
+        notifyWattBalanceChanged();
 
         if (requestSource.type === 'image') {
           setImages([]);

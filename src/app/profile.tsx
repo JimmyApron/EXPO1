@@ -29,6 +29,9 @@ import {
 import { useExperience } from '@/context/ExperienceContext';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
+import { useWattBalance, wattAction, type WattSnapshot } from '@/hooks/use-watt';
+import { useRooms } from '@/hooks/use-rooms';
+import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 type DialogProps = {
@@ -117,6 +120,10 @@ export default function ProfileScreen() {
   const theme = useTheme();
   const { openOnboarding } = useExperience();
   const { user, autherror, signout, updateaccount, changepassword, deleteaccount } = useAuth();
+  const { balance: wattBalance, loading: wattLoading, error: wattError } = useWattBalance();
+  const personalWattEntitlement = wattBalance?.entitlements?.find(item => item.room_id === null && item.state !== 'expired');
+  const { rooms } = useRooms();
+  const [teamWattCards,setTeamWattCards] = useState<{id:string;name:string;balance:WattSnapshot|null}[]>([]);
   const email = user?.email ?? '이메일 정보 없음';
   const fallbackName = email.includes('@') ? email.split('@')[0] : email;
   const [nickname, setNickname] = useState(() => String(user?.user_metadata?.nickname ?? fallbackName));
@@ -148,6 +155,17 @@ export default function ProfileScreen() {
       active = false;
     };
   }, [user]);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all(rooms.map(async item => {
+      try {
+        const result = await wattAction<{team:WattSnapshot|null}>({action:'state',roomId:item.room.id});
+        return {id:item.room.id,name:item.room.name,balance:result.team};
+      } catch { return {id:item.room.id,name:item.room.name,balance:null}; }
+    })).then(cards => { if(active) setTeamWattCards(cards); });
+    return () => { active = false; };
+  }, [rooms]);
 
   const closeDialog = () => {
     if (busyAction) return;
@@ -357,6 +375,25 @@ export default function ProfileScreen() {
               <ThemedText type="smallBold">프로필 수정</ThemedText>
             </Pressable>
           </ThemedView>
+
+          <Pressable accessibilityRole="button" onPress={() => router.push('/watt')}>
+            <ThemedView type="backgroundElement" style={[styles.settingsCard, styles.wattCard, { borderColor: theme.border }, Shadows.card]}>
+              <View style={styles.wattCardCopy}>
+                <ThemedText type="smallBold">내 이용권</ThemedText>
+                <ThemedText type="sectionTitle">{wattLoading ? '확인 중' : wattError ? '이용 정보 확인 필요' : personalWattEntitlement?.trial ? '무료 체험' : personalWattEntitlement?.product_id === 'personal_30' ? '개인 30일권' : personalWattEntitlement?.product_id === 'personal_120' ? '개인 120일권' : 'FREE'}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">{wattBalance ? `${wattBalance.total}단위 남음` : wattLoading ? '잔여량 확인 중' : wattError ? '잔여량을 불러오지 못했어요' : '잔여량 확인 필요'} · 이용권 살펴보기</ThemedText>
+              </View>
+              <AppIcon name="chevronRight" color={theme.textTertiary} size={20} />
+            </ThemedView>
+          </Pressable>
+          {teamWattCards.filter(card => card.balance?.entitlements?.some(item => item.room_id === card.id && item.state !== 'expired')).map(card => (
+            <Pressable key={card.id} accessibilityRole="button" onPress={() => router.push({pathname:'/watt',params:{roomId:card.id}})}>
+              <ThemedView type="backgroundElement" style={[styles.teamWattRow,{borderColor:theme.border}]}>
+                <View style={styles.wattCardCopy}><ThemedText type="smallBold">팀 이용권 · {card.name}</ThemedText><ThemedText type="small" themeColor="textSecondary">공동 잔여량 {card.balance?.total ?? 0}단위</ThemedText></View>
+                <AppIcon name="chevronRight" color={theme.textTertiary} size={20}/>
+              </ThemedView>
+            </Pressable>
+          ))}
 
           {status || autherror ? (
             <View
@@ -627,6 +664,9 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, width: '100%', maxWidth: MaxContentWidth, padding: Spacing.three, gap: Spacing.four },
   header: { gap: Spacing.one, paddingTop: Spacing.two },
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, borderWidth: 1, borderRadius: Radius.xlarge, padding: Spacing.three },
+  wattCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.three },
+  wattCardCopy: { gap: 4 },
+  teamWattRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderRadius: Radius.large, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
   summaryAvatar: { width: 64, height: 64 },
   profileEditButton: { minHeight: ControlHeight.touch, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.two, flexShrink: 0 },
   photoEditRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.three },

@@ -1,10 +1,11 @@
 import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import * as Clipboard from 'expo-clipboard';
 import { router, type Href } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { EmptyState } from '@/components/empty-state';
+import { AppIcon } from '@/components/app-icon';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
 import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
@@ -15,6 +16,7 @@ import { useProjectFavorites } from '@/hooks/use-project-favorites';
 import { sortProjectsWithFavorites } from '@/lib/project-favorites';
 import { useRooms } from '@/hooks/use-rooms';
 import { useTheme } from '@/hooks/use-theme';
+import { wattAction, type WattSnapshot } from '@/hooks/use-watt';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import type { Project, ProjectInput } from '@/types/project';
 import {
@@ -286,6 +288,15 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
   const [iscreateopen, setIscreateopen] = useState(false);
   const [iscreating, setIscreating] = useState(false);
   const [formerror, setFormerror] = useState('');
+  const [teamWatt, setTeamWatt] = useState<WattSnapshot|null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void wattAction<{team:WattSnapshot|null}>({action:'state',roomId:roomid})
+      .then(result => { if(active) setTeamWatt(result.team); })
+      .catch(() => { if(active) setTeamWatt(null); });
+    return () => { active = false; };
+  }, [roomid]);
 
   const handleCreateProject = async (input: ProjectInput) => {
     setIscreating(true);
@@ -322,6 +333,11 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
           </ThemedText>
         </Pressable>
       </View>
+
+      <Pressable accessibilityRole="button" onPress={()=>router.push(`/watt?roomId=${encodeURIComponent(roomid)}` as Href)} style={[styles.teamWattCard,{borderColor:theme.border,backgroundColor:theme.surface}]}>
+        <View style={{flex:1,gap:3}}><ThemedText type="smallBold">팀 AI 이용권</ThemedText><ThemedText type="caption" themeColor="textSecondary">공동 잔여량 {teamWatt?.total ?? 0}단위 · 이용권 관리</ThemedText></View>
+        <AppIcon name="chevronRight" color={theme.textTertiary} size={20}/>
+      </Pressable>
 
       {projecterror ? (
         <ThemedText type="small" style={styles.errorText}>
@@ -1111,6 +1127,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
+  teamWattCard: { minHeight: 60, borderWidth: 1, borderRadius: Radius.large, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   projectList: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
+import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import type {
   IdeaDraftAnalysisInput,
   IdeaDraftAnalysisLevel,
@@ -136,6 +137,7 @@ export function useIdeaDraftAnalysis(projectId?: string) {
         }
 
         setAnalysis(data);
+        notifyWattBalanceChanged();
       } catch {
         setAnalysis(null);
         setAnalysisError(analysisLoadError);

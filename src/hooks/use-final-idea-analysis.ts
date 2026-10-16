@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
+import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import type { ProjectConditions } from '@/types/candidate-idea';
 import type { FinalIdeaAnalysisInput, FinalIdeaAnalysisResult, FinalAnalysisLevel } from '@/types/final-analysis';
 import { getIdeaCategoryLabel, normalizeIdeaCategory, normalizeIdeaStatus, type Idea } from '@/types/idea';
@@ -152,6 +153,7 @@ export function useFinalIdeaAnalysis(projectId: string, selectedIdeas: Idea[], p
         analyzedAt: new Date().toISOString(),
       };
       setAnalysis(savedAnalysis);
+      notifyWattBalanceChanged();
       return savedAnalysis;
     } catch {
       setAnalysisError(analysisLoadError);
