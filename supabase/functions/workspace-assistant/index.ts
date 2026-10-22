@@ -12,8 +12,11 @@ const schema = { type: 'object', additionalProperties: false, properties: {
   text: string, resultText: string, suggestions: objects({ title: string, text: string, original: string, reason: string, kind: string }),
   outline: objects({ title: string, guidance: string }), slides: objects({ title: string, content: string, script: string }), qna: string,
 }, required: ['text', 'resultText', 'suggestions', 'outline', 'slides', 'qna'] };
+const emptyArray = { type: 'array', maxItems: 0, items: { type: 'object' } };
+const editingSchema = { ...schema, properties: { ...schema.properties,
+  suggestions: emptyArray, outline: emptyArray, slides: emptyArray } };
 
-Deno.serve(async request => withWattUsage(request, 'workspace-assistant', async () => {
+Deno.serve(async request => withWattUsage(request, 'workspace-assistant', async (meter) => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (request.method !== 'POST') return json({ message: 'POST 요청만 지원합니다.' }, 405);
   try {
@@ -36,6 +39,34 @@ Deno.serve(async request => withWattUsage(request, 'workspace-assistant', async 
     const project = Array.isArray(projects) ? projects[0] : null;
     if (!project || !['report_research', 'writing_creative'].includes(project.template)) return json({ message: '조사·창작 과제에서 사용할 수 있습니다.' }, 403);
     const context = body.context && typeof body.context === 'object' ? body.context as Record<string, unknown> : {};
+    if (body.task === 'presentation') {
+      const settings = context.settings && typeof context.settings === 'object' ? context.settings as Record<string, unknown> : {};
+      const presentationTheme = settings.theme ?? 'minimal-light';
+      if (!['minimal-light', 'soft-color', 'modern-dark', 'business'].includes(presentationTheme as string)) return json({ message: '발표자료 테마를 확인해 주세요.' }, 400);
+      let storedPremium = false;
+      try {
+        const saved = await fetch(`${url}/rest/v1/project_workspaces?projectid=eq.${encodeURIComponent(body.projectId)}&template=eq.${encodeURIComponent(project.template)}&select=data&limit=1`, {
+          headers, signal: AbortSignal.timeout(10000),
+        });
+        if (!saved.ok) return json({ message: '저장된 발표자료를 확인하지 못했습니다.' }, 503);
+        const rows = await saved.json();
+        const storedTheme = Array.isArray(rows) ? rows[0]?.data?.presentation?.theme : null;
+        storedPremium = storedTheme === 'modern-dark' || storedTheme === 'business';
+      } catch { return json({ message: '저장된 발표자료를 확인하지 못했습니다.' }, 503); }
+      if (presentationTheme === 'modern-dark' || presentationTheme === 'business' || storedPremium) {
+        let allowed = false;
+        try {
+          const entitlement = await fetch(`${url}/rest/v1/rpc/watt_can_use_premium_presentation`, {
+            method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ p_project_id: body.projectId }), signal: AbortSignal.timeout(10000),
+          });
+          allowed = entitlement.ok && (await entitlement.json()) === true;
+        } catch { /* The request fails closed when entitlement lookup is unavailable. */ }
+        if (!allowed) return json({ message: storedPremium && presentationTheme !== 'modern-dark' && presentationTheme !== 'business'
+          ? '기존 프리미엄 발표자료를 기본 테마로 변경한 뒤 AI 생성해 주세요.'
+          : '프리미엄 발표자료 생성에는 활성 구독 또는 무료체험이 필요합니다.' }, 403);
+      }
+    }
     if (body.task === 'resource') {
       const resource = context.resource as { content?: unknown } | undefined;
       if (typeof resource?.content !== 'string' || !resource.content.trim()) return json({ message: '원문을 읽지 못했습니다. URL만으로는 요약할 수 없습니다. 자료 본문을 입력해 주세요.' }, 400);
@@ -66,10 +97,11 @@ presentation=최종 결과물에 근거한 발표 슬라이드, 대본, 예상 �
 해당 작업에 필요한 필드만 채우고 다른 배열은 비워 주세요. 직접 편집 작업은 resultText만 사용하고, 그 외 작업은 기존 text와 구조화 필드를 사용하세요. suggestions는 사용자가 선택하는 후보 카드입니다. AI 의견은 제안이며 객관적 정답으로 단정하지 마세요.
 일반 텍스트로 답하고 마크다운 서식 문법은 사용하지 마세요. 특히 제목이나 강조 문구를 **이렇게** 감싸지 말고 일반 문구로 작성하세요. 문단, 줄바꿈, 번호 목록과 항목 구분은 유지하세요.`;
     const userContent = JSON.stringify({ project, task: body.task, context: body.context });
-    const requestProvider = (retry: boolean) => fetch(deepSeekMessagesUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': anthropicApiVersion }, signal: AbortSignal.timeout(115000), body: JSON.stringify({ model, max_tokens: 8000, thinking: { type: 'disabled' }, system: withDeepSeekToolInstruction(instruction + (retry ? '\n직전 응답은 결과물이 아니라 작업 설명이었습니다. 이번에는 resultText에 실제 수정 문장이나 문단만 작성하세요.' : ''), toolName), messages: [{ role: 'user', content: userContent }], tools: [{ name: toolName, description: '과제 작성 제안을 기록합니다.', input_schema: schema }], tool_choice: { type: 'tool', name: toolName } }) });
+    const requestProvider = (retry: boolean) => fetch(deepSeekMessagesUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': anthropicApiVersion }, signal: AbortSignal.timeout(115000), body: JSON.stringify({ model, max_tokens: editing ? 1200 : 8000, thinking: { type: 'disabled' }, system: withDeepSeekToolInstruction(instruction + (retry ? '\n직전 응답은 결과물이 아니라 작업 설명이었습니다. 이번에는 resultText에 실제 수정 문장이나 문단만 작성하세요.' : ''), toolName), messages: [{ role: 'user', content: userContent }], tools: [{ name: toolName, description: '과제 작성 제안을 기록합니다.', input_schema: editing ? editingSchema : schema }], tool_choice: { type: 'tool', name: toolName } }) });
     let response = await requestProvider(false);
-    if (!response.ok) return json({ message: response.status === 429 ? 'AI 요청이 많습니다. 잠시 후 다시 시도해 주세요.' : 'AI 응답을 받지 못했습니다. 원고는 변경되지 않았습니다.' }, 502);
+    if (!response.ok) { meter.capture('deepseek', model, response.status); return json({ message: response.status === 429 ? 'AI 요청이 많습니다. 잠시 후 다시 시도해 주세요.' : 'AI 응답을 받지 못했습니다. 원고는 변경되지 않았습니다.' }, 502); }
     let output = await response.json();
+    meter.capture('deepseek', model, response.status, output);
     let value = output.content?.find((b: { type?: string; name?: string }) => b.type === 'tool_use' && b.name === toolName)?.input;
     const validObjects = (v: unknown, keys: string[]) => Array.isArray(v) && v.length <= 30 && v.every(row => row && typeof row === 'object' && keys.every(k => typeof row[k] === 'string'));
     const isMetaOnly = (text: string) => {
@@ -87,8 +119,9 @@ presentation=최종 결과물에 근거한 발표 슬라이드, 대본, 예상 �
       let resultText = usableEditText(value);
       if (!resultText) {
         response = await requestProvider(true);
-        if (!response.ok) return json({ message: response.status === 429 ? 'AI 요청이 많습니다. 잠시 후 다시 시도해 주세요.' : 'AI가 편집 결과를 만들지 못했습니다. 원고는 변경되지 않았습니다.' }, 502);
+        if (!response.ok) { meter.capture('deepseek', model, response.status); return json({ message: response.status === 429 ? 'AI 요청이 많습니다. 잠시 후 다시 시도해 주세요.' : 'AI가 편집 결과를 만들지 못했습니다. 원고는 변경되지 않았습니다.' }, 502); }
         output = await response.json();
+        meter.capture('deepseek', model, response.status, output);
         value = output.content?.find((b: { type?: string; name?: string }) => b.type === 'tool_use' && b.name === toolName)?.input;
         if (!validValue(value)) return json({ message: 'AI가 적용 가능한 편집 결과를 만들지 못했습니다. 원고는 변경되지 않았습니다.' }, 502);
         resultText = usableEditText(value);

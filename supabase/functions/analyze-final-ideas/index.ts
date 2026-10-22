@@ -196,7 +196,7 @@ function getDeepSeekToolInput(responseBody: unknown) {
   return null;
 }
 
-Deno.serve(async (request) => withWattUsage(request, 'analyze-final-ideas', async () => {
+Deno.serve(async (request) => withWattUsage(request, 'analyze-final-ideas', async (meter) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -289,8 +289,10 @@ Deno.serve(async (request) => withWattUsage(request, 'analyze-final-ideas', asyn
             name: analysisToolName,
           },
         }),
+        signal: AbortSignal.timeout(60_000),
       });
     } catch {
+      meter.capture('deepseek', deepSeekModel, 0);
       console.error('DeepSeek request failed before response.', { attempt: attempt + 1 });
       if (attempt === 0) {
         continue;
@@ -299,16 +301,9 @@ Deno.serve(async (request) => withWattUsage(request, 'analyze-final-ideas', asyn
     }
 
     if (!deepSeekResponse.ok) {
-      let errorBody = '';
-      try {
-        errorBody = await deepSeekResponse.text();
-      } catch {
-        errorBody = '';
-      }
-
+      meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
       console.error('DeepSeek API returned an error status.', {
         status: deepSeekResponse.status,
-        body: errorBody.slice(0, 500),
       });
       if (deepSeekResponse.status === 401) {
         return jsonResponse(
@@ -337,7 +332,9 @@ Deno.serve(async (request) => withWattUsage(request, 'analyze-final-ideas', asyn
     let deepSeekBody: unknown;
     try {
       deepSeekBody = await deepSeekResponse.json();
+      meter.capture('deepseek', deepSeekModel, deepSeekResponse.status, deepSeekBody);
     } catch {
+      meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
       console.error('DeepSeek response was not JSON.', { attempt: attempt + 1 });
       continue;
     }

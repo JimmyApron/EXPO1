@@ -15,7 +15,7 @@ export function workspaceId(): string {
 export function emptyWorkspace(title = ''): DocumentWorkspace {
   return { schemaVersion: 1, selectedIdeaId: null, title, subtitle: '', resources: [], evidence: [], resourceComparison: '',
     outline: [], freeBody: '', versions: [], feedback: [], finalVersionId: null, finalFingerprint: '', finalTopicUpdatedAt: '',
-    slides: [], qna: '', presentationFingerprint: '', presentation: { minutes: '5', slideCount: '8', purpose: '', audience: '', style: '' }, legacyNotes: {}, reviewChecks: {} };
+    slides: [], qna: '', presentationFingerprint: '', presentation: { minutes: '5', slideCount: '8', purpose: '', audience: '', style: '', theme: 'minimal-light' }, legacyNotes: {}, reviewChecks: {} };
 }
 export function normalizeWorkspace(value: unknown, title = ''): DocumentWorkspace {
   const base = emptyWorkspace(title);

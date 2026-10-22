@@ -92,7 +92,7 @@ function DocumentStagePanelContent({ template, projectId, projectTitle, settings
         {stage === bodyStage ? <DocumentEditor template={template} settings={settings} workspace={w} assistant={ai} /> : null}
         {stage === 'revision' ? <WritingFeedbackPanel workspace={w} assistant={ai} settings={settings} onEdit={() => void navigate(bodyStage)} /> : null}
         {(report && stage === 'revision') || (!report && stage === 'result') ? <ProjectResultPanel workspace={w} settings={settings} report={report} topicUpdatedAt={selectedIdea ? topicSearchText(selectedIdea) : ''} onEdit={() => void navigate(bodyStage)} onResources={() => void navigate('selection')} /> : null}
-        {stage === 'presentation' ? <WorkspacePresentation workspace={w} assistant={ai} report={report} /> : null}
+        {stage === 'presentation' ? <WorkspacePresentation workspace={w} assistant={ai} report={report} projectId={projectId} /> : null}
       </View>
       {supportOpen ? <View style={{ width: width >= 1100 ? 280 : '100%', gap: 12 }}>
         <ThemedText type="smallBold">이전 단계 참고 자료</ThemedText><ThemedText type="small">{selectedIdea?.title || '아직 최종 선택한 주제·소재가 없습니다.'}</ThemedText>

@@ -1,5 +1,6 @@
 import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { ExportPanel } from '@/components/export/ExportPanel';
 import { PresentationSettingsForm } from '@/components/PresentationSettingsForm';
@@ -10,6 +11,8 @@ import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { usePresentationGeneration } from '@/hooks/use-presentation-generation';
 import { useTheme } from '@/hooks/use-theme';
 import { applyPresentationCandidate, changedPresentationSections, presentationSnapshot } from '@/lib/presentation-versions';
+import { canApplyPresentationTheme } from '@/lib/presentation-entitlement';
+import { isPremiumPresentationTheme } from '@/lib/presentation-themes';
 import { createPresentationHtml } from '@/utils/export/presentationHtml';
 import type { ExportData } from '@/types/export';
 import type { CandidateIdea, PresentationData, PresentationSettings, ProjectConditions, SampleMvpPlan } from '@/types/presentation';
@@ -35,6 +38,7 @@ const settingsFor = (data: PresentationData | null | undefined, idea: CandidateI
 
 export function PresentationView({ projectId, projectConditions, selectedIdea, sampleMvpPlan, exportDetails, initialData, hasPreviousPresentation = false, onSave }: Props) {
   const theme = useTheme();
+  const router = useRouter();
   const { canGenerate, generatePresentation } = usePresentationGeneration();
   const [saved, setSaved] = useState<PresentationData | null>(initialData ?? null);
   const [candidate, setCandidate] = useState<PresentationData | null>(null);
@@ -44,6 +48,8 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
   const [activeTab, setActiveTab] = useState<'slides' | 'qna' | 'report'>('slides');
   const [showHistory, setShowHistory] = useState(false);
   const [showHtmlPreview, setShowHtmlPreview] = useState(false);
+  const [showThemePreview, setShowThemePreview] = useState(false);
+  const [premiumDenied, setPremiumDenied] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -52,6 +58,49 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
   const [editing, setEditing] = useState(false);
   const [edited, setEdited] = useState<PresentationData | null>(null);
   const busy = useRef(false);
+
+  const checkPremium = async () => {
+    setPremiumDenied(false);
+    if (!isPremiumPresentationTheme(settings.theme)) return true;
+    if (await canApplyPresentationTheme(projectId, settings.theme)) return true;
+    setPremiumDenied(true);
+    setError('프리미엄 테마를 새로 적용하려면 활성 구독 또는 무료체험이 필요합니다. Watt 이용권을 확인해 주세요.');
+    return false;
+  };
+
+  const checkGenerationTheme = async () => {
+    if (!(await checkPremium())) return false;
+    const existingTheme = saved?.settings?.theme;
+    if (existingTheme && isPremiumPresentationTheme(existingTheme)
+      && !(await canApplyPresentationTheme(projectId, existingTheme))) {
+      setError('기존 프리미엄 발표자료의 디자인을 기본 테마로 변경한 뒤 AI 생성해 주세요.');
+      return false;
+    }
+    return true;
+  };
+
+  const applyThemeOnly = async () => {
+    if (busy.current || !saved) return;
+    if (saved.settings?.theme === settings.theme) { setNotice('현재 디자인이 이미 적용되어 있습니다.'); return; }
+    busy.current = true; setSaving(true); setError(''); setNotice('');
+    try {
+      if (!(await checkPremium())) return;
+      const next = applyPresentationCandidate(saved, {
+        ...saved, settings: { ...settingsFor(saved, selectedIdea), theme: settings.theme },
+      }, '디자인만 변경');
+      const result = await onSave?.(next, saved) as { error?: string } | undefined;
+      if (result?.error) throw new Error(result.error);
+      setSaved(next); setSettingsOpen(false); setShowThemePreview(false);
+      setNotice('슬라이드 내용과 페이지 수를 유지하고 디자인만 변경했습니다. AI 사용량은 차감되지 않습니다.');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '디자인을 저장하지 못했습니다.'); }
+    finally { setSaving(false); busy.current = false; }
+  };
+
+  const confirmGeneration = async () => {
+    setError('');
+    try { if (await checkGenerationTheme()) setConfirmationOpen(true); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : '구독 권한을 확인하지 못했습니다.'); }
+  };
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => { setSaved(initialData ?? null); setCandidate(null); setSettings(settingsFor(initialData, selectedIdea)); setSettingsOpen(!initialData); }, 0);
@@ -62,6 +111,7 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
     if (busy.current || !canGenerate || !settings.title.trim()) return;
     busy.current = true; setLoading(true); setError(''); setNotice('');
     try {
+      if (!(await checkGenerationTheme())) return;
       const requested = [settings.purpose ? `발표 목적: ${settings.purpose}` : '', settings.additionalRequests ?? ''].filter(Boolean).join('\n');
       const generated = await generatePresentation({
         projectId, projectConditions, selectedIdea, mvpPlan: sampleMvpPlan,
@@ -124,7 +174,9 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
     <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}><ThemedText type="smallBold">기준 아이디어: {selectedIdea.title}</ThemedText><ThemedText type="small" themeColor="textSecondary">{selectedIdea.summary || '아이디어 설명이 없습니다.'}</ThemedText></ThemedView>
     {hasPreviousPresentation && !saved ? <ThemedText style={{ color: theme.warning }}>이전 아이디어의 발표자료가 보관되어 있습니다. 현재 아이디어의 새 자료를 생성해 주세요.</ThemedText> : null}
     {saved && !settingsOpen ? <Pressable accessibilityRole="button" onPress={() => { setSettings(settingsFor(saved, selectedIdea)); setSettingsOpen(true); setCandidate(null); }} style={[styles.primaryButton, { backgroundColor: theme.primary }]}><ThemedText type="smallBold" style={{ color: theme.primaryText }}>AI 발표자료 전체 재생성</ThemedText></Pressable> : null}
-    {settingsOpen ? <PresentationSettingsForm value={settings} onChange={setSettings} regenerating={Boolean(saved)} busy={loading || saving} onSubmit={() => setConfirmationOpen(true)} onCancel={saved ? () => { setSettingsOpen(false); setSettings(settingsFor(saved, selectedIdea)); } : undefined} /> : null}
+    {settingsOpen ? <PresentationSettingsForm value={settings} onChange={setSettings} regenerating={Boolean(saved)} busy={loading || saving} onSubmit={() => void confirmGeneration()} onApplyTheme={saved ? () => void applyThemeOnly() : undefined} onCancel={saved ? () => { setSettingsOpen(false); setSettings(settingsFor(saved, selectedIdea)); } : undefined} /> : null}
+    {settingsOpen && saved ? <><Pressable accessibilityRole="button" onPress={() => setShowThemePreview(v => !v)} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">{showThemePreview ? '선택한 테마 미리보기 닫기' : '기존 슬라이드로 선택한 테마 미리보기'}</ThemedText></Pressable>{showThemePreview ? <PresentationHtmlPreview html={createPresentationHtml({ ...saved, settings: { ...settingsFor(saved, selectedIdea), theme: settings.theme } })} /> : null}</> : null}
+    {premiumDenied ? <Pressable accessibilityRole="link" onPress={() => router.push('/watt')} style={[styles.outlineButton, { borderColor: theme.primary }]}><ThemedText type="smallBold" style={{ color: theme.primary }}>Watt 이용권 페이지로 이동</ThemedText></Pressable> : null}
     {loading ? <View style={styles.row}><ActivityIndicator color={theme.primary} /><ThemedText type="small">새 발표자료를 만들고 저장하는 중입니다. 기존 자료는 그대로 보존됩니다.</ThemedText></View> : null}
     {!canGenerate ? <ThemedText type="small" themeColor="textSecondary">로그인 후 발표자료를 생성할 수 있습니다.</ThemedText> : null}
     {error ? <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>{error}</ThemedText> : null}

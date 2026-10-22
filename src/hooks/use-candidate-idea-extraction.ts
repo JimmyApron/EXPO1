@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 
 import { useAuth } from '@/hooks/use-auth';
 import { normalizeExtractCandidateIdeasResponse, maxCandidateTextLength } from '@/lib/candidate-idea';
-import { supabase } from '@/lib/supabase';
+import { invokeWattAi } from '@/lib/invoke-watt-ai';
 import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import { renderWebImage } from '@/lib/redact-image';
 import type {
@@ -194,7 +194,7 @@ export function useCandidateIdeaExtraction(projectId: string) {
 
       try {
         const body: ExtractCandidateIdeasRequest = { projectId, source: requestSource, projectConditions };
-        const { data, error } = await supabase.functions.invoke('extract-candidate-ideas', {
+        const { data, error } = await invokeWattAi('extract-candidate-ideas', {
           body,
           headers: { Authorization: `Bearer ${accessToken}` },
         });

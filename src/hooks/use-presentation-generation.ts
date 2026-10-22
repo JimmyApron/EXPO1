@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
-import { supabase } from '@/lib/supabase';
+import { invokeWattAi } from '@/lib/invoke-watt-ai';
 import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import type {
   CandidateIdea,
@@ -90,7 +90,7 @@ export function usePresentationGeneration() {
         throw new Error('로그인이 필요합니다.');
       }
 
-      const { data, error } = await supabase.functions.invoke('generate-presentation', {
+      const { data, error } = await invokeWattAi('generate-presentation', {
         body: input,
         headers: {
           Authorization: `Bearer ${accessToken}`,

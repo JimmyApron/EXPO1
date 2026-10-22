@@ -258,7 +258,7 @@ function getDeepSeekToolInput(responseBody: unknown) {
   return isRecord(toolUse) && isRecord(toolUse.input) ? toolUse.input : null;
 }
 
-Deno.serve(async (request) => withWattUsage(request, 'generate-mvp', async () => {
+Deno.serve(async (request) => withWattUsage(request, 'generate-mvp', async (meter) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -346,6 +346,7 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-mvp', async () =>
       signal: controller.signal,
     });
   } catch (error) {
+    meter.capture('deepseek', deepSeekModel, 0);
     const timedOut = error instanceof Error && error.name === 'AbortError';
     return jsonResponse(
       {
@@ -361,15 +362,9 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-mvp', async () =>
   }
 
   if (!deepSeekResponse.ok) {
-    let errorBody = '';
-    try {
-      errorBody = await deepSeekResponse.text();
-    } catch {
-      // Ignore response parsing failures while logging the status.
-    }
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
     console.error('DeepSeek API returned an error status.', {
       status: deepSeekResponse.status,
-      body: errorBody.slice(0, 500),
     });
 
     if (deepSeekResponse.status === 401) {
@@ -393,7 +388,9 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-mvp', async () =>
   let deepSeekBody: unknown;
   try {
     deepSeekBody = await deepSeekResponse.json();
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status, deepSeekBody);
   } catch {
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답을 해석하지 못했습니다.' }, 502);
   }
 

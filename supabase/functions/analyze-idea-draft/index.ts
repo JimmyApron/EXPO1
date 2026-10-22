@@ -260,7 +260,7 @@ function getDeepSeekToolInput(responseBody: unknown) {
   return isRecord(toolUse) && isRecord(toolUse.input) ? toolUse.input : null;
 }
 
-Deno.serve(async (request) => withWattUsage(request, 'analyze-idea-draft', async () => {
+Deno.serve(async (request) => withWattUsage(request, 'analyze-idea-draft', async (meter) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -343,23 +343,18 @@ Deno.serve(async (request) => withWattUsage(request, 'analyze-idea-draft', async
           name: analysisToolName,
         },
       }),
+      signal: AbortSignal.timeout(60_000),
     });
   } catch {
+    meter.capture('deepseek', deepSeekModel, 0);
     console.error('DeepSeek request failed before response.');
     return jsonResponse({ error: 'network_error', message: 'AI 진단 요청에 실패했습니다. 다시 시도해주세요.' }, 502);
   }
 
   if (!deepSeekResponse.ok) {
-    let errorBody = '';
-    try {
-      errorBody = await deepSeekResponse.text();
-    } catch {
-      errorBody = '';
-    }
-
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
     console.error('DeepSeek API returned an error status.', {
       status: deepSeekResponse.status,
-      body: errorBody.slice(0, 500),
     });
 
     if (deepSeekResponse.status === 401) {
@@ -382,7 +377,9 @@ Deno.serve(async (request) => withWattUsage(request, 'analyze-idea-draft', async
   let deepSeekBody: unknown;
   try {
     deepSeekBody = await deepSeekResponse.json();
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status, deepSeekBody);
   } catch {
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
     console.error('DeepSeek response was not JSON.');
     return jsonResponse({ error: 'invalid_deepseek_response', message: parseErrorMessage }, 502);
   }

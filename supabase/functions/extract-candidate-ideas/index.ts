@@ -325,7 +325,7 @@ function buildMessageContent(source: ExtractSource, projectConditions: ReturnTyp
   return content;
 }
 
-Deno.serve(async (request) => withWattUsage(request, 'extract-candidate-ideas', async () => {
+Deno.serve(async (request) => withWattUsage(request, 'extract-candidate-ideas', async (meter) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -442,6 +442,7 @@ Deno.serve(async (request) => withWattUsage(request, 'extract-candidate-ideas', 
       }),
     });
   } catch (error) {
+    meter.capture(usesClaudeVision ? 'anthropic' : 'deepseek', aiModel!, 0);
     const timedOut = error instanceof DOMException && error.name === 'AbortError';
     console.error(timedOut ? `${providerName} request timed out.` : `${providerName} request failed before response.`);
     return jsonResponse(
@@ -453,6 +454,7 @@ Deno.serve(async (request) => withWattUsage(request, 'extract-candidate-ideas', 
   }
 
   if (!aiResponse.ok) {
+    meter.capture(usesClaudeVision ? 'anthropic' : 'deepseek', aiModel!, aiResponse.status);
     console.error(`${providerName} API returned an error status.`, {
       status: aiResponse.status,
     });
@@ -507,7 +509,9 @@ Deno.serve(async (request) => withWattUsage(request, 'extract-candidate-ideas', 
   let aiBody: unknown;
   try {
     aiBody = await aiResponse.json();
+    meter.capture(usesClaudeVision ? 'anthropic' : 'deepseek', aiModel!, aiResponse.status, aiBody);
   } catch {
+    meter.capture(usesClaudeVision ? 'anthropic' : 'deepseek', aiModel!, aiResponse.status);
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답을 해석하지 못했습니다.' }, 502);
   }
 

@@ -111,15 +111,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function deepSeekErrorMessage(raw: string) {
-  try {
-    const body: unknown = JSON.parse(raw);
-    const error = isRecord(body) && isRecord(body.error) ? body.error : body;
-    return isRecord(error) && typeof error.message === 'string' ? error.message.trim().slice(0, 300) : '';
-  } catch {
-    return '';
-  }
-}
 
 function cleanString(value: unknown, maxLength = 4000) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
@@ -289,7 +280,7 @@ function getDeepSeekStopReason(responseBody: unknown) {
     : '';
 }
 
-Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', async () => {
+Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', async (meter) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -328,6 +319,37 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', as
   }
   if (!(await canAccessProject(cleanString(requestBody.projectId, 120), userId, authorization))) {
     return jsonResponse({ error: 'forbidden', message: '이 프로젝트에 접근할 권한이 없습니다.' }, 403);
+  }
+  {
+    const url = Deno.env.get('SUPABASE_URL') ?? '';
+    const anon = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ?? '';
+    const headers = { Authorization: authorization, apikey: anon };
+    let storedPremium = false;
+    try {
+      const stored = await fetch(`${url}/rest/v1/projectflows?projectid=eq.${encodeURIComponent(cleanString(requestBody.projectId, 120))}&select=presentationdata&limit=1`, {
+        headers, signal: AbortSignal.timeout(10_000),
+      });
+      if (!stored.ok) return jsonResponse({ error: 'presentation_access_failed', message: '저장된 발표자료를 확인하지 못했습니다.' }, 503);
+      const rows: unknown = await stored.json();
+      const presentation = Array.isArray(rows) && isRecord(rows[0]) ? rows[0].presentationdata : null;
+      const previousTheme = isRecord(presentation) && isRecord(presentation.settings) ? presentation.settings.theme : null;
+      storedPremium = previousTheme === 'modern-dark' || previousTheme === 'business';
+    } catch { return jsonResponse({ error: 'presentation_access_failed', message: '저장된 발표자료를 확인하지 못했습니다.' }, 503); }
+    if (settings.theme === 'modern-dark' || settings.theme === 'business' || storedPremium) {
+    let allowed = false;
+    try {
+      const entitlement = await fetch(`${url}/rest/v1/rpc/watt_can_use_premium_presentation`, {
+        method: 'POST',
+        headers: { Authorization: authorization, apikey: anon, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_project_id: cleanString(requestBody.projectId, 120) }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      allowed = entitlement.ok && (await entitlement.json()) === true;
+    } catch { /* Fail closed when subscription state cannot be checked. */ }
+    if (!allowed) return jsonResponse({ error: 'premium_subscription_required', message: storedPremium && settings.theme !== 'modern-dark' && settings.theme !== 'business'
+      ? '기존 프리미엄 발표자료의 디자인을 기본 테마로 변경한 뒤 AI 생성해 주세요.'
+      : '프리미엄 테마 생성에는 활성 구독 또는 무료체험이 필요합니다.' }, 403);
+    }
   }
 
   if (requestBody.instruction !== undefined &&
@@ -397,6 +419,7 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', as
       signal: controller.signal,
     });
   } catch (error) {
+    meter.capture('deepseek', deepSeekModel, 0);
     const timedOut = error instanceof Error && error.name === 'AbortError';
     return jsonResponse(
       {
@@ -412,15 +435,9 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', as
   }
 
   if (!deepSeekResponse.ok) {
-    let errorBody = '';
-    try {
-      errorBody = await deepSeekResponse.text();
-    } catch {
-      // Ignore response parsing failures while logging the status.
-    }
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
     console.error('DeepSeek API returned an error status.', {
       status: deepSeekResponse.status,
-      body: errorBody.slice(0, 500),
     });
 
     if (deepSeekResponse.status === 401) {
@@ -436,10 +453,9 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', as
       return jsonResponse({ error: 'deepseek_rate_limited', message: 'AI 사용량이 많습니다. 잠시 후 다시 시도해주세요.' }, 503);
     }
     if (deepSeekResponse.status === 400) {
-      const detail = deepSeekErrorMessage(errorBody);
       return jsonResponse({
         error: 'deepseek_bad_request',
-        message: detail ? `AI 요청 형식을 처리하지 못했습니다: ${detail}` : 'AI 요청 형식을 처리하지 못했습니다.',
+        message: 'AI 요청 형식을 처리하지 못했습니다.',
       }, 502);
     }
     return jsonResponse({ error: 'deepseek_error', message: 'AI 발표 자료 생성에 실패했습니다.' }, 502);
@@ -448,7 +464,9 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', as
   let deepSeekBody: unknown;
   try {
     deepSeekBody = await deepSeekResponse.json();
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status, deepSeekBody);
   } catch {
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답을 해석하지 못했습니다.' }, 502);
   }
 

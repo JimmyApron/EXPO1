@@ -1,3 +1,5 @@
+import type { PresentationTheme } from '@/lib/presentation-themes';
+
 export type ResearchResource = {
   id: string; title: string; kind: string; source: string; author: string; date: string; url: string;
   content: string; summary: string; claim: string; memo: string; verified: boolean; used: boolean;
@@ -21,7 +23,7 @@ export type DocumentWorkspace = {
   outline: OutlineItem[]; freeBody: string; versions: ManuscriptVersion[]; feedback: WritingFeedback[];
   finalVersionId: string | null; finalFingerprint: string; finalTopicUpdatedAt: string;
   slides: WorkspaceSlide[]; qna: string; presentationFingerprint: string;
-  presentation: { minutes: string; slideCount: string; purpose: string; audience: string; style: string };
+  presentation: { minutes: string; slideCount: string; purpose: string; audience: string; style: string; theme: PresentationTheme };
   legacyNotes: Record<string, string>;
   reviewChecks: Record<string, boolean>;
 };

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
-import { supabase } from '@/lib/supabase';
+import { invokeWattAi } from '@/lib/invoke-watt-ai';
 import type { Idea } from '@/types/idea';
 import type { BlindIdeaAiAnalysis, BlindIdeaAnalysisCache, IdeaAnalysis } from '@/types/idea-evaluation';
 
@@ -110,19 +110,19 @@ export function useBlindIdeaAnalysis(
   const cachedAnalyses = useMemo(() => getCachedAnalyses(savedAnalysis, inputKey), [inputKey, savedAnalysis]);
   const [completedKey, setCompletedKey] = useState('');
   const [analyses, setAnalyses] = useState<BlindIdeaAiAnalysis[]>([]);
+  const [analysesKey, setAnalysesKey] = useState('');
   const [isAnalyzingIdeas, setIsAnalyzingIdeas] = useState(false);
   const [blindAnalysisError, setBlindAnalysisError] = useState('');
-  const activeAnalyses = completedKey === inputKey ? analyses : cachedAnalyses ?? [];
-  const isAnalysisReady = ideas.length === 0 || completedKey === inputKey || Boolean(cachedAnalyses);
+  const activeAnalyses = analysesKey === inputKey ? analyses : cachedAnalyses ?? [];
+  const isAnalysisReady = ideas.length === 0 || completedKey === inputKey || activeAnalyses.length === ideas.length;
 
   const retryAnalysis = useCallback(() => {
-    setAnalyses([]);
     setBlindAnalysisError('');
     setCompletedKey('');
   }, []);
 
   useEffect(() => {
-    if (!enabled || !projectId || ideas.length === 0 || cachedAnalyses || completedKey === inputKey) return;
+    if (!enabled || !projectId || ideas.length === 0 || cachedAnalyses?.length === ideas.length || completedKey === inputKey) return;
 
     let active = true;
     const timeout = globalThis.setTimeout(() => {
@@ -141,8 +141,12 @@ export function useBlindIdeaAnalysis(
         }
 
         try {
-          const responses = await Promise.all(ideas.map(async (idea) => {
-            const { data, error } = await supabase.functions.invoke('analyze-idea-draft', {
+          const completed = new Map((analysesKey === inputKey ? analyses : cachedAnalyses ?? []).map(item => [item.ideaId, item]));
+          let failed = 0;
+          for (const idea of ideas) {
+            if (completed.has(idea.id)) continue;
+            try {
+            const { data, error } = await invokeWattAi('analyze-idea-draft', {
               body: {
                 projectId,
                 idea: {
@@ -167,15 +171,19 @@ export function useBlindIdeaAnalysis(
             if (!isDraftAnalysisResponse(data)) {
               throw new Error('AI 분석 응답 형식을 확인하지 못했습니다.');
             }
-            return toBlindAnalysis(idea.id, data);
-          }));
+            completed.set(idea.id, toBlindAnalysis(idea.id, data));
+            } catch { failed++; }
+          }
+          const responses = ideas.map(idea => completed.get(idea.id)).filter((value): value is BlindIdeaAiAnalysis => Boolean(value));
 
           if (active) {
             setAnalyses(responses);
+            setAnalysesKey(inputKey);
             setCompletedKey(inputKey);
             void saveAnalysis({ inputKey, analyses: responses, analyzedAt: new Date().toISOString() }).then((saved) => {
               if (saved.error) console.error('Blind AI analysis could not be persisted.', saved.error);
             });
+            if (failed) setBlindAnalysisError(`${failed}개 아이디어 분석에 실패했습니다. 다시 시도하면 실패한 항목만 분석합니다.`);
           }
         } catch (error) {
           if (active) {
@@ -199,7 +207,7 @@ export function useBlindIdeaAnalysis(
       active = false;
       globalThis.clearTimeout(timeout);
     };
-  }, [cachedAnalyses, completedKey, enabled, ideas, inputKey, projectId, saveAnalysis, session?.access_token, user]);
+  }, [analyses, analysesKey, cachedAnalyses, completedKey, enabled, ideas, inputKey, projectId, saveAnalysis, session?.access_token, user]);
 
   return { analyses: activeAnalyses, blindAnalysisError, isAnalyzingIdeas, isAnalysisReady, retryAnalysis };
 }

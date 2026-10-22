@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { invokeWattAi } from '@/lib/invoke-watt-ai';
 import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 
 export type WorkspaceAiTask = 'topics' | 'resource' | 'compare' | 'outline' | 'polish' | 'expand' | 'shorten' | 'continue' | 'tone' | 'dialogue' | 'rewrite' | 'feedback' | 'presentation';
@@ -28,7 +28,7 @@ export function useWorkspaceAssistant(projectId: string) {
     if (running.current) return null;
     running.current = true; setBusy(true); setError('');
     try {
-      const { data, error: failure } = await supabase.functions.invoke('workspace-assistant', { body: { projectId, task, context } });
+      const { data, error: failure } = await invokeWattAi('workspace-assistant', { body: { projectId, task, context } });
       if (failure) {
         let message = 'AI 요청에 실패했습니다. Edge Function 배포와 로그인 상태를 확인한 후 다시 시도해 주세요.';
         try { const result = await failure.context?.json(); if (typeof result?.message === 'string') message = result.message; } catch { /* Network errors have no response body. */ }

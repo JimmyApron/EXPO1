@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
-import { supabase } from '@/lib/supabase';
+import { invokeWattAi } from '@/lib/invoke-watt-ai';
 import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import type { ProjectConditions } from '@/types/candidate-idea';
 import type { FinalIdeaAnalysisInput, FinalIdeaAnalysisResult, FinalAnalysisLevel } from '@/types/final-analysis';
@@ -126,7 +126,7 @@ export function useFinalIdeaAnalysis(projectId: string, selectedIdeas: Idea[], p
     setAnalysisError('');
 
     try {
-      const { data, error } = await supabase.functions.invoke('analyze-final-ideas', {
+      const { data, error } = await invokeWattAi('analyze-final-ideas', {
         body: {
           projectId,
           ideas: requestIdeas,

@@ -3,7 +3,7 @@ import { normalizeMvpPlan } from '../../supabase/functions/_shared/mvp-plan';
 
 import { MVP_EDGE_FUNCTION_NAME } from '@/constants/mvp';
 import { useAuth } from '@/hooks/use-auth';
-import { supabase } from '@/lib/supabase';
+import { invokeWattAi } from '@/lib/invoke-watt-ai';
 import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import type { ProjectConditions } from '@/types/candidate-idea';
 import type { MvpIdea, MvpPlan } from '@/types/mvp-plan';
@@ -86,7 +86,7 @@ export function useMvpPlan(
     setError('');
 
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke(MVP_EDGE_FUNCTION_NAME, {
+      const { data, error: invokeError } = await invokeWattAi(MVP_EDGE_FUNCTION_NAME, {
         body: { projectId, selectedIdeaId: idea.id, idea, projectConditions: conditions },
         headers: { Authorization: `Bearer ${accessToken}` },
       });

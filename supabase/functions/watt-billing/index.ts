@@ -7,6 +7,7 @@ const cors = {
 };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: cors });
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function rpc<T>(url: string, key: string, name: string, args: Record<string, unknown>): Promise<T> {
   const response = await fetch(`${url}/rest/v1/rpc/${name}`, {
@@ -43,6 +44,10 @@ Deno.serve(async (request) => {
   try {
     const body: unknown = await request.json();
     if (!isRecord(body) || typeof body.action !== 'string') return json({ error: 'invalid_request' }, 400);
+    if (body.roomId != null && (typeof body.roomId !== 'string' || !uuid.test(body.roomId))) return json({ error: 'invalid_room_id' }, 400);
+    if (body.projectId != null && (typeof body.projectId !== 'string' || !uuid.test(body.projectId))) return json({ error: 'invalid_project_id' }, 400);
+    if (['activate','trial','topup','resume'].includes(body.action) && Deno.env.get('WATT_DEMO_BILLING_ENABLED') === 'false')
+      return json({ error: 'simulated_billing_disabled' }, 403);
     const roomId = typeof body.roomId === 'string' ? body.roomId : null;
     let data: unknown;
     switch (body.action) {
@@ -81,7 +86,7 @@ Deno.serve(async (request) => {
         break;
       }
       case 'activate':
-        if (typeof body.productId !== 'string') return json({ error: 'invalid_product' }, 400);
+        if (!['personal_30','personal_120','team_30','team_120'].includes(String(body.productId))) return json({ error: 'invalid_product' }, 400);
         data = await rpc(url, serviceKey, 'watt_activate', { p_user_id: userId, p_product_id: body.productId, p_room_id: roomId, p_student: false });
         break;
       case 'trial':
@@ -97,7 +102,7 @@ Deno.serve(async (request) => {
         data = await rpc(url, serviceKey, 'watt_resume', { p_user_id: userId, p_entitlement_id: body.entitlementId });
         break;
       case 'preview':
-        if (typeof body.productId !== 'string') return json({ error: 'invalid_product' }, 400);
+        if (!['personal_30','personal_120','team_30','team_120'].includes(String(body.productId))) return json({ error: 'invalid_product' }, 400);
         data = await rpc(url, serviceKey, 'watt_preview', { p_user_id: userId, p_product_id: body.productId, p_room_id: roomId });
         break;
       case 'topup':
@@ -114,7 +119,7 @@ Deno.serve(async (request) => {
           headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` }, signal: AbortSignal.timeout(10000),
         });
         if (!response.ok) throw new Error('products_unavailable');
-        data = await response.json();
+        data = (await response.json() as { id?: string }[]).filter(product => product.id !== 'trial_personal' && product.id !== 'trial_team');
         break;
       }
       case 'history': {
