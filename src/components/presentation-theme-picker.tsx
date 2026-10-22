@@ -19,11 +19,12 @@ export function PresentationThemePicker({ value, onChange, disabled = false }: {
           disabled={disabled} onPress={() => onChange(item.id)}
           style={[styles.option, { borderColor: selected ? theme.primary : theme.border }]}>
           <View style={[styles.preview, { backgroundColor: colors.background }]}>
-            <View style={[styles.accent, { backgroundColor: colors.accent }]} />
-            <View style={[styles.previewTitle, { backgroundColor: colors.foreground }]} />
-            <View style={[styles.previewLine, { backgroundColor: colors.muted }]} />
-            <View style={[styles.previewLine, styles.shortLine, { backgroundColor: colors.muted }]} />
-            <View style={[styles.previewFoot, { backgroundColor: colors.surface }]} />
+            {item.id === 'business' ? <View style={[styles.businessSide, { backgroundColor: colors.surface }]} /> : null}
+            <View style={[styles.accent, item.id === 'modern-dark' && styles.darkRail, item.id === 'business' && styles.businessRule, { backgroundColor: colors.accent }]} />
+            <View style={[styles.previewTitle, item.id === 'modern-dark' && styles.darkTitle, item.id === 'business' && styles.businessTitle, { backgroundColor: colors.foreground }]} />
+            <View style={[styles.previewLine, item.id === 'business' && styles.businessLine, { backgroundColor: colors.muted }]} />
+            <View style={[styles.previewLine, styles.shortLine, item.id === 'business' && styles.businessShortLine, { backgroundColor: colors.muted }]} />
+            <View style={[styles.previewFoot, item.id === 'modern-dark' && styles.darkFoot, item.id === 'business' && styles.businessLine, { backgroundColor: item.id === 'modern-dark' ? colors.accent : colors.surface }]} />
           </View>
           <ThemedText type="smallBold">{item.label}</ThemedText>
           {premium ? <ThemedText type="caption" themeColor="textSecondary">구독 전용</ThemedText> : null}
@@ -38,6 +39,13 @@ const styles = StyleSheet.create({
   group: { gap: Spacing.two }, options: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   option: { width: 150, padding: Spacing.two, gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium },
   preview: { height: 75, borderRadius: Radius.medium, overflow: 'hidden', padding: 10, gap: 5 },
+  businessSide: { position: 'absolute', top: 0, bottom: 0, left: 0, width: '26%' },
+  businessTitle: { marginLeft: '26%', width: '60%' },
+  businessLine: { marginLeft: '26%', width: '60%' }, businessShortLine: { marginLeft: '26%', width: '44%' },
+  businessRule: { width: '100%', height: 2 },
+  darkRail: { position: 'absolute', top: 0, bottom: 0, left: 0, width: 4, height: '100%' },
+  darkTitle: { width: '78%', height: 11, marginTop: 9, marginLeft: 7 },
+  darkFoot: { height: 2 },
   accent: { width: 24, height: 3 }, previewTitle: { width: '65%', height: 8, borderRadius: 2 },
   previewLine: { width: '82%', height: 4, borderRadius: 2, opacity: 0.7 },
   shortLine: { width: '58%' }, previewFoot: { marginTop: 'auto', width: '100%', height: 8, borderRadius: 2 },

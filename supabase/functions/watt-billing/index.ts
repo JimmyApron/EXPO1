@@ -23,6 +23,48 @@ async function rpc<T>(url: string, key: string, name: string, args: Record<strin
   return await response.json() as T;
 }
 
+async function usageCount(url: string, key: string, filters: Record<string, string>): Promise<number> {
+  const query = new URLSearchParams({ select: 'id', ...filters });
+  const response = await fetch(`${url}/rest/v1/watt_usage?${query}`, {
+    method: 'HEAD',
+    headers: { apikey: key, Authorization: `Bearer ${key}`, Prefer: 'count=exact' },
+    signal: AbortSignal.timeout(10000),
+  });
+  const count = Number(response.headers.get('content-range')?.split('/')[1]);
+  if (!response.ok || !Number.isSafeInteger(count)) throw new Error('usage_count_unavailable');
+  return count;
+}
+
+async function withTextUsage(url: string, key: string, snapshot: unknown, userId: string, roomId: string | null) {
+  if (!isRecord(snapshot)) return snapshot;
+  const entitlements = Array.isArray(snapshot.entitlements) ? snapshot.entitlements : [];
+  const active = entitlements.find(item => isRecord(item) && item.room_id === roomId
+    && (item.state === 'active' || item.state === 'cancel_scheduled') && typeof item.ends_at === 'string'
+    && new Date(item.ends_at).getTime() > Date.now());
+  if (!isRecord(active) || typeof active.id !== 'string') return snapshot;
+  const trial = active.trial === true;
+  const now = new Date(typeof snapshot.server_now === 'string' ? snapshot.server_now : Date.now());
+  const korea = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const dayStart = Date.UTC(korea.getUTCFullYear(), korea.getUTCMonth(), korea.getUTCDate()) - 9 * 60 * 60 * 1000;
+  const common = {
+    usage_kind: `eq.${trial ? 'trial_free' : 'subscription_free'}`,
+    state: 'in.(reserved,succeeded)',
+    created_at: `gte.${new Date(dayStart).toISOString()}`,
+    room_id: roomId ? `eq.${roomId}` : 'is.null',
+  };
+  const [todayUsed, memberUsed, trialUsed] = await Promise.all([
+    usageCount(url, key, roomId ? common : { ...common, user_id: `eq.${userId}` }),
+    roomId && !trial ? usageCount(url, key, { ...common, user_id: `eq.${userId}` }) : Promise.resolve(null),
+    trial ? usageCount(url, key, { usage_kind: 'eq.trial_free', state: 'in.(reserved,succeeded)', entitlement_id: `eq.${active.id}` }) : Promise.resolve(null),
+  ]);
+  return { ...snapshot, textUsage: {
+    todayUsed, dailyLimit: trial ? (roomId ? 30 : 10) : (roomId ? 120 : 40),
+    memberUsed, memberLimit: roomId && !trial ? 40 : null,
+    trialUsed, trialLimit: trial ? (roomId ? 75 : 25) : null,
+    resetsAt: new Date(dayStart + 24 * 60 * 60 * 1000).toISOString(),
+  } };
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
@@ -69,7 +111,8 @@ Deno.serve(async (request) => {
             if (!Array.isArray(members) || !members.length) return json({ error: 'project_access_denied' }, 403);
           }
         }
-        const personal = await rpc(url, serviceKey, 'watt_balance', { p_user_id: userId, p_room_id: null });
+        const personal = await withTextUsage(url, serviceKey,
+          await rpc(url, serviceKey, 'watt_balance', { p_user_id: userId, p_room_id: null }), userId, null);
         let team = null;
         if (resolvedRoomId) {
           const membership = await fetch(`${url}/rest/v1/roommembers?select=id&roomid=eq.${encodeURIComponent(resolvedRoomId)}&userid=eq.${encodeURIComponent(userId)}&limit=1`, {
@@ -77,7 +120,8 @@ Deno.serve(async (request) => {
           });
           const members: unknown = membership.ok ? await membership.json() : [];
           if (!Array.isArray(members) || members.length === 0) return json({ error: 'room_access_denied' }, 403);
-          team = await rpc(url, serviceKey, 'watt_balance', { p_user_id: userId, p_room_id: resolvedRoomId });
+          team = await withTextUsage(url, serviceKey,
+            await rpc(url, serviceKey, 'watt_balance', { p_user_id: userId, p_room_id: resolvedRoomId }), userId, resolvedRoomId);
         }
         const trialCheck = await fetch(`${url}/rest/v1/watt_trials?select=id&user_id=eq.${encodeURIComponent(userId)}&limit=1`, {
           headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` }, signal: AbortSignal.timeout(10000),
@@ -131,13 +175,13 @@ Deno.serve(async (request) => {
           });
           const members: unknown = membership.ok ? await membership.json() : [];
           if (!Array.isArray(members) || members.length === 0) return json({ error: 'room_access_denied' }, 403);
-          const roomUsageResponse = await fetch(`${url}/rest/v1/watt_usage?select=id,project_id,room_id,feature,units,state,error_code,created_at,completed_at&room_id=eq.${encodeURIComponent(roomId)}&order=created_at.desc&limit=100`, { headers, signal: AbortSignal.timeout(10000) });
+          const roomUsageResponse = await fetch(`${url}/rest/v1/watt_usage?select=id,project_id,room_id,feature,units,usage_kind,state,error_code,created_at,completed_at&room_id=eq.${encodeURIComponent(roomId)}&order=created_at.desc&limit=100`, { headers, signal: AbortSignal.timeout(10000) });
           if (!roomUsageResponse.ok) throw new Error('history_unavailable');
           teamUsage = await roomUsageResponse.json();
         }
         const [purchases, usage] = await Promise.all([
           fetch(`${url}/rest/v1/watt_purchases?select=*,watt_products(label)&user_id=eq.${userId}&order=created_at.desc&limit=100`, { headers }),
-          fetch(`${url}/rest/v1/watt_usage?select=id,project_id,room_id,feature,units,state,error_code,created_at,completed_at&user_id=eq.${userId}&order=created_at.desc&limit=100`, { headers }),
+          fetch(`${url}/rest/v1/watt_usage?select=id,project_id,room_id,feature,units,usage_kind,state,error_code,created_at,completed_at&user_id=eq.${userId}&order=created_at.desc&limit=100`, { headers }),
         ]);
         if (!purchases.ok || !usage.ok) throw new Error('history_unavailable');
         data = { purchases: await purchases.json(), usage: await usage.json(), teamUsage };

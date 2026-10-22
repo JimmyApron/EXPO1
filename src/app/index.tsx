@@ -138,7 +138,7 @@ export default function HomeScreen() {
 
         <Pressable accessibilityRole="button" onPress={() => router.push('/watt' as Href)} style={[styles.wattSummary,{backgroundColor:theme.surface,borderColor:theme.border}]}>
           <View style={styles.wattSummaryLabel}><AppIcon name="idea" color={theme.primary} size={18}/><ThemedText type="smallBold">AI 잔여 사용량</ThemedText></View>
-          <View style={styles.wattSummaryValue}><ThemedText type="smallBold" style={{color:theme.text}}>{wattBalance ? `${wattBalance.total}단위` : '확인하기'}</ThemedText><AppIcon name="chevronRight" color={theme.textTertiary} size={18}/></View>
+          <View style={styles.wattSummaryValue}><ThemedText type="smallBold" style={{color:theme.text}}>{wattBalance ? `${wattBalance.total}단위${wattBalance.textUsage ? ` · 오늘 ${wattBalance.textUsage.todayUsed}/${wattBalance.textUsage.dailyLimit}회` : ''}` : '확인하기'}</ThemedText><AppIcon name="chevronRight" color={theme.textTertiary} size={18}/></View>
         </Pressable>
 
         {/* 메인 타이틀 안내문구 */}

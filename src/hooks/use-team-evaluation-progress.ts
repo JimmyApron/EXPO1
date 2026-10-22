@@ -29,6 +29,7 @@ export function useTeamEvaluationProgress(
   fallbackTeamSize = 4,
 ): TeamEvaluationProgress {
   const { user } = useAuth();
+  const userId = user?.id;
   const { showNotificationToast } = useNotificationToasts();
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -38,8 +39,8 @@ export function useTeamEvaluationProgress(
   const participantIds = useMemo(
     () => isTeamProject
       ? new Set((members ?? []).map((member) => member.userid))
-      : new Set(user?.id ? [user.id] : []),
-    [isTeamProject, members, user?.id],
+      : new Set(userId ? [userId] : []),
+    [isTeamProject, members, userId],
   );
   const totalCount = isTeamProject
     ? members && members.length > 0 ? members.length : Math.max(1, fallbackTeamSize)
@@ -49,7 +50,7 @@ export function useTeamEvaluationProgress(
     : Math.min(totalCount, completedIds.size);
 
   const loadProgress = useCallback(async () => {
-    if (!projectId || !user || requiredIdeaIds.length === 0) {
+    if (!projectId || !userId || requiredIdeaIds.length === 0) {
       setCompletedIds(new Set());
       previousCompletedCount.current = null;
       setIsLoading(false);
@@ -87,7 +88,7 @@ export function useTeamEvaluationProgress(
     if (error) { setCompletedIds(new Set()); setProgressError('평가 현황을 불러오지 못했어요. 연결을 확인하고 화면을 다시 열어주세요.'); }
     } catch { setCompletedIds(new Set()); setProgressError('평가 현황을 불러오지 못했어요. 연결을 확인하고 화면을 다시 열어주세요.'); }
     finally { setIsLoading(false); }
-  }, [evaluationRound, isTeamProject, participantIds, projectId, requiredIdeaIds, showNotificationToast, totalCount, user]);
+  }, [evaluationRound, participantIds, projectId, requiredIdeaIds, showNotificationToast, totalCount, userId]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => void loadProgress(), 0);

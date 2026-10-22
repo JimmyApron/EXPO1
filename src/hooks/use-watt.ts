@@ -13,6 +13,10 @@ export function subscribeWattBalance(listener: () => void) {
 export type WattSnapshot = {
   total: number;
   server_now?: string;
+  textUsage?: {
+    todayUsed: number; dailyLimit: number; memberUsed: number | null; memberLimit: number | null;
+    trialUsed: number | null; trialLimit: number | null; resetsAt: string;
+  };
   grants: { source: string; remaining: number; total: number; expires_at: string | null }[];
   entitlements: { id: string; product_id: string; state: string; started_at: string; ends_at: string; room_id: string | null; room_name?: string | null; trial: boolean; auto_renew?: boolean; next_renewal_at?: string | null; next_grant_at?: string | null }[];
 };
@@ -76,5 +80,11 @@ export function useWattBalance() {
     const unsubscribe = subscribeWattBalance(refresh);
     return () => { globalThis.clearTimeout(timeout); unsubscribe(); };
   }, [refresh]);
+  useEffect(() => {
+    const reset = balance?.textUsage?.resetsAt;
+    if (!reset) return;
+    const timeout = globalThis.setTimeout(() => { void refresh(); }, Math.max(1000, new Date(reset).getTime() - Date.now() + 1000));
+    return () => globalThis.clearTimeout(timeout);
+  }, [balance?.textUsage?.resetsAt, refresh]);
   return { balance, loading, error, refresh, trialUsed };
 }

@@ -344,7 +344,7 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
       </View>
 
       <Pressable accessibilityRole="button" onPress={()=>router.push(`/watt?roomId=${encodeURIComponent(roomid)}` as Href)} style={[styles.teamWattCard,{borderColor:theme.border,backgroundColor:theme.surface}]}>
-        <View style={{flex:1,gap:3}}><ThemedText type="smallBold">팀 AI 이용권</ThemedText><ThemedText type="caption" themeColor="textSecondary">공동 잔여량 {teamWatt?.total ?? 0}단위 · 이용권 관리</ThemedText></View>
+        <View style={{flex:1,gap:3}}><ThemedText type="smallBold">팀 AI 이용권</ThemedText><ThemedText type="caption" themeColor="textSecondary">공동 잔여량 {teamWatt?.total ?? 0}단위{teamWatt?.textUsage ? ` · 팀 오늘 ${teamWatt.textUsage.todayUsed}/${teamWatt.textUsage.dailyLimit}회` : ''} · 이용권 관리</ThemedText></View>
         <AppIcon name="chevronRight" color={theme.textTertiary} size={20}/>
       </Pressable>
 

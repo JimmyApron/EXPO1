@@ -65,7 +65,11 @@ begin
   end if;
   entitled := public.watt_can_use_premium_presentation(project_id);
   if new_theme in ('modern-dark','business') and not entitled then
-    if new_theme is distinct from old_theme then
+    if new_theme is distinct from old_theme
+      or (tg_table_name = 'projectflows' and old_data->>'ideaId' is not null
+        and new_data->>'ideaId' is distinct from old_data->>'ideaId')
+      or (tg_table_name = 'project_workspaces' and old_data->>'selectedIdeaId' is not null
+        and new_data->>'selectedIdeaId' is distinct from old_data->>'selectedIdeaId') then
       if tg_table_name <> 'projectflows' or not exists (
         select 1 from jsonb_array_elements(case when jsonb_typeof(old_data->'versionHistory')='array'
           then old_data->'versionHistory' else '[]'::jsonb end) as previous(item)

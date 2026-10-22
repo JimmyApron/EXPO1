@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Print from 'expo-print';
@@ -18,11 +18,11 @@ import type { WorkspaceAssistant, WorkspaceController } from './types';
 export function WorkspacePresentation({ workspace: w, assistant: ai, report, projectId }: { workspace: WorkspaceController; assistant: WorkspaceAssistant; report: boolean; projectId: string }) {
   const router = useRouter();
   const [error, setError] = useState(''), [exportBusy, setExportBusy] = useState(false);
-  const [previewTheme, setPreviewTheme] = useState<PresentationTheme>(w.data.presentation.theme);
   const [showPreview, setShowPreview] = useState(false), [premiumDenied, setPremiumDenied] = useState(false);
   const source = w.data.versions.find(v => v.id === w.data.finalVersionId);
   const currentTheme = w.data.presentation.theme || 'minimal-light';
-  useEffect(() => { setPreviewTheme(currentTheme); }, [currentTheme]);
+  const [themeSelection, setThemeSelection] = useState({ base: currentTheme, selected: currentTheme });
+  const previewTheme = themeSelection.base === currentTheme ? themeSelection.selected : currentTheme;
   const asPresentation = (theme: PresentationTheme): PresentationData => ({
     presentationTitle: w.data.title,
     settings: { title: w.data.title, pageCount: w.data.slides.length, theme },
@@ -38,22 +38,27 @@ export function WorkspacePresentation({ workspace: w, assistant: ai, report, pro
   async function applyTheme() {
     setError('');
     try {
-      if (previewTheme === currentTheme) return;
-      if (!(await checkTheme(previewTheme))) return;
+      if (previewTheme === currentTheme) return true;
+      if (!(await checkTheme(previewTheme))) return false;
       w.update(value => ({ ...value, presentation: { ...value.presentation, theme: previewTheme } }));
       const result = await w.save();
       if (result.error) {
         w.update(value => ({ ...value, presentation: { ...value.presentation, theme: currentTheme } }));
         setError(result.error);
+        return false;
       }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : '테마 권한을 확인하지 못했습니다.'); }
+      return true;
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '테마 권한을 확인하지 못했습니다.'); return false; }
   }
   async function generate() {
     if (!source) { setError('검토 화면에서 최종 원고를 먼저 확정해 주세요.'); return; }
-    try { if (!(await checkTheme(currentTheme))) return; }
+    try {
+      if (!(await checkTheme(previewTheme))) return;
+      if (!(await applyTheme())) return;
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : '테마 권한을 확인하지 못했습니다.'); return; }
     const fingerprint = manuscriptFingerprint(w.data);
-    const result = await ai.request('presentation', { finalDocument: manuscriptText(source), settings: w.data.presentation, resources: report ? w.data.resources.filter(r => r.used) : [] });
+    const result = await ai.request('presentation', { finalDocument: manuscriptText(source), settings: { ...w.data.presentation, theme: previewTheme }, resources: report ? w.data.resources.filter(r => r.used) : [] });
     if (result) w.update(v => ({ ...v, slides: [...v.slides, ...result.slides.map(slide => ({ ...slide, id: workspaceId() }))], qna: result.qna, presentationFingerprint: fingerprint }));
   }
   async function exportSlides() {
@@ -101,7 +106,7 @@ export function WorkspacePresentation({ workspace: w, assistant: ai, report, pro
   }
   return <View style={s.group}>
     <ThemedText type="sectionTitle">{report ? '조사 결과 발표자료' : '작품·창작 과정 발표자료'}</ThemedText>
-    <PresentationThemePicker value={previewTheme} onChange={setPreviewTheme} />
+    <PresentationThemePicker value={previewTheme} onChange={selected => setThemeSelection({ base: currentTheme, selected })} />
     <View style={s.row}><Button onPress={() => void applyTheme()}>디자인만 적용 · AI 0단위</Button><Button disabled={!w.data.slides.length} onPress={() => setShowPreview(v => !v)}>{showPreview ? '테마 미리보기 닫기' : '선택한 테마 미리보기'}</Button></View>
     {premiumDenied ? <Button onPress={() => router.push('/watt')}>Watt 이용권 페이지로 이동</Button> : null}
     {showPreview && w.data.slides.length ? <PresentationHtmlPreview html={createPresentationHtml(asPresentation(previewTheme))} /> : null}

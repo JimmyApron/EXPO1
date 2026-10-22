@@ -29,7 +29,7 @@ import {
 import { useExperience } from '@/context/ExperienceContext';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
-import { useWattBalance, wattAction, type WattSnapshot } from '@/hooks/use-watt';
+import { subscribeWattBalance, useWattBalance, wattAction, type WattSnapshot } from '@/hooks/use-watt';
 import { useRooms } from '@/hooks/use-rooms';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -158,13 +158,15 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all(rooms.map(async item => {
+    const load = () => { void Promise.all(rooms.map(async item => {
       try {
         const result = await wattAction<{team:WattSnapshot|null}>({action:'state',roomId:item.room.id});
         return {id:item.room.id,name:item.room.name,balance:result.team};
       } catch { return {id:item.room.id,name:item.room.name,balance:null}; }
-    })).then(cards => { if(active) setTeamWattCards(cards); });
-    return () => { active = false; };
+    })).then(cards => { if(active) setTeamWattCards(cards); }); };
+    load();
+    const unsubscribe = subscribeWattBalance(load);
+    return () => { active = false; unsubscribe(); };
   }, [rooms]);
 
   const closeDialog = () => {
@@ -381,7 +383,7 @@ export default function ProfileScreen() {
               <View style={styles.wattCardCopy}>
                 <ThemedText type="smallBold">내 이용권</ThemedText>
                 <ThemedText type="sectionTitle">{wattLoading ? '확인 중' : wattError ? '이용 정보 확인 필요' : personalWattEntitlement?.trial ? '무료 체험' : personalWattEntitlement?.product_id === 'personal_30' ? '개인 30일권' : personalWattEntitlement?.product_id === 'personal_120' ? '개인 120일권' : 'FREE'}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">{wattBalance ? `${wattBalance.total}단위 남음` : wattLoading ? '잔여량 확인 중' : wattError ? '잔여량을 불러오지 못했어요' : '잔여량 확인 필요'} · 이용권 살펴보기</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">{wattBalance ? `${wattBalance.total}단위 남음${wattBalance.textUsage ? ` · 일반 텍스트 AI 오늘 ${wattBalance.textUsage.todayUsed}/${wattBalance.textUsage.dailyLimit}회` : ''}` : wattLoading ? '잔여량 확인 중' : wattError ? '잔여량을 불러오지 못했어요' : '잔여량 확인 필요'} · 이용권 살펴보기</ThemedText>
               </View>
               <AppIcon name="chevronRight" color={theme.textTertiary} size={20} />
             </ThemedView>
@@ -389,7 +391,7 @@ export default function ProfileScreen() {
           {teamWattCards.filter(card => card.balance?.entitlements?.some(item => item.room_id === card.id && item.state !== 'expired')).map(card => (
             <Pressable key={card.id} accessibilityRole="button" onPress={() => router.push({pathname:'/watt',params:{roomId:card.id}})}>
               <ThemedView type="backgroundElement" style={[styles.teamWattRow,{borderColor:theme.border}]}>
-                <View style={styles.wattCardCopy}><ThemedText type="smallBold">팀 이용권 · {card.name}</ThemedText><ThemedText type="small" themeColor="textSecondary">공동 잔여량 {card.balance?.total ?? 0}단위</ThemedText></View>
+                 <View style={styles.wattCardCopy}><ThemedText type="smallBold">팀 이용권 · {card.name}</ThemedText><ThemedText type="small" themeColor="textSecondary">공동 잔여량 {card.balance?.total ?? 0}단위{card.balance?.textUsage ? ` · 팀 오늘 ${card.balance.textUsage.todayUsed}/${card.balance.textUsage.dailyLimit}회` : ''}</ThemedText></View>
                 <AppIcon name="chevronRight" color={theme.textTertiary} size={20}/>
               </ThemedView>
             </Pressable>

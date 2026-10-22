@@ -326,14 +326,17 @@ Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', as
     const headers = { Authorization: authorization, apikey: anon };
     let storedPremium = false;
     try {
-      const stored = await fetch(`${url}/rest/v1/projectflows?projectid=eq.${encodeURIComponent(cleanString(requestBody.projectId, 120))}&select=presentationdata&limit=1`, {
+      const stored = await fetch(`${url}/rest/v1/projectflows?projectid=eq.${encodeURIComponent(cleanString(requestBody.projectId, 120))}&select=selectedideaid,presentationdata&limit=1`, {
         headers, signal: AbortSignal.timeout(10_000),
       });
       if (!stored.ok) return jsonResponse({ error: 'presentation_access_failed', message: '저장된 발표자료를 확인하지 못했습니다.' }, 503);
       const rows: unknown = await stored.json();
-      const presentation = Array.isArray(rows) && isRecord(rows[0]) ? rows[0].presentationdata : null;
+      const flow = Array.isArray(rows) && isRecord(rows[0]) ? rows[0] : null;
+      if (!flow || flow.selectedideaid !== selectedIdea.id) return jsonResponse({ error: 'selected_idea_mismatch', message: '현재 프로젝트의 선정 아이디어를 확인해 주세요.' }, 403);
+      const presentation = flow.presentationdata;
       const previousTheme = isRecord(presentation) && isRecord(presentation.settings) ? presentation.settings.theme : null;
-      storedPremium = previousTheme === 'modern-dark' || previousTheme === 'business';
+      storedPremium = (previousTheme === 'modern-dark' || previousTheme === 'business')
+        && isRecord(presentation) && (!presentation.ideaId || presentation.ideaId === selectedIdea.id);
     } catch { return jsonResponse({ error: 'presentation_access_failed', message: '저장된 발표자료를 확인하지 못했습니다.' }, 503); }
     if (settings.theme === 'modern-dark' || settings.theme === 'business' || storedPremium) {
     let allowed = false;

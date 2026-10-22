@@ -1,5 +1,6 @@
 import { Alert, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 
 const pendingRequests = new Map<string, string>();
 
@@ -29,15 +30,18 @@ export async function invokeWattAi<T = any>(name: string, options: { body: NonNu
     body: options.body, headers: { ...options.headers, 'x-watt-request-id': id, ...(consent ? { 'x-watt-consent': String(consent) } : {}) },
   });
   const first = await invoke();
+  if (!first.error) notifyWattBalanceChanged();
   if (!first.error) { pendingRequests.delete(key); return first; }
   let response: { error?: string; units?: number } | null = null;
   try { response = await (first.error.context as Response)?.clone().json(); } catch { /* Preserve the original error. */ }
   if (response?.error !== 'consent_required' || !Number.isInteger(response.units) || !response.units || response.units < 1) {
+    notifyWattBalanceChanged();
     if ((first.error.context as Response)?.status === 502 || response?.error === 'request_already_finished') pendingRequests.delete(key);
     return first;
   }
   if (!await confirmUnits(response.units)) { pendingRequests.delete(key); return first; }
   const accepted = await invoke(response.units);
+  notifyWattBalanceChanged();
   if (!accepted.error || (accepted.error.context as Response)?.status === 502) pendingRequests.delete(key);
   return accepted;
 }
