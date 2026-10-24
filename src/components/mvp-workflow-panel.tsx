@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
   wireframeBox: { gap: Spacing.two, borderWidth: 1, borderStyle: 'dashed', borderRadius: Radius.medium, padding: Spacing.two },
   wireframeBlock: { padding: Spacing.two, borderRadius: Radius.small },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  innerCard: { minWidth: 220, flex: 1, gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  innerCard: { minWidth: 0, flex: 1, flexBasis: 220, gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
   keywordChip: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   keywordInput: { minWidth: 160, flex: 1, minHeight: ControlHeight.input, borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
 });

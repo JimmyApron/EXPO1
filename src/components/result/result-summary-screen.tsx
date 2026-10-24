@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.three,
   },
-  headingCopy: { flex: 1, minWidth: 220, gap: Spacing.one },
+  headingCopy: { flex: 1, minWidth: 0, flexBasis: 220, gap: Spacing.one },
   participants: {
     minWidth: 140,
     alignItems: 'center',

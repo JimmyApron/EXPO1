@@ -143,7 +143,7 @@ export function IdeaResultCard({
 const styles = StyleSheet.create({
   card: { gap: Spacing.three, padding: Spacing.four, borderRadius: Radius.large, borderWidth: 1 },
   header: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, alignItems: 'flex-start' },
-  grow: { flex: 1, minWidth: 220, gap: Spacing.one },
+  grow: { flex: 1, minWidth: 0, flexBasis: 220, gap: Spacing.one },
   rank: { borderRadius: Radius.pill, paddingHorizontal: Spacing.two, paddingVertical: Spacing.one },
   analysis: { gap: Spacing.two },
   insightCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },

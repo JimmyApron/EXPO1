@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
@@ -58,6 +58,8 @@ export function BlindSwipeEvaluation({
   onEditIdea,
   onAddFeedback,
 }: BlindSwipeEvaluationProps) {
+  const { width } = useWindowDimensions();
+  const isCompact = width < 600;
   const {
     flow,
     conditions,
@@ -368,8 +370,8 @@ export function BlindSwipeEvaluation({
 
   return (
     <View style={styles.screen}>
-      <View style={styles.headingRow}>
-        <View style={styles.heading}>
+      <View style={[styles.headingRow, isCompact && styles.headingRowCompact]}>
+        <View style={[styles.heading, !isCompact && styles.headingWide]}>
           <ThemedText type="subtitle" style={styles.navyText}>블라인드 스와이프 평가</ThemedText>
           <ThemedText type="small" style={styles.mutedText}>모든 아이디어를 평가하면 현재 결과를 볼 수 있어요.</ThemedText>
         </View>
@@ -404,8 +406,8 @@ export function BlindSwipeEvaluation({
           <View style={styles.cardFooter}>
             <ThemedText type="small" style={styles.mutedText}>구현 난이도 · {current.difficulty}</ThemedText>
             <View style={styles.textActions}>
-              <Pressable disabled={isTransitioning || isSavingEvaluation} onPress={() => void choose('pass')}><ThemedText type="smallBold" style={styles.passText}>PASS</ThemedText></Pressable>
-              <Pressable disabled={isTransitioning || isSavingEvaluation} onPress={() => void choose('pick')}><ThemedText type="smallBold" style={styles.orangeText}>PICK</ThemedText></Pressable>
+              <Pressable disabled={isTransitioning || isSavingEvaluation} onPress={() => void choose('pass')} style={styles.textAction}><ThemedText type="smallBold" style={styles.passText}>PASS</ThemedText></Pressable>
+              <Pressable disabled={isTransitioning || isSavingEvaluation} onPress={() => void choose('pick')} style={styles.textAction}><ThemedText type="smallBold" style={styles.orangeText}>PICK</ThemedText></Pressable>
             </View>
           </View>
         </Animated.View>
@@ -426,8 +428,10 @@ export function BlindSwipeEvaluation({
 
 const styles = StyleSheet.create({
   screen: { width: '100%', maxWidth: 520, alignSelf: 'center', gap: Spacing.three, padding: Spacing.four, borderRadius: Radius.xlarge, backgroundColor: cream },
-  heading: { gap: Spacing.one },
+  heading: { minWidth: 0, gap: Spacing.one },
+  headingWide: { flex: 1 },
   headingRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.two },
+  headingRowCompact: { flexDirection: 'column', alignItems: 'stretch' },
   navyText: { color: navy },
   mutedText: { color: muted },
   orangeText: { color: orange },
@@ -440,8 +444,9 @@ const styles = StyleSheet.create({
   cardSection: { gap: Spacing.one },
   cardFooter: { marginTop: 'auto', gap: Spacing.two },
   textActions: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: Spacing.one },
+  textAction: { minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center' },
   passText: { color: '#8A94A6' },
-  choiceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.five },
+  choiceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.two },
   passCircle: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.pill, borderWidth: 2, borderColor: '#C9CFDA', backgroundColor: '#FFFFFF' },
   pickCircle: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.pill, backgroundColor: orange },
   passSymbol: { color: '#8A94A6', fontSize: 39, fontWeight: '300', lineHeight: 44 },
@@ -451,7 +456,7 @@ const styles = StyleSheet.create({
   emptyCard: { gap: Spacing.three, padding: Spacing.four, borderWidth: 1, borderColor: orange, borderRadius: Radius.xlarge, backgroundColor: cream },
   emptyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   outlineButton: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderColor: orange, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, backgroundColor: '#FFFFFF' },
-  restartButton: { minHeight: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: orange, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, backgroundColor: '#FFFFFF' },
+  restartButton: { minHeight: 48, maxWidth: '100%', alignSelf: 'flex-start', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: orange, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, backgroundColor: '#FFFFFF' },
   completeBanner: { gap: Spacing.one, padding: Spacing.three, borderRadius: Radius.medium, borderWidth: 1, borderColor: '#F5D18D', backgroundColor: '#FFF2CD' },
   errorText: { color: '#C2410C' },
   pressed: { opacity: 0.65 },
