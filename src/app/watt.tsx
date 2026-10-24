@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -13,7 +13,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { notifyWattBalanceChanged, useWattBalance, wattAction, type WattSnapshot } from '@/hooks/use-watt';
 
 type Product = { id: string; scope: 'personal'|'team'|'topup'; label: string; price_krw: number; student_price_krw: number|null; duration_days: number|null; included_units: number; cycle_days: number|null };
-type History = { purchases: Record<string, unknown>[]; usage: Record<string, unknown>[]; teamUsage?: Record<string, unknown>[] };
+type History = { purchases: Record<string, unknown>[]; usage: Record<string, unknown>[] };
+type HistoryEntry = { kind: 'purchase'|'usage'; item: Record<string, unknown>; key: string; createdAt: string };
 type Preview = { starts_at: string; ends_at: string; next_renewal_at: string; next_grant_at: string|null; price_krw: number; included_units: number; duration_days: number; cycle_days: number|null; simulated: boolean };
 type Entitlement = WattSnapshot['entitlements'][number];
 const formatDate = (value?: string|null) => value ? new Intl.DateTimeFormat('ko-KR',{year:'numeric',month:'long',day:'numeric'}).format(new Date(value)) : '—';
@@ -36,7 +37,7 @@ const resetTime = (value: string) => new Intl.DateTimeFormat('ko-KR', { timeZone
 export default function WattScreen() {
   const theme = useTheme();
   const params = useLocalSearchParams<{ roomId?: string }>();
-  const { rooms } = useRooms();
+  const { rooms, isloadingrooms, roomerror } = useRooms();
   const { balance, loading, error, refresh, trialUsed } = useWattBalance();
   const [products,setProducts] = useState<Product[]>([]);
   const [scope,setScope] = useState<'personal'|'team'>('personal');
@@ -46,8 +47,12 @@ export default function WattScreen() {
   const [confirm,setConfirm] = useState(false);
   const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState('');
-  const [historyState,setHistoryState] = useState<{scope:'personal'|'team';roomId:string|null;data:History}|null>(null);
-  const [teamBalanceState,setTeamBalanceState] = useState<{roomId:string;data:WattSnapshot|null}|null>(null);
+  const [history,setHistory] = useState<History|null>(null);
+  const [historyExpanded,setHistoryExpanded] = useState(false);
+  const [teamBalances,setTeamBalances] = useState<Record<string,WattSnapshot>>({});
+  const [loadedTeamBalancesKey,setLoadedTeamBalancesKey] = useState<string|null>(null);
+  const [teamBalanceError,setTeamBalanceError] = useState(false);
+  const teamLoadId = useRef(0);
   const [manageTarget,setManageTarget] = useState<{action:'cancel'|'resume'; entitlement:Entitlement}|null>(null);
   const [trialChooser,setTrialChooser] = useState(false);
   const [trialConfirm,setTrialConfirm] = useState(false);
@@ -55,18 +60,27 @@ export default function WattScreen() {
   const [trialRoomId,setTrialRoomId] = useState('');
 
   const ownedRooms = useMemo(() => rooms.filter(item => item.membership.role === 'owner'), [rooms]);
+  const roomIdsKey = useMemo(() => rooms.map(item => item.room.id).join(','), [rooms]);
   const selectedRoom = rooms.find(item => item.room.id === roomId);
-  const teamBalance = teamBalanceState?.roomId === roomId ? teamBalanceState.data : null;
-  const history = historyState?.scope === scope && historyState.roomId === (scope === 'team' ? roomId : null) ? historyState.data : null;
+  const teamBalance = teamBalances[roomId] ?? null;
+  const activeTeamCards = rooms.flatMap(item => {
+    const snapshot = teamBalances[item.room.id];
+    if (!snapshot) return [];
+    const entitlement = snapshot.entitlements.find(value => value.room_id === item.room.id && value.state !== 'expired');
+    return entitlement ? [{item,snapshot,entitlement}] : [];
+  });
+  const historyEntries = useMemo<HistoryEntry[]>(() => [
+    ...(history?.purchases ?? []).map((item,index) => ({kind:'purchase' as const,item,key:`purchase-${String(item.id??index)}`,createdAt:String(item.created_at??'')})),
+    ...(history?.usage ?? []).map((item,index) => ({kind:'usage' as const,item,key:`usage-${String(item.id??index)}`,createdAt:String(item.created_at??'')})),
+  ].sort((a,b) => (Date.parse(b.createdAt)||0)-(Date.parse(a.createdAt)||0)), [history]);
   const personalActive = balance?.entitlements.find(item => item.room_id === null && item.state !== 'expired');
+  const hasActiveEntitlement = Boolean(personalActive) || activeTeamCards.length > 0;
+  const teamStatusReady = !isloadingrooms && !roomerror && loadedTeamBalancesKey === roomIdsKey && !teamBalanceError;
   const teamActive = teamBalance?.entitlements?.find(item => item.room_id === roomId && item.state !== 'expired');
   const personalExpired = balance?.entitlements.filter(item => item.room_id === null && item.state === 'expired').sort((a,b) => new Date(b.ends_at).getTime()-new Date(a.ends_at).getTime())[0];
   const teamExpired = teamBalance?.entitlements?.filter(item => item.room_id === roomId && item.state === 'expired').sort((a,b) => new Date(b.ends_at).getTime()-new Date(a.ends_at).getTime())[0];
   const expiredEntitlement = scope === 'team' ? teamExpired : personalExpired;
   const currentEntitlement = scope === 'team' ? teamActive : personalActive;
-  const currentBalance = scope === 'team' ? teamBalance : balance;
-  const textUsage = currentBalance?.textUsage;
-  const textRemaining = textUsage ? Math.max(0, textUsage.dailyLimit - textUsage.todayUsed) : null;
   const available = products.filter(item => scope === 'team' ? item.scope === 'team' && item.id.startsWith('team_') : item.scope === 'personal' && item.id.startsWith('personal_'));
 
   const loadProducts = useCallback(async () => {
@@ -74,25 +88,35 @@ export default function WattScreen() {
     catch (reason) { setMessage(reason instanceof Error ? reason.message : '상품 목록을 불러오지 못했습니다.'); }
   }, []);
   const loadHistory = useCallback(async () => {
-    try { setHistoryState({scope,roomId:scope==='team'?roomId:null,data:await wattAction<History>({ action:'history',roomId:scope==='team'?roomId:null })}); }
+    try { setHistory(await wattAction<History>({ action:'history' })); }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : '이용 내역을 불러오지 못했습니다.'); }
-  }, [roomId,scope]);
-  const loadTeamBalance = useCallback(async () => {
-    if (!roomId) { setTeamBalanceState(null); return; }
-    try { const result = await wattAction<{team:WattSnapshot|null}>({action:'state',roomId}); setTeamBalanceState({roomId,data:result.team}); }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : '팀 이용량을 불러오지 못했습니다.'); }
-  }, [roomId]);
+  }, []);
+  useFocusEffect(useCallback(() => { setHistoryExpanded(false); }, []));
+  const loadTeamBalances = useCallback(async () => {
+    const requestId = ++teamLoadId.current;
+    const ids = roomIdsKey ? roomIdsKey.split(',') : [];
+    if (!ids.length) { setTeamBalances({}); setLoadedTeamBalancesKey(roomIdsKey); setTeamBalanceError(false); return; }
+    const results = await Promise.allSettled(ids.map(id => wattAction<{team:WattSnapshot|null}>({action:'state',roomId:id})));
+    if (requestId !== teamLoadId.current) return;
+    const next: Record<string,WattSnapshot> = {};
+    results.forEach((result,index) => {
+      if (result.status === 'fulfilled' && result.value.team) next[ids[index]] = result.value.team;
+    });
+    setTeamBalances(next);
+    setLoadedTeamBalancesKey(roomIdsKey);
+    setTeamBalanceError(results.some(result => result.status === 'rejected'));
+  }, [roomIdsKey]);
   useEffect(() => {
     const timeout=globalThis.setTimeout(()=>{void loadProducts();void loadHistory();},0);
     return()=>globalThis.clearTimeout(timeout);
   }, [loadProducts,loadHistory]);
-  useEffect(() => { const timeout=globalThis.setTimeout(()=>{void loadTeamBalance();},0);return()=>globalThis.clearTimeout(timeout); }, [loadTeamBalance]);
+  useEffect(() => { const timeout=globalThis.setTimeout(()=>{void loadTeamBalances();},0);return()=>globalThis.clearTimeout(timeout); }, [loadTeamBalances]);
   useEffect(() => {
-    const reset = teamBalance?.textUsage?.resetsAt;
+    const reset = Object.values(teamBalances).map(value => value.textUsage?.resetsAt).filter((value): value is string => Boolean(value)).sort()[0];
     if (!reset) return;
-    const timeout = globalThis.setTimeout(() => { void Promise.all([loadTeamBalance(), loadHistory()]); }, Math.max(1000, new Date(reset).getTime() - Date.now() + 1000));
+    const timeout = globalThis.setTimeout(() => { void Promise.all([loadTeamBalances(), loadHistory()]); }, Math.max(1000, new Date(reset).getTime() - Date.now() + 1000));
     return () => globalThis.clearTimeout(timeout);
-  }, [teamBalance?.textUsage?.resetsAt, loadTeamBalance, loadHistory]);
+  }, [teamBalances, loadTeamBalances, loadHistory]);
   useEffect(() => {
     if (roomId || !ownedRooms.length) return;
     const timeout=globalThis.setTimeout(()=>setRoomId(ownedRooms[0].room.id),0);
@@ -102,7 +126,7 @@ export default function WattScreen() {
   useRealtimeRefresh({
     channelName:`watt-details-${roomId || 'personal'}`,
     enabled:true,
-    onRefresh:()=>Promise.all([refresh(),loadHistory(),loadTeamBalance()]),
+    onRefresh:()=>Promise.all([refresh(),loadHistory(),loadTeamBalances()]),
     tables:[
       'watt_entitlements','watt_grants','watt_purchases','watt_trials','watt_usage',
       ...(roomId ? [
@@ -116,7 +140,7 @@ export default function WattScreen() {
 
   const run = async (body: Record<string,unknown>, success: string) => {
     setBusy(true); setMessage('');
-    try { await wattAction(body); setMessage(success); notifyWattBalanceChanged(); await Promise.all([refresh(),loadHistory(),loadTeamBalance()]); return true; }
+    try { await wattAction(body); setMessage(success); notifyWattBalanceChanged(); await Promise.all([refresh(),loadHistory(),loadTeamBalances()]); return true; }
     catch(reason) { setMessage(reason instanceof Error ? reason.message : '요청을 처리하지 못했습니다.'); return false; }
     finally { setBusy(false); }
   };
@@ -138,13 +162,12 @@ export default function WattScreen() {
       setTrialConfirm(false);
       notifyWattBalanceChanged();
       try {
-        const [historyResult, teamResult] = await Promise.all([
-          wattAction<History>({action:'history',roomId:trialScope==='team'?trialRoomId:null}),
-          trialScope==='team' ? wattAction<{team:WattSnapshot|null}>({action:'state',roomId:trialRoomId}) : Promise.resolve(null),
+        const [historyResult] = await Promise.all([
+          wattAction<History>({action:'history'}),
+          refresh(),
+          loadTeamBalances(),
         ]);
-        await refresh();
-        setHistoryState({scope:trialScope,roomId:trialScope==='team'?trialRoomId:null,data:historyResult});
-        setTeamBalanceState(trialScope==='team'?{roomId:trialRoomId,data:teamResult?.team??null}:null);
+        setHistory(historyResult);
       } catch {
         await refresh();
         setMessage('무료체험은 시작되었습니다. 이용량을 새로 불러오지 못해 잠시 후 다시 확인해 주세요.');
@@ -169,11 +192,11 @@ export default function WattScreen() {
   const activate = async () => {
     if (!selected) return;
     const isTopup=selected.scope==='topup';
-    const ok=await run({action:isTopup?'topup':'activate',productId:selected.id,roomId:scope==='team'?roomId:null},isTopup?'AI 추가 이용량을 활성화했습니다.':'구독이 시작되었습니다. 결제 기능이 연결되지 않아 실제 요금은 청구되지 않습니다.');
+    const ok=await run({action:isTopup?'topup':'activate',productId:selected.id,roomId:scope==='team'?roomId:null},isTopup?'AI 추가 이용량을 활성화했습니다.':'');
     if(ok) { setConfirm(false);setSelected(null);setPreview(null); }
   };
 
-  const trialCard = !trialUsed && !personalActive && !teamActive ? (
+  const trialCard = teamStatusReady && !trialUsed && !hasActiveEntitlement ? (
     <ThemedView type="backgroundElement" style={[styles.trialCard,{backgroundColor:theme.primarySoft,borderColor:theme.primary}]}>
       <View style={styles.trialHead}><ThemedText type="caption" style={{color:theme.warning}}>첫 이용 혜택</ThemedText><ThemedText type="sectionTitle">Watt AI 7일 무료체험</ThemedText></View>
       <ThemedText type="small" themeColor="textSecondary">이용권을 구매하기 전에 Watt의 AI 기능을 무료로 경험해 보세요.</ThemedText>
@@ -188,29 +211,17 @@ export default function WattScreen() {
   return <ScrollView style={{backgroundColor:theme.background}} contentContainerStyle={styles.scroll}>
     <SafeAreaView edges={['top','bottom']} style={styles.safe}>
       <View style={styles.container}>
-        <Pressable accessibilityRole="button" onPress={()=>router.back()} style={styles.back}><ThemedText type="smallBold">← 내 정보로 돌아가기</ThemedText></Pressable>
+        <Pressable accessibilityRole="button" onPress={()=>router.canGoBack()?router.back():router.replace('/profile')} style={styles.back}><ThemedText type="smallBold">← 뒤로 가기</ThemedText></Pressable>
         <View style={styles.header}><ThemedText type="screenTitle">Watt 이용권</ThemedText><ThemedText type="body" themeColor="textSecondary">이용권과 AI 사용량을 관리해요.</ThemedText></View>
         {message ? <ThemedView style={[styles.notice,{borderColor:theme.border,backgroundColor:theme.primarySoft}]}><ThemedText type="small">{message}</ThemedText></ThemedView> : null}
         {error ? <ThemedText type="small" style={{color:theme.danger}}>{error}</ThemedText> : null}
 
         {trialCard}
-        {currentEntitlement ? <ThemedView type="backgroundElement" style={[styles.statusCard,{borderColor:theme.border},Shadows.card]}>
-          <View style={styles.rowBetween}><ThemedText type="caption" style={{color:currentEntitlement.state==='cancel_scheduled'?theme.warning:theme.success}}>{currentEntitlement.state==='cancel_scheduled'?'해지 예약':currentEntitlement.trial?'무료체험 이용 중':'이용 중'}</ThemedText><ThemedText type="caption" themeColor="textSecondary">{scope==='team'?selectedRoom?.room.name??'팀 방':''}</ThemedText></View>
-          <ThemedText type="sectionTitle">{productName(currentEntitlement.product_id)}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">{currentEntitlement.state==='cancel_scheduled'?`이용 종료일 ${formatDate(currentEntitlement.ends_at)}`:`남은 이용 기간 ${remainingDays(currentEntitlement.ends_at)}일`}</ThemedText>
-          {currentEntitlement.state==='cancel_scheduled' ? <ThemedText type="small" themeColor="textSecondary">현재 기간이 끝날 때까지 AI 기능과 남은 사용량을 정상적으로 이용할 수 있습니다.</ThemedText> : null}
-          <ThemedText type="smallBold">{scope==='team'?`팀 공동 잔여량 ${teamBalance?.total??0}단위`:`AI 잔여 사용량 ${loading?'…':`${balance?.total??0}단위`}`}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">{currentEntitlement.trial ? '무료체험 일반 텍스트 AI' : '일반 텍스트 AI 사용량 차감 없음 · 일일 공정 이용 한도 적용 · 월간 누적 횟수 제한 없음'}</ThemedText>
-          {textUsage ? <>
-            <ThemedText type="smallBold">{scope==='team'?'팀 전체':'개인'} 오늘 {textUsage.todayUsed}/{textUsage.dailyLimit}회 이용 · {textRemaining}회 남음</ThemedText>
-            {textUsage.memberLimit !== null ? <ThemedText type="small" themeColor="textSecondary">내 팀 이용 {textUsage.memberUsed}/{textUsage.memberLimit}회 · 팀 공동 잔여량과 별도</ThemedText> : null}
-            {textUsage.trialLimit !== null ? <ThemedText type="small" themeColor="textSecondary">체험 전체 {textUsage.trialUsed}/{textUsage.trialLimit}회 이용</ThemedText> : null}
-            {textRemaining === 0 || (textUsage.memberLimit !== null && textUsage.memberUsed === textUsage.memberLimit) || (textUsage.trialLimit !== null && textUsage.trialUsed === textUsage.trialLimit) ? <ThemedText type="caption" themeColor="textSecondary">일일 한도는 {resetTime(textUsage.resetsAt)}에 초기화됩니다. 추가 사용은 작업별 AI 단위 차감에 동의한 경우에만 진행합니다.</ThemedText> : null}
-          </> : <ThemedText type="caption" themeColor="textSecondary">오늘 이용 횟수를 확인 중입니다.</ThemedText>}
-          <ThemedText type="caption" themeColor="textSecondary">{currentEntitlement.trial ? '체험 기간' : '구독 기간'} 중 프리미엄 발표자료 테마 이용 가능 · 이미지 분석과 새 발표자료 생성은 AI 단위 차감</ThemedText>
-          {currentEntitlement.trial ? null : currentEntitlement.state==='cancel_scheduled' ? <Pressable disabled={busy} onPress={()=>setManageTarget({action:'resume',entitlement:currentEntitlement})} style={[styles.outlineButton,{borderColor:theme.border}]}><ThemedText type="smallBold">구독 다시 유지하기</ThemedText></Pressable> : currentEntitlement.auto_renew ? <View style={styles.rowBetween}><ThemedText type="caption" themeColor="textSecondary">다음 결제 예정일 {formatDate(currentEntitlement.next_renewal_at)}</ThemedText><Pressable disabled={busy} onPress={()=>setManageTarget({action:'cancel',entitlement:currentEntitlement})}><ThemedText type="caption" style={{color:theme.textTertiary,textDecorationLine:'underline'}}>구독 관리</ThemedText></Pressable></View> : <ThemedText type="caption" themeColor="textSecondary">이용 종료일 {formatDate(currentEntitlement.ends_at)} · 자동 갱신 미설정</ThemedText>}
-          {currentEntitlement.next_grant_at ? <ThemedText type="caption" themeColor="textSecondary">다음 AI 제공량 갱신 {formatDate(currentEntitlement.next_grant_at)}</ThemedText> : null}
-        </ThemedView> : expiredEntitlement ? <ThemedView type="backgroundElement" style={[styles.statusCard,{borderColor:theme.border}]}><ThemedText type="smallBold">이용 종료</ThemedText><ThemedText type="sectionTitle">{productName(expiredEntitlement.product_id)}</ThemedText><ThemedText type="small" themeColor="textSecondary">이용 종료일 {formatDate(expiredEntitlement.ends_at)}</ThemedText></ThemedView> : !trialCard ? <ThemedView type="backgroundElement" style={[styles.statusCard,{borderColor:theme.border}]}><ThemedText type="smallBold">{scope==='team'?'팀 이용권 없음':'FREE · 무료 플랜'}</ThemedText><ThemedText type="small" themeColor="textSecondary">{scope==='team'?`선택한 팀의 공동 AI 잔여량 ${teamBalance?`${teamBalance.total}단위`:'확인 중'}`:`가입 기본 제공량을 포함해 개인 AI 잔여량 ${loading?'…':`${balance?.total??0}단위`}`}</ThemedText></ThemedView> : null}
+        {personalActive && balance ? <ActiveEntitlementCard entitlement={personalActive} snapshot={balance} kind="personal" busy={busy} onManage={(action,entitlement)=>setManageTarget({action,entitlement})} /> : null}
+        {activeTeamCards.map(({item,snapshot,entitlement}) => <ActiveEntitlementCard key={item.room.id} entitlement={entitlement} snapshot={snapshot} kind="team" roomName={item.room.name} canManage={item.membership.role==='owner'} busy={busy} onManage={(action,target)=>setManageTarget({action,entitlement:target})} />)}
+        {!teamStatusReady ? <ThemedText type="caption" themeColor="textSecondary">{roomerror ? '팀 방 목록을 불러오지 못해 팀 이용권을 확인할 수 없습니다.' : loadedTeamBalancesKey === roomIdsKey && teamBalanceError ? '일부 팀 이용권을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.' : '팀 이용권을 확인 중입니다.'}</ThemedText> : null}
+        {teamStatusReady && !hasActiveEntitlement && expiredEntitlement ? <ThemedView type="backgroundElement" style={[styles.statusCard,{borderColor:theme.border}]}><ThemedText type="smallBold">이용 종료</ThemedText><ThemedText type="sectionTitle">{productName(expiredEntitlement.product_id)}</ThemedText><ThemedText type="small" themeColor="textSecondary">이용 종료일 {formatDate(expiredEntitlement.ends_at)}</ThemedText></ThemedView> : null}
+        {teamStatusReady && !hasActiveEntitlement && !expiredEntitlement && !trialCard ? <ThemedView type="backgroundElement" style={[styles.statusCard,{borderColor:theme.border}]}><ThemedText type="smallBold">{scope==='team'?'팀 이용권 없음':'FREE · 무료 플랜'}</ThemedText><ThemedText type="small" themeColor="textSecondary">{scope==='team'?`선택한 팀의 공동 AI 잔여량 ${teamBalance?`${teamBalance.total}단위`:'확인 중'}`:`가입 기본 제공량을 포함해 개인 AI 잔여량 ${loading?'…':`${balance?.total??0}단위`}`}</ThemedText></ThemedView> : null}
 
         {!currentEntitlement ? <ThemedView type="backgroundElement" style={[styles.balanceCard,{borderColor:theme.border}]}><View style={styles.rowBetween}><View><ThemedText type="smallBold">{scope==='team'?'팀 공동 AI 잔여량':'내 개인 AI 사용량'}</ThemedText><ThemedText type="screenTitle" style={{color:theme.primary}}>{scope==='team'?(teamBalance?`${teamBalance.total}단위`:'확인 중'):(loading?'…':`${balance?.total??0}단위`)}</ThemedText></View><AppIcon name="idea" color={theme.primary} size={24}/></View><ThemedText type="caption" themeColor="textSecondary">{scope==='team'?'선택한 팀 방의 공동 잔여량 · 개인 잔여량과 별도':'개인 계정 잔여량 · 팀 공동 사용량과 별도'}</ThemedText></ThemedView> : null}
         {!currentEntitlement && scope==='personal' ? <ThemedText type="small" themeColor="textSecondary">가입 시 개인 계정에 기본 AI 12단위가 한 번 제공됩니다. 기본 과제 기능과 모든 과제 템플릿은 무료입니다. AI 작업은 기능별로 단위가 차감됩니다.</ThemedText> : null}
@@ -218,6 +229,7 @@ export default function WattScreen() {
 
         <View style={styles.sectionHead}><ThemedText type="sectionTitle">구독 상품</ThemedText><ThemedText type="small" themeColor="textSecondary">기간과 제공량을 비교해 선택하세요</ThemedText></View>
         <View style={styles.segment}>{(['personal','team'] as const).map(value=><Pressable key={value} onPress={()=>{setScope(value);setSelected(null);}} style={[styles.segmentItem,{backgroundColor:scope===value?theme.primarySoft:theme.surface,borderColor:scope===value?theme.primary:theme.border}]}><ThemedText type="smallBold">{value==='personal'?'개인 이용권':'팀 이용권'}</ThemedText></Pressable>)}</View>
+        <View style={[styles.productGroup,{borderColor:'#F8BB54'}]}>
         {scope==='team' ? <ThemedView type="backgroundElement" style={[styles.roomBox,{borderColor:theme.border}]}><ThemedText type="smallBold">적용할 팀 방</ThemedText>{ownedRooms.length===0 ? <ThemedText type="small" themeColor="textSecondary">팀 구독을 이용하려면 먼저 팀 방을 생성해 주세요.</ThemedText> : ownedRooms.map(item=><Pressable key={item.room.id} onPress={()=>{setRoomId(item.room.id);setSelected(null);}} style={[styles.roomOption,{borderColor:roomId===item.room.id?theme.primary:theme.border,backgroundColor:roomId===item.room.id?theme.primarySoft:theme.surface}]}><ThemedText type="smallBold">{item.room.name}</ThemedText><ThemedText type="caption" themeColor="textSecondary">{item.members.length}/5명 {roomId===item.room.id?'✓':''}</ThemedText></Pressable>)}</ThemedView> : null}
 
         {available.map(product=><Pressable key={product.id} accessibilityRole="button" accessibilityState={{selected:selected?.id===product.id}} onPress={()=>setSelected(product)}><ThemedView type="backgroundElement" style={[styles.product,{borderColor:selected?.id===product.id?theme.primary:theme.border,backgroundColor:selected?.id===product.id?theme.primarySoft:theme.surface}]}>
@@ -234,10 +246,13 @@ export default function WattScreen() {
         <ThemedText type="caption" themeColor="textSecondary">추가 사용량은 {scope==='team'?`팀 ${selectedRoom?.room.name??'방'} 공동 잔여량`:'개인 계정'}에 적립됩니다.</ThemedText>
         <ThemedText type="caption" themeColor="textSecondary">추가 이용권만으로는 일반 텍스트 AI 무차감 혜택과 프리미엄 발표자료 테마를 이용할 수 없습니다.</ThemedText>
         <View style={styles.segment}>{products.filter(p=>p.scope==='topup').map(product=><Pressable key={product.id} disabled={busy||(scope==='team'&&!roomId)} onPress={()=>void chooseProduct(product)} style={[styles.topup,{borderColor:theme.border,backgroundColor:theme.surface,opacity:busy||(scope==='team'&&!roomId)?0.5:1}]}><ThemedText type="smallBold">{displayProductLabel(product.label)} · {product.included_units}단위</ThemedText><ThemedText type="caption">{prices(product.price_krw)}</ThemedText></Pressable>)}</View>
+        </View>
 
         <View style={styles.sectionHead}><ThemedText type="sectionTitle">이용 내역</ThemedText></View>
-        {history?.purchases?.length ? history.purchases.map((purchase,index)=><View key={String(purchase.id??index)} style={styles.historyRow}><View style={{flex:1}}><ThemedText type="smallBold">{displayProductLabel(String((purchase.watt_products as {label?:string}|null)?.label??purchase.product_id??'이용권'))}</ThemedText><ThemedText type="caption" themeColor="textSecondary">{formatDate(String(purchase.created_at??''))}</ThemedText></View><ThemedText type="small">{prices(Number(purchase.displayed_price_krw??0))}</ThemedText></View>) : <ThemedText type="small" themeColor="textSecondary">아직 신청 내역이 없습니다.</ThemedText>}
-        {((scope==='team'?history?.teamUsage:history?.usage)?.length) ? <><ThemedText type="smallBold" style={{marginTop:Spacing.two}}>{scope==='team'?'팀 공동 AI 사용 내역':'개인 AI 사용 내역'}</ThemedText>{(scope==='team'?history?.teamUsage:history?.usage)?.slice(0,20).map((item,index)=><View key={String(item.id??index)} style={styles.historyRow}><View style={{flex:1}}><ThemedText type="smallBold">{featureName(String(item.feature))} · {usageState(item)}</ThemedText><ThemedText type="caption" themeColor="textSecondary">{formatDate(String(item.created_at??''))}{item.state==='refunded'?' · 사용량 복구됨':''}</ThemedText></View><ThemedText type="small">{item.state==='refunded'?'복구':`${String(item.units)}단위`}</ThemedText></View>)}</> : null}
+        {historyEntries.length ? (historyExpanded ? historyEntries : historyEntries.slice(0,3)).map(({kind,item,key}) => kind==='purchase'
+          ? <View key={key} style={styles.historyRow}><View style={{flex:1}}><ThemedText type="smallBold">{displayProductLabel(String((item.watt_products as {label?:string}|null)?.label??item.product_id??'이용권'))}</ThemedText><ThemedText type="caption" themeColor="textSecondary">{formatDate(String(item.created_at??''))}</ThemedText></View><ThemedText type="small">{prices(Number(item.displayed_price_krw??0))}</ThemedText></View>
+          : <View key={key} style={styles.historyRow}><View style={{flex:1}}><ThemedText type="smallBold">{featureName(String(item.feature))} · {usageState(item)}</ThemedText><ThemedText type="caption" themeColor="textSecondary">{formatDate(String(item.created_at??''))}{item.state==='refunded'?' · 사용량 복구됨':''}</ThemedText></View><ThemedText type="small">{item.state==='refunded'?'복구':`${String(item.units)}단위`}</ThemedText></View>) : <ThemedText type="small" themeColor="textSecondary">아직 이용 내역이 없습니다.</ThemedText>}
+        {historyEntries.length >= 4 ? <Pressable accessibilityRole="button" accessibilityState={{expanded:historyExpanded}} onPress={()=>setHistoryExpanded(value=>!value)} style={[styles.outlineButton,{borderColor:theme.border}]}><ThemedText type="smallBold">{historyExpanded?'접기':'더보기'}</ThemedText></Pressable> : null}
       </View>
     </SafeAreaView>
 
@@ -291,6 +306,44 @@ export default function WattScreen() {
   </ScrollView>;
 }
 
+function ActiveEntitlementCard({entitlement,snapshot,kind,roomName,canManage=true,busy,onManage}:{
+  entitlement:Entitlement; snapshot:WattSnapshot; kind:'personal'|'team'; roomName?:string; canManage?:boolean; busy:boolean;
+  onManage:(action:'cancel'|'resume',entitlement:Entitlement)=>void;
+}) {
+  const theme = useTheme();
+  const [expanded,setExpanded] = useState(false);
+  const textUsage = snapshot.textUsage;
+  const textRemaining = textUsage ? Math.max(0,textUsage.dailyLimit-textUsage.todayUsed) : null;
+  return <ThemedView type="backgroundElement" style={[styles.statusCard,{borderColor:theme.border},Shadows.card]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${productName(entitlement.product_id)} 상세 ${expanded?'접기':'펼치기'}`} accessibilityState={{expanded}} onPress={()=>setExpanded(value=>!value)} style={{gap:Spacing.two}}>
+      <View style={styles.rowBetween}>
+        <ThemedText type="caption" style={{color:entitlement.state==='cancel_scheduled'?theme.warning:theme.success}}>{entitlement.state==='cancel_scheduled'?'해지 예약':entitlement.trial?'무료체험 이용 중':'이용 중'}</ThemedText>
+        <View style={styles.rowBetween}>
+          {roomName ? <ThemedText type="caption" themeColor="textSecondary" style={{flexShrink:1,textAlign:'right'}}>{roomName}</ThemedText> : null}
+          <View style={{transform:[{rotate:expanded?'270deg':'90deg'}]}}><AppIcon name="chevronRight" color={theme.textSecondary} size={20}/></View>
+        </View>
+      </View>
+      <ThemedText type="sectionTitle">{productName(entitlement.product_id)}</ThemedText>
+      <ThemedText type="smallBold">{kind==='team'?`팀 공동 잔여량 ${snapshot.total}단위`:`AI 잔여 사용량 ${snapshot.total}단위`}</ThemedText>
+      {textUsage ? <ThemedText type="smallBold">{kind==='team'?'팀 전체':'개인'} 오늘 {textUsage.todayUsed}/{textUsage.dailyLimit}회 이용 · {textRemaining}회 남음</ThemedText> : <ThemedText type="caption" themeColor="textSecondary">오늘 이용 횟수를 확인 중입니다.</ThemedText>}
+      {kind==='team' && textUsage && textUsage.memberLimit !== null ? <ThemedText type="smallBold">내가 오늘 이 팀에서 사용한 횟수 {textUsage.memberUsed}/{textUsage.memberLimit}회 · 팀원별 하루 한도</ThemedText> : null}
+    </Pressable>
+    {expanded ? <>
+      <ThemedText type="small" themeColor="textSecondary">{entitlement.state==='cancel_scheduled'?`이용 종료일 ${formatDate(entitlement.ends_at)}`:`남은 이용 기간 ${remainingDays(entitlement.ends_at)}일`}</ThemedText>
+      {entitlement.state==='cancel_scheduled' ? <ThemedText type="small" themeColor="textSecondary">현재 기간이 끝날 때까지 AI 기능과 남은 사용량을 정상적으로 이용할 수 있습니다.</ThemedText> : null}
+      <ThemedText type="small" themeColor="textSecondary">{entitlement.trial ? '무료체험 일반 텍스트 AI' : '일반 텍스트 AI 사용량 차감 없음 · 일일 공정 이용 한도 적용 · 월간 누적 횟수 제한 없음'}</ThemedText>
+      <ThemedText type="caption" themeColor="textSecondary">{entitlement.trial ? '체험 기간' : '구독 기간'} 중 프리미엄 발표자료 테마 이용 가능 · 이미지 분석과 새 발표자료 생성은 AI 단위 차감</ThemedText>
+      {textUsage ? <>
+        <ThemedText type="caption" themeColor="textSecondary">일일 사용량은 매일 24시에 초기화됩니다.</ThemedText>
+        {textUsage.trialLimit !== null ? <ThemedText type="small" themeColor="textSecondary">체험 전체 {textUsage.trialUsed}/{textUsage.trialLimit}회 이용</ThemedText> : null}
+        {textRemaining === 0 || (textUsage.memberLimit !== null && textUsage.memberUsed === textUsage.memberLimit) || (textUsage.trialLimit !== null && textUsage.trialUsed === textUsage.trialLimit) ? <ThemedText type="caption" themeColor="textSecondary">일일 한도는 {resetTime(textUsage.resetsAt)}에 초기화됩니다. 추가 사용은 작업별 AI 단위 차감에 동의한 경우에만 진행합니다.</ThemedText> : null}
+      </> : null}
+      {entitlement.trial ? null : entitlement.state==='cancel_scheduled' ? canManage ? <Pressable disabled={busy} onPress={()=>onManage('resume',entitlement)} style={[styles.outlineButton,{borderColor:theme.border}]}><ThemedText type="smallBold">구독 다시 유지하기</ThemedText></Pressable> : null : entitlement.auto_renew ? <View style={styles.rowBetween}><ThemedText type="caption" themeColor="textSecondary">다음 결제 예정일 {formatDate(entitlement.next_renewal_at)}</ThemedText>{canManage ? <Pressable disabled={busy} onPress={()=>onManage('cancel',entitlement)}><ThemedText type="caption" style={{color:theme.textTertiary,textDecorationLine:'underline'}}>구독 관리</ThemedText></Pressable> : null}</View> : <ThemedText type="caption" themeColor="textSecondary">이용 종료일 {formatDate(entitlement.ends_at)} · 자동 갱신 미설정</ThemedText>}
+      {entitlement.next_grant_at ? <ThemedText type="caption" themeColor="textSecondary">다음 AI 제공량 갱신 {formatDate(entitlement.next_grant_at)}</ThemedText> : null}
+    </> : null}
+  </ThemedView>;
+}
+
 function PreviewRow({label,value}:{label:string;value:string}) { return <View style={styles.previewRow}><ThemedText type="caption" themeColor="textSecondary">{label}</ThemedText><ThemedText type="smallBold">{value}</ThemedText></View>; }
 
-const styles=StyleSheet.create({scroll:{flexGrow:1,padding:Spacing.four,alignItems:'center'},safe:{width:'100%'},container:{width:'100%',maxWidth:760,gap:Spacing.three},back:{alignSelf:'flex-start'},header:{gap:4,marginBottom:Spacing.two},rowBetween:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:Spacing.two},sectionHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:Spacing.two},segment:{flexDirection:'row',gap:Spacing.two,flexWrap:'wrap'},segmentItem:{flex:1,minWidth:130,borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two,alignItems:'center'},balanceCard:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},statusCard:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},trialCard:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},trialHead:{gap:Spacing.one},trialRoomList:{gap:Spacing.two},roomBox:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},roomOption:{borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two,flexDirection:'row',justifyContent:'space-between',gap:Spacing.two},product:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},primaryButton:{minHeight:46,borderRadius:Radius.medium,alignItems:'center',justifyContent:'center',paddingHorizontal:Spacing.three},outlineButton:{minHeight:40,borderWidth:1,borderRadius:Radius.medium,alignItems:'center',justifyContent:'center',paddingHorizontal:Spacing.three},topup:{flex:1,minWidth:150,borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two,gap:4},historyRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:Spacing.two,borderBottomWidth:StyleSheet.hairlineWidth,borderColor:'#E7DED0',gap:Spacing.two},notice:{borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two},modalOverlay:{flex:1,justifyContent:'center',alignItems:'center',padding:Spacing.three},confirmCard:{width:'100%',maxWidth:480,borderWidth:1,borderRadius:Radius.large,padding:Spacing.four,gap:Spacing.three},previewRows:{gap:Spacing.two},previewRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:Spacing.three},modalButton:{flex:1,minHeight:44,borderWidth:1,borderRadius:Radius.medium,justifyContent:'center',alignItems:'center',padding:Spacing.two}});
+const styles=StyleSheet.create({scroll:{flexGrow:1,padding:Spacing.four,alignItems:'center'},safe:{width:'100%'},container:{width:'100%',maxWidth:760,gap:Spacing.three},productGroup:{borderWidth:2,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.three},back:{alignSelf:'flex-start'},header:{gap:4,marginBottom:Spacing.two},rowBetween:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:Spacing.two},sectionHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:Spacing.two},segment:{flexDirection:'row',gap:Spacing.two,flexWrap:'wrap'},segmentItem:{flex:1,minWidth:130,borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two,alignItems:'center'},balanceCard:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},statusCard:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},trialCard:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},trialHead:{gap:Spacing.one},trialRoomList:{gap:Spacing.two},roomBox:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},roomOption:{borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two,flexDirection:'row',justifyContent:'space-between',gap:Spacing.two},product:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},primaryButton:{minHeight:46,borderRadius:Radius.medium,alignItems:'center',justifyContent:'center',paddingHorizontal:Spacing.three},outlineButton:{minHeight:40,borderWidth:1,borderRadius:Radius.medium,alignItems:'center',justifyContent:'center',paddingHorizontal:Spacing.three},topup:{flex:1,minWidth:150,borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two,gap:4},historyRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:Spacing.two,borderBottomWidth:StyleSheet.hairlineWidth,borderColor:'#E7DED0',gap:Spacing.two},notice:{borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two},modalOverlay:{flex:1,justifyContent:'center',alignItems:'center',padding:Spacing.three},confirmCard:{width:'100%',maxWidth:480,borderWidth:1,borderRadius:Radius.large,padding:Spacing.four,gap:Spacing.three},previewRows:{gap:Spacing.two},previewRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:Spacing.three},modalButton:{flex:1,minHeight:44,borderWidth:1,borderRadius:Radius.medium,justifyContent:'center',alignItems:'center',padding:Spacing.two}});

@@ -279,16 +279,8 @@ function InviteCodeCopyButton({ code }: { code: string }) {
   );
 }
 
-function RoomWorkspace({ roomid }: { roomid: string }) {
+function RoomTeamWattCard({ roomid }: { roomid: string }) {
   const theme = useTheme();
-  const { projects, isloadingprojects, projecterror, createProject } = useProjects(roomid);
-  const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
-  const { favoriteProjectIds, favoritesStatus, favoritesError, busyProjectId, toggleFavorite } = useProjectFavorites(projectIds);
-  const [favoriteOnly, setFavoriteOnly] = useState(false);
-  const visibleProjects = useMemo(() => sortProjectsWithFavorites(projects, favoriteProjectIds, 'created', favoriteOnly && favoritesStatus !== 'unavailable'), [favoriteOnly, favoriteProjectIds, favoritesStatus, projects]);
-  const [iscreateopen, setIscreateopen] = useState(false);
-  const [iscreating, setIscreating] = useState(false);
-  const [formerror, setFormerror] = useState('');
   const [teamWatt, setTeamWatt] = useState<WattSnapshot|null>(null);
 
   const refreshTeamWatt = useCallback(async () => {
@@ -306,6 +298,23 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
       {table:'watt_usage',filter:`room_id=eq.${roomid}`},
     ],
   });
+
+  return <Pressable accessibilityRole="button" onPress={()=>router.push(`/watt?roomId=${encodeURIComponent(roomid)}` as Href)} style={styles.teamWattCard}>
+    <View style={{flex:1,gap:3}}><ThemedText type="smallBold">팀 AI 이용권</ThemedText><ThemedText type="caption" themeColor="textSecondary">공동 잔여량 {teamWatt?.total ?? 0}단위{teamWatt?.textUsage ? ` · 팀 오늘 ${teamWatt.textUsage.todayUsed}/${teamWatt.textUsage.dailyLimit}회` : ''} · 이용권 관리</ThemedText></View>
+    <AppIcon name="chevronRight" color={theme.textTertiary} size={20}/>
+  </Pressable>;
+}
+
+function RoomWorkspace({ roomid }: { roomid: string }) {
+  const theme = useTheme();
+  const { projects, isloadingprojects, projecterror, createProject } = useProjects(roomid);
+  const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
+  const { favoriteProjectIds, favoritesStatus, favoritesError, busyProjectId, toggleFavorite } = useProjectFavorites(projectIds);
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
+  const visibleProjects = useMemo(() => sortProjectsWithFavorites(projects, favoriteProjectIds, 'created', favoriteOnly && favoritesStatus !== 'unavailable'), [favoriteOnly, favoriteProjectIds, favoritesStatus, projects]);
+  const [iscreateopen, setIscreateopen] = useState(false);
+  const [iscreating, setIscreating] = useState(false);
+  const [formerror, setFormerror] = useState('');
 
   const handleCreateProject = async (input: ProjectInput) => {
     setIscreating(true);
@@ -331,22 +340,7 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
             이 방에서 공유할 과제를 만들고, 과제 안에서 아이디어를 작성합니다.
           </ThemedText>
         </View>
-        <Pressable
-          onPress={() => {
-            setFormerror('');
-            setIscreateopen(true);
-          }}
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-          <ThemedText type="smallBold" style={styles.primaryButtonText}>
-            + 새 과제
-          </ThemedText>
-        </Pressable>
       </View>
-
-      <Pressable accessibilityRole="button" onPress={()=>router.push(`/watt?roomId=${encodeURIComponent(roomid)}` as Href)} style={[styles.teamWattCard,{borderColor:theme.border,backgroundColor:theme.surface}]}>
-        <View style={{flex:1,gap:3}}><ThemedText type="smallBold">팀 AI 이용권</ThemedText><ThemedText type="caption" themeColor="textSecondary">공동 잔여량 {teamWatt?.total ?? 0}단위{teamWatt?.textUsage ? ` · 팀 오늘 ${teamWatt.textUsage.todayUsed}/${teamWatt.textUsage.dailyLimit}회` : ''} · 이용권 관리</ThemedText></View>
-        <AppIcon name="chevronRight" color={theme.textTertiary} size={20}/>
-      </Pressable>
 
       {projecterror ? (
         <ThemedText type="small" style={styles.errorText}>
@@ -354,7 +348,20 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
         </ThemedText>
       ) : null}
       {favoritesError ? <ThemedText accessibilityRole="alert" type="small" style={styles.errorText}>{favoritesError}</ThemedText> : null}
-      {favoritesStatus !== 'unavailable' ? <Pressable accessibilityRole="button" accessibilityLabel="즐겨찾기 과제만 보기" accessibilityState={{ selected: favoriteOnly, disabled: favoritesStatus === 'loading' }} disabled={favoritesStatus === 'loading'} onPress={() => setFavoriteOnly((value) => !value)} style={{ minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderColor: favoriteOnly ? theme.primaryHover : theme.primary, borderRadius: 8 }}><ThemedText type="smallBold">★ 즐겨찾기만 보기</ThemedText></Pressable> : null}
+      <View style={styles.projectActions}>
+        {favoritesStatus !== 'unavailable' ? <Pressable accessibilityRole="button" accessibilityLabel="즐겨찾기 과제만 보기" accessibilityState={{ selected: favoriteOnly, disabled: favoritesStatus === 'loading' }} disabled={favoritesStatus === 'loading'} onPress={() => setFavoriteOnly((value) => !value)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderColor: favoriteOnly ? theme.primaryHover : theme.primary, borderRadius: 8 }}><ThemedText type="smallBold">★ 즐겨찾기만 보기</ThemedText></Pressable> : null}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            setFormerror('');
+            setIscreateopen(true);
+          }}
+          style={({ pressed }) => [styles.primaryButton, styles.projectCreateButton, pressed && styles.pressed]}>
+          <ThemedText type="smallBold" style={styles.primaryButtonText}>
+            + 새 과제
+          </ThemedText>
+        </Pressable>
+      </View>
 
       {isloadingprojects ? (
         <ThemedView type="backgroundElement" style={styles.emptyState}>
@@ -472,9 +479,11 @@ function RoomCard({
 
       {isOpen ? (
         <>
-          <View style={styles.roomActions}>
-            <Pressable onPress={onManage} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+          <View style={[styles.roomManageCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            <RoomTeamWattCard roomid={item.room.id} />
+            <Pressable accessibilityRole="button" onPress={onManage} style={({ pressed }) => [styles.roomManageButton, { borderTopColor: theme.border }, pressed && styles.pressed]}>
               <ThemedText type="smallBold">방 설정/멤버</ThemedText>
+              <AppIcon name="chevronRight" color={theme.textTertiary} size={20} />
             </Pressable>
           </View>
 
@@ -1118,29 +1127,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
   },
-  roomActions: {
+  roomManageCard: {
+    borderWidth: 1,
+    borderRadius: Radius.large,
+    overflow: 'hidden',
+  },
+  roomManageButton: {
+    minHeight: ControlHeight.touch,
+    borderTopWidth: 1,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.three,
   },
   workspace: {
+    width: '100%',
+    minWidth: 0,
     gap: Spacing.three,
     borderTopWidth: 1,
     borderTopColor: '#e2e8f0',
     paddingTop: Spacing.three,
   },
   workspaceHeader: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-  },
-  workspaceHeaderCopy: {
-    flex: 1,
+    width: '100%',
     minWidth: 0,
   },
-  teamWattCard: { minHeight: 60, borderWidth: 1, borderRadius: Radius.large, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  workspaceHeaderCopy: {
+    width: '100%',
+    minWidth: 0,
+  },
+  projectActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  projectCreateButton: {
+    marginLeft: 'auto',
+  },
+  teamWattCard: { minHeight: 60, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   projectList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
