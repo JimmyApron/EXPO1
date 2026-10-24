@@ -338,6 +338,7 @@ export function BlindSwipeEvaluation({
   if (isComplete && !isTransitioning) {
     return (
       <View style={styles.screen}>
+        <ThemedText type="subtitle" style={styles.navyText}>블라인드 스와이프 평가</ThemedText>
         <View style={styles.completeBanner}>
           <ThemedText type="smallBold" style={styles.orangeText}>내 평가는 모두 잠겼습니다</ThemedText>
           <ThemedText type="small" style={styles.mutedText}>확정한 평가는 수정할 수 없어요.</ThemedText>

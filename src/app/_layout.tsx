@@ -9,6 +9,7 @@ import { BrandIcon } from '@/components/brand-icon';
 import { NotificationToastProvider } from '@/components/notification/notification-toast-provider';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { WattDailyConsentModal } from '@/components/watt-daily-consent-modal';
 import { Spacing } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppNotificationsProvider } from '@/hooks/use-app-notifications';
@@ -48,6 +49,7 @@ export default function TabLayout() {
             <ExperienceProvider><NotificationToastProvider><AppNotificationsProvider>
               <AnimatedSplashOverlay />
               <AuthGate />
+              <WattDailyConsentModal />
             <OnboardingModal /></AppNotificationsProvider></NotificationToastProvider></ExperienceProvider>
           </AuthProvider>
         </ThemeProvider>

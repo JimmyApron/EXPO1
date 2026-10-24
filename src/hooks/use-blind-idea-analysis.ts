@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
-import { invokeWattAi } from '@/lib/invoke-watt-ai';
+import { getWattDailyConsent, invokeWattAi, subscribeWattDailyConsent, wattKoreaDay } from '@/lib/invoke-watt-ai';
 import type { Idea } from '@/types/idea';
 import type { BlindIdeaAiAnalysis, BlindIdeaAnalysisCache, IdeaAnalysis } from '@/types/idea-evaluation';
 
@@ -12,6 +12,10 @@ type DraftAnalysisResponse = {
 };
 
 const blindAnalysisPromptVersion = 2;
+const pausedAnalyses = new Map<string, string>();
+const consentDeclinedMessage = 'AI 분석이 일시 중지됐어요. 요금제에서 AI 단위 자동 차감을 켜면 다시 분석할 수 있어요.';
+const autoChargeOffMessage = '무료 사용량을 모두 썼습니다. 요금제에서 오늘의 AI 단위 자동 차감을 켜면 분석을 계속할 수 있습니다.';
+const insufficientUnitsMessage = 'AI 단위가 부족해 남은 아이디어 분석을 멈췄어요. 잔여량을 확인한 뒤 다시 시도해 주세요.';
 
 function isDraftAnalysisResponse(value: unknown): value is DraftAnalysisResponse {
   if (!value || typeof value !== 'object') return false;
@@ -44,6 +48,18 @@ async function getInvokeErrorMessage(error: unknown) {
   }
 
   return '서버에서 AI 분석 요청을 처리하지 못했습니다.';
+}
+
+async function getUsageStopReason(error: unknown) {
+  const context = isRecord(error) ? error.context : undefined;
+  if (!context || typeof context !== 'object' || !('clone' in context) || typeof context.clone !== 'function') return null;
+  try {
+    const body = await context.clone().json();
+    return isRecord(body) && (body.error === 'daily_ai_blocked' || body.error === 'daily_auto_charge_off' || body.error === 'insufficient_units')
+      ? body.error : null;
+  } catch {
+    return null;
+  }
 }
 
 function analysisKey(ideas: Idea[]) {
@@ -107,22 +123,47 @@ export function useBlindIdeaAnalysis(
 ) {
   const { session, user } = useAuth();
   const inputKey = useMemo(() => analysisKey(ideas), [ideas]);
+  const userId = user?.id;
+  const declineKey = JSON.stringify([userId, projectId, wattKoreaDay(), inputKey]);
   const cachedAnalyses = useMemo(() => getCachedAnalyses(savedAnalysis, inputKey), [inputKey, savedAnalysis]);
   const [completedKey, setCompletedKey] = useState('');
   const [analyses, setAnalyses] = useState<BlindIdeaAiAnalysis[]>([]);
   const [analysesKey, setAnalysesKey] = useState('');
   const [isAnalyzingIdeas, setIsAnalyzingIdeas] = useState(false);
   const [blindAnalysisError, setBlindAnalysisError] = useState('');
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const activeAnalyses = analysesKey === inputKey ? analyses : cachedAnalyses ?? [];
-  const isAnalysisReady = ideas.length === 0 || completedKey === inputKey || activeAnalyses.length === ideas.length;
+  const pausedMessage = activeAnalyses.length === ideas.length ? '' : pausedAnalyses.get(declineKey) ?? '';
+  const isAnalysisReady = ideas.length === 0 || completedKey === inputKey || activeAnalyses.length === ideas.length || Boolean(pausedMessage);
 
-  const retryAnalysis = useCallback(() => {
+  const retryAnalysis = () => {
+    pausedAnalyses.delete(declineKey);
     setBlindAnalysisError('');
     setCompletedKey('');
-  }, []);
+    setRetryAttempt(value => value + 1);
+  };
 
   useEffect(() => {
-    if (!enabled || !projectId || ideas.length === 0 || cachedAnalyses?.length === ideas.length || completedKey === inputKey) return;
+    if (!userId) return;
+    let active = true;
+    const resumeIfAllowed = () => {
+      void getWattDailyConsent(userId).then(decision => {
+        const paused = pausedAnalyses.get(declineKey);
+        if (active && decision === 'allow' && (paused === consentDeclinedMessage || paused === autoChargeOffMessage)) {
+          pausedAnalyses.delete(declineKey);
+          setBlindAnalysisError('');
+          setCompletedKey('');
+          setRetryAttempt(value => value + 1);
+        }
+      });
+    };
+    const unsubscribe = subscribeWattDailyConsent(resumeIfAllowed);
+    resumeIfAllowed();
+    return () => { active = false; unsubscribe(); };
+  }, [declineKey, userId]);
+
+  useEffect(() => {
+    if (!enabled || !projectId || ideas.length === 0 || cachedAnalyses?.length === ideas.length || completedKey === inputKey || pausedMessage) return;
 
     let active = true;
     const timeout = globalThis.setTimeout(() => {
@@ -143,6 +184,7 @@ export function useBlindIdeaAnalysis(
         try {
           const completed = new Map((analysesKey === inputKey ? analyses : cachedAnalyses ?? []).map(item => [item.ideaId, item]));
           let failed = 0;
+          let stoppedMessage = '';
           for (const idea of ideas) {
             if (completed.has(idea.id)) continue;
             try {
@@ -166,6 +208,11 @@ export function useBlindIdeaAnalysis(
               headers: { Authorization: `Bearer ${session.access_token}` },
             });
             if (error) {
+              const stopReason = await getUsageStopReason(error);
+              if (stopReason) {
+                stoppedMessage = stopReason === 'daily_ai_blocked' ? consentDeclinedMessage : stopReason === 'daily_auto_charge_off' ? autoChargeOffMessage : insufficientUnitsMessage;
+                break;
+              }
               throw new Error(await getInvokeErrorMessage(error));
             }
             if (!isDraftAnalysisResponse(data)) {
@@ -177,13 +224,15 @@ export function useBlindIdeaAnalysis(
           const responses = ideas.map(idea => completed.get(idea.id)).filter((value): value is BlindIdeaAiAnalysis => Boolean(value));
 
           if (active) {
+            if (stoppedMessage) pausedAnalyses.set(declineKey, stoppedMessage);
             setAnalyses(responses);
             setAnalysesKey(inputKey);
             setCompletedKey(inputKey);
             void saveAnalysis({ inputKey, analyses: responses, analyzedAt: new Date().toISOString() }).then((saved) => {
               if (saved.error) console.error('Blind AI analysis could not be persisted.', saved.error);
             });
-            if (failed) setBlindAnalysisError(`${failed}개 아이디어 분석에 실패했습니다. 다시 시도하면 실패한 항목만 분석합니다.`);
+            if (stoppedMessage) setBlindAnalysisError(stoppedMessage);
+            else if (failed) setBlindAnalysisError(`${failed}개 아이디어 분석에 실패했습니다. 다시 시도하면 실패한 항목만 분석합니다.`);
           }
         } catch (error) {
           if (active) {
@@ -207,7 +256,7 @@ export function useBlindIdeaAnalysis(
       active = false;
       globalThis.clearTimeout(timeout);
     };
-  }, [analyses, analysesKey, cachedAnalyses, completedKey, enabled, ideas, inputKey, projectId, saveAnalysis, session?.access_token, user]);
+  }, [analyses, analysesKey, cachedAnalyses, completedKey, declineKey, enabled, ideas, inputKey, pausedMessage, projectId, retryAttempt, saveAnalysis, session?.access_token, user]);
 
-  return { analyses: activeAnalyses, blindAnalysisError, isAnalyzingIdeas, isAnalysisReady, retryAnalysis };
+  return { analyses: activeAnalyses, blindAnalysisError: blindAnalysisError || pausedMessage, isAnalyzingIdeas, isAnalysisReady, retryAnalysis };
 }

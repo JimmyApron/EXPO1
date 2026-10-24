@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/app-icon';
@@ -8,9 +8,11 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
+import { useAuth } from '@/hooks/use-auth';
 import { useRooms } from '@/hooks/use-rooms';
 import { useTheme } from '@/hooks/use-theme';
 import { notifyWattBalanceChanged, useWattBalance, wattAction, type WattSnapshot } from '@/hooks/use-watt';
+import { getWattDailyConsent, setWattDailyAutoCharge, subscribeWattDailyConsent, wattKoreaDay, type WattDailyConsent } from '@/lib/invoke-watt-ai';
 
 type Product = { id: string; scope: 'personal'|'team'|'topup'; label: string; price_krw: number; student_price_krw: number|null; duration_days: number|null; included_units: number; cycle_days: number|null };
 type History = { purchases: Record<string, unknown>[]; usage: Record<string, unknown>[] };
@@ -36,6 +38,8 @@ const resetTime = (value: string) => new Intl.DateTimeFormat('ko-KR', { timeZone
 
 export default function WattScreen() {
   const theme = useTheme();
+  const { user } = useAuth();
+  const userId = user?.id;
   const params = useLocalSearchParams<{ roomId?: string }>();
   const { rooms, isloadingrooms, roomerror } = useRooms();
   const { balance, loading, error, refresh, trialUsed } = useWattBalance();
@@ -47,6 +51,9 @@ export default function WattScreen() {
   const [confirm,setConfirm] = useState(false);
   const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState('');
+  const [dailyConsent,setDailyConsent] = useState<WattDailyConsent>('unset');
+  const [dailyConsentDay,setDailyConsentDay] = useState(wattKoreaDay());
+  const [dailyConsentOwner,setDailyConsentOwner] = useState('');
   const [history,setHistory] = useState<History|null>(null);
   const [historyExpanded,setHistoryExpanded] = useState(false);
   const [teamBalances,setTeamBalances] = useState<Record<string,WattSnapshot>>({});
@@ -92,6 +99,37 @@ export default function WattScreen() {
     catch (reason) { setMessage(reason instanceof Error ? reason.message : '이용 내역을 불러오지 못했습니다.'); }
   }, []);
   useFocusEffect(useCallback(() => { setHistoryExpanded(false); }, []));
+  useEffect(() => {
+    if (!userId) return;
+    let active = true;
+    const refreshConsent = () => {
+      const day = wattKoreaDay();
+      void getWattDailyConsent(userId).then(value => {
+        if (active && day === wattKoreaDay()) { setDailyConsent(value); setDailyConsentDay(day); setDailyConsentOwner(userId); }
+      });
+    };
+    refreshConsent();
+    const unsubscribe = subscribeWattDailyConsent(refreshConsent);
+    const untilTomorrow = 86400000 - ((Date.now() + 9 * 3600000) % 86400000) + 1000;
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleReset = (delay: number) => {
+      timer = globalThis.setTimeout(() => {
+        refreshConsent();
+        scheduleReset(86400000);
+      }, delay);
+    };
+    scheduleReset(untilTomorrow);
+    return () => { active = false; unsubscribe(); globalThis.clearTimeout(timer); };
+  }, [userId]);
+  const todayConsent = dailyConsentOwner === userId && dailyConsentDay === wattKoreaDay() ? dailyConsent : 'unset';
+  const changeAutoCharge = async (enabled: boolean) => {
+    if (!userId) return false;
+    try {
+      const next = await setWattDailyAutoCharge(userId, enabled);
+      setDailyConsent(next);
+      return next === (enabled ? 'allow' : 'off');
+    } catch { return false; }
+  };
   const loadTeamBalances = useCallback(async () => {
     const requestId = ++teamLoadId.current;
     const ids = roomIdsKey ? roomIdsKey.split(',') : [];
@@ -213,6 +251,7 @@ export default function WattScreen() {
       <View style={styles.container}>
         <Pressable accessibilityRole="button" onPress={()=>router.canGoBack()?router.back():router.replace('/profile')} style={styles.back}><ThemedText type="smallBold">← 뒤로 가기</ThemedText></Pressable>
         <View style={styles.header}><ThemedText type="screenTitle">Watt 이용권</ThemedText><ThemedText type="body" themeColor="textSecondary">이용권과 AI 사용량을 관리해요.</ThemedText></View>
+        <DailyAutoChargeControl status={todayConsent} onChange={changeAutoCharge} />
         {message ? <ThemedView style={[styles.notice,{borderColor:theme.border,backgroundColor:theme.primarySoft}]}><ThemedText type="small">{message}</ThemedText></ThemedView> : null}
         {error ? <ThemedText type="small" style={{color:theme.danger}}>{error}</ThemedText> : null}
 
@@ -306,6 +345,33 @@ export default function WattScreen() {
   </ScrollView>;
 }
 
+function DailyAutoChargeControl({status,onChange}:{status:WattDailyConsent;onChange:(enabled:boolean)=>Promise<boolean>}) {
+  const theme = useTheme();
+  const [pendingAutoCharge,setPendingAutoCharge] = useState<boolean|null>(null);
+  const [autoChargeMessage,setAutoChargeMessage] = useState('');
+  const autoChargeOn = pendingAutoCharge ?? status === 'allow';
+  const toggleAutoCharge = async (next: boolean) => {
+    if (pendingAutoCharge !== null) return;
+    setPendingAutoCharge(next);
+    setAutoChargeMessage('');
+    const saved = await onChange(next);
+    setPendingAutoCharge(null);
+    if (!saved) setAutoChargeMessage('설정을 저장하지 못했어요. 다시 눌러 주세요.');
+  };
+  return <ThemedView type="backgroundElement" style={[styles.statusCard,{borderColor:theme.border}]}>
+    <View style={autoChargeStyles.row}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`하루 사용량 소진 시 AI 단위 자동 차감 ${autoChargeOn?'끄기':'켜기'}`} onPress={() => void toggleAutoCharge(!autoChargeOn)} style={autoChargeStyles.text}>
+        <ThemedText type="smallBold">하루 사용량 소진 시 AI 단위 자동 차감</ThemedText>
+        <ThemedText type="caption" themeColor="textSecondary">
+          {status==='blocked' ? 'AI 사용 일시 중지 · 켜면 오늘 다시 사용할 수 있어요.' : status==='allow' ? '오늘 자정까지 개인·팀 텍스트 AI 작업에 적용됩니다.' : status==='off' ? '꺼짐 · 무료 사용량 소진 후 AI 단위를 차감하지 않습니다.' : '꺼짐 · 무료 사용량 소진 시 한 번 확인합니다.'}
+        </ThemedText>
+        {autoChargeMessage ? <ThemedText type="caption" style={{color:theme.warning}}>{autoChargeMessage}</ThemedText> : null}
+      </Pressable>
+      <Switch accessibilityLabel="하루 사용량 소진 시 AI 단위 자동 차감" value={autoChargeOn} onValueChange={toggleAutoCharge} trackColor={{false:theme.divider,true:theme.primary}} thumbColor={theme.surface} />
+    </View>
+  </ThemedView>;
+}
+
 function ActiveEntitlementCard({entitlement,snapshot,kind,roomName,canManage=true,busy,onManage}:{
   entitlement:Entitlement; snapshot:WattSnapshot; kind:'personal'|'team'; roomName?:string; canManage?:boolean; busy:boolean;
   onManage:(action:'cancel'|'resume',entitlement:Entitlement)=>void;
@@ -345,5 +411,10 @@ function ActiveEntitlementCard({entitlement,snapshot,kind,roomName,canManage=tru
 }
 
 function PreviewRow({label,value}:{label:string;value:string}) { return <View style={styles.previewRow}><ThemedText type="caption" themeColor="textSecondary">{label}</ThemedText><ThemedText type="smallBold">{value}</ThemedText></View>; }
+
+const autoChargeStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, minHeight: 56 },
+  text: { flex: 1, minWidth: 0, gap: 2 },
+});
 
 const styles=StyleSheet.create({scroll:{flexGrow:1,padding:Spacing.four,alignItems:'center'},safe:{width:'100%'},container:{width:'100%',maxWidth:760,gap:Spacing.three},productGroup:{borderWidth:2,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.three},back:{alignSelf:'flex-start'},header:{gap:4,marginBottom:Spacing.two},rowBetween:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:Spacing.two},sectionHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:Spacing.two},segment:{flexDirection:'row',gap:Spacing.two,flexWrap:'wrap'},segmentItem:{flex:1,minWidth:130,borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two,alignItems:'center'},balanceCard:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},statusCard:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},trialCard:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},trialHead:{gap:Spacing.one},trialRoomList:{gap:Spacing.two},roomBox:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},roomOption:{borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two,flexDirection:'row',justifyContent:'space-between',gap:Spacing.two},product:{borderWidth:1,borderRadius:Radius.large,padding:Spacing.three,gap:Spacing.two},primaryButton:{minHeight:46,borderRadius:Radius.medium,alignItems:'center',justifyContent:'center',paddingHorizontal:Spacing.three},outlineButton:{minHeight:40,borderWidth:1,borderRadius:Radius.medium,alignItems:'center',justifyContent:'center',paddingHorizontal:Spacing.three},topup:{flex:1,minWidth:150,borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two,gap:4},historyRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:Spacing.two,borderBottomWidth:StyleSheet.hairlineWidth,borderColor:'#E7DED0',gap:Spacing.two},notice:{borderWidth:1,borderRadius:Radius.medium,padding:Spacing.two},modalOverlay:{flex:1,justifyContent:'center',alignItems:'center',padding:Spacing.three},confirmCard:{width:'100%',maxWidth:480,borderWidth:1,borderRadius:Radius.large,padding:Spacing.four,gap:Spacing.three},previewRows:{gap:Spacing.two},previewRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:Spacing.three},modalButton:{flex:1,minHeight:44,borderWidth:1,borderRadius:Radius.medium,justifyContent:'center',alignItems:'center',padding:Spacing.two}});
