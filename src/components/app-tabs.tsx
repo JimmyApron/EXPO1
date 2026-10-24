@@ -1,4 +1,5 @@
 import { router, type Href } from 'expo-router';
+import Constants from 'expo-constants';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
@@ -6,7 +7,7 @@ import { AppNavigation } from '@/components/app-navigation';
 
 export default function AppTabs() {
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web' || (Platform.OS === 'android' && Constants.appOwnership === 'expo')) return;
     let active = true;
     let subscription: { remove: () => void } | undefined;
     let lastId = '';

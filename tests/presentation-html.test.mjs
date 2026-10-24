@@ -19,3 +19,14 @@ test('HTML presentation exports one print page for each saved slide', () => {
   assert.match(html, /#111827/);
   assert.doesNotMatch(html, /max-width:12ch/);
 });
+
+test('native PDF HTML keeps every slide visible without the interactive viewer', () => {
+  const html = createPresentationHtml({
+    presentationTitle: '발표', settings: { title: '발표', pageCount: 12, theme: 'minimal-light' },
+    slides: Array.from({ length: 12 }, (_, index) => ({ slideNumber: index + 1, title: `슬라이드 ${index + 1}`, bulletPoints: ['내용'], speakerScript: '대본' })),
+    expectedQna: [], businessPlanDraft: '', finalReport: '',
+  }, { printOnly: true });
+  assert.equal((html.match(/<section class="slide">/g) ?? []).length, 12);
+  assert.match(html, /\.slide\{width:13\.333in;height:7\.5in;aspect-ratio:auto;margin:0;box-shadow:none;break-after:page/);
+  assert.doesNotMatch(html, /presentation-mode|slide-stage|deck-controls|<script>/);
+});

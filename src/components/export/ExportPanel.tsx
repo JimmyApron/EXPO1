@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Print from 'expo-print';
-import { File } from 'expo-file-system';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -15,6 +14,7 @@ import { copyForKakao } from '@/utils/export/copyForKakao';
 import { copyForNotion } from '@/utils/export/copyForNotion';
 import { exportToPdf } from '@/utils/export/exportToPdf';
 import { saveFile } from '@/utils/export/saveFile';
+import { sharePrintedPdf } from '@/utils/export/sharePrintedPdf';
 import { createPresentationHtml } from '@/utils/export/presentationHtml';
 
 type Action = { label: string; run: () => Promise<unknown>; message: string };
@@ -34,26 +34,20 @@ export function ExportPanel({ data }: { data: ExportData }) {
   const safeTitle = data.presentation?.presentationTitle || data.projectTitle;
   const savePresentationHtml = () => saveFile(presentationHtml, `${safeTitle}_발표자료.html`, 'text/html;charset=utf-8');
   const savePresentationPdf = async () => {
+    if (!data.presentation?.slides.length) throw new Error('저장할 발표자료가 없습니다.');
     if (Platform.OS === 'web') {
       const popup = window.open('', '_blank');
       if (!popup) throw new Error('PDF 출력 창이 차단되었습니다. 팝업을 허용한 뒤 다시 시도해 주세요.');
       printHtmlInWindow(popup);
       return;
     }
-    const result = await Print.printToFileAsync({ html: presentationHtml, width: 1280, height: 720 });
-    if (result.numberOfPages !== data.presentation?.slides.length) throw new Error(`PDF 페이지 수(${result.numberOfPages})가 슬라이드 수(${data.presentation?.slides.length})와 다릅니다.`);
-    const file = new File(result.uri);
-    try { await saveFile(await file.bytes(), `${safeTitle}_발표자료.pdf`, 'application/pdf'); }
-    finally { if (file.exists) file.delete(); }
+    const result = await Print.printToFileAsync({ html: createPresentationHtml(data.presentation, { printOnly: true }), width: 960, height: 540, base64: true });
+    if (Platform.OS === 'ios' && result.numberOfPages !== data.presentation.slides.length) throw new Error(`PDF 페이지 수(${result.numberOfPages})가 슬라이드 수(${data.presentation.slides.length})와 다릅니다.`);
+    await sharePrintedPdf(result.base64, `${safeTitle}_발표자료.pdf`);
   };
   const printHtmlInWindow = (popup: Window) => {
     popup.document.open(); popup.document.write(presentationHtml); popup.document.close();
     popup.addEventListener('load', () => popup.print(), { once: true });
-  };
-  const openPresentationViewer = async () => {
-    const popup = window.open('', '_blank');
-    if (!popup) throw new Error('발표 화면이 차단되었습니다. 팝업을 허용한 뒤 다시 시도해 주세요.');
-    popup.document.open(); popup.document.write(presentationHtml); popup.document.close();
   };
   const saveBothPresentationFiles = async () => {
     if (Platform.OS === 'web') {
@@ -130,8 +124,8 @@ export function ExportPanel({ data }: { data: ExportData }) {
           <ThemedText type="subtitle">결과물 저장·공유</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">현재 저장된 버전을 발표 파일로 저장하거나 문서·복사 형식을 선택하세요.</ThemedText>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="PPT 저장" accessibilityState={{ disabled: Boolean(busy), busy: busy === 'quick:ppt' }} disabled={Boolean(busy)} onPress={() => void run({ label: 'PPT 저장', run: Platform.OS === 'web' ? openPresentationViewer : savePresentationPdf, message: Platform.OS === 'web' ? '발표 화면이 열렸습니다. PDF 저장은 화면 아래 버튼을 눌러 주세요.' : fileMessage }, 'quick:ppt')} style={[styles.quickAction, { backgroundColor: theme.primary }, Boolean(busy) && styles.pressed]}>
-          {busy === 'quick:ppt' ? <ActivityIndicator color={theme.primaryText} size="small" /> : <ThemedText type="smallBold" style={{ color: theme.primaryText }}>PPT 저장</ThemedText>}
+        <Pressable accessibilityRole="button" accessibilityLabel="PDF 저장" accessibilityState={{ disabled: Boolean(busy), busy: busy === 'quick:pdf' }} disabled={Boolean(busy)} onPress={() => void run({ label: 'PDF 저장', run: savePresentationPdf, message: Platform.OS === 'web' ? '인쇄 창에서 “PDF로 저장”을 선택해 주세요.' : fileMessage }, 'quick:pdf')} style={[styles.quickAction, { backgroundColor: theme.primary }, Boolean(busy) && styles.pressed]}>
+          {busy === 'quick:pdf' ? <ActivityIndicator color={theme.primaryText} size="small" /> : <ThemedText type="smallBold" style={{ color: theme.primaryText }}>PDF 저장</ThemedText>}
         </Pressable>
       </View>
       <Pressable accessibilityRole="button" accessibilityState={{ expanded: showFormats }} onPress={() => setShowFormats((open) => !open)} style={[styles.action, { borderColor: theme.border }]}>

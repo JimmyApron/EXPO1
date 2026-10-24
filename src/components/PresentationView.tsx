@@ -47,7 +47,6 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
   const [pendingInstruction, setPendingInstruction] = useState('');
   const [activeTab, setActiveTab] = useState<'slides' | 'qna' | 'report'>('slides');
   const [showHistory, setShowHistory] = useState(false);
-  const [showHtmlPreview, setShowHtmlPreview] = useState(false);
   const [showThemePreview, setShowThemePreview] = useState(false);
   const [premiumDenied, setPremiumDenied] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -198,12 +197,10 @@ export function PresentationView({ projectId, projectConditions, selectedIdea, s
     {saved ? <ExportPanel data={exportData} /> : null}
     {shown ? <View style={styles.container}>
       <ThemedText type="smallBold">{candidate ? '새 버전 미리보기' : '현재 저장된 버전'}: {shown.presentationTitle}</ThemedText>
-      {saved && !candidate ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: showHtmlPreview }} onPress={() => setShowHtmlPreview((visible) => !visible)} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">{showHtmlPreview ? 'HTML 미리보기 닫기' : 'HTML 미리보기'}</ThemedText></Pressable> : null}
-      {saved && !candidate && showHtmlPreview ? <PresentationHtmlPreview html={createPresentationHtml(saved)} /> : null}
       {activeTab === 'slides' && saved && !candidate ? <View style={styles.row}>
         {!editing ? <Pressable accessibilityRole="button" onPress={() => { setEdited({ ...saved, slides: saved.slides.map((slide) => ({ ...slide, bulletPoints: [...slide.bulletPoints] })) }); setEditing(true); }} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">슬라이드 편집</ThemedText></Pressable> : <>
           <Pressable accessibilityRole="button" disabled={saving} onPress={() => void saveEdits()} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>{saving ? <ActivityIndicator color={theme.primaryText} /> : <ThemedText type="smallBold" style={{ color: theme.primaryText }}>편집 내용 저장</ThemedText>}</Pressable>
-          <Pressable accessibilityRole="button" disabled={saving} onPress={() => { setEdited(null); setEditing(false); }} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">편집 취소</ThemedText></Pressable>
+          <Pressable accessibilityRole="button" disabled={saving} onPress={() => { setEdited(null); setEditing(false); }} style={[styles.outlineButton, { borderColor: theme.border }]}><ThemedText type="smallBold">편집 닫기</ThemedText></Pressable>
         </>}
       </View> : null}
       <View style={styles.row}>{([{ key: 'slides', label: '슬라이드·대본' }, { key: 'qna', label: '예상 Q&A' }, { key: 'report', label: '보고서·사업계획서' }] as const).map((tab) => <Pressable key={tab.key} accessibilityRole="tab" accessibilityState={{ selected: activeTab === tab.key }} onPress={() => setActiveTab(tab.key)} style={[styles.outlineButton, { borderColor: theme.border, backgroundColor: activeTab === tab.key ? theme.primarySoft : 'transparent' }]}><ThemedText type="smallBold">{tab.label}</ThemedText></Pressable>)}</View>

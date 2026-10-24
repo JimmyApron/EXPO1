@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Print from 'expo-print';
-import { File } from 'expo-file-system';
 import PresentationHtmlPreview from '@/components/PresentationHtmlPreview';
 import { PresentationThemePicker } from '@/components/presentation-theme-picker';
 import { ThemedText } from '@/components/themed-text';
@@ -10,6 +9,7 @@ import { manuscriptFingerprint, manuscriptText, workspaceId } from '@/lib/docume
 import { canApplyPresentationTheme } from '@/lib/presentation-entitlement';
 import { isPremiumPresentationTheme, presentationPalette, type PresentationTheme } from '@/lib/presentation-themes';
 import { saveFile } from '@/utils/export/saveFile';
+import { sharePrintedPdf } from '@/utils/export/sharePrintedPdf';
 import { createPresentationHtml } from '@/utils/export/presentationHtml';
 import type { PresentationData } from '@/types/presentation';
 import { WorkspaceButton as Button, WorkspaceField as Field, workspaceStyles as s } from './controls';
@@ -85,7 +85,8 @@ export function WorkspacePresentation({ workspace: w, assistant: ai, report, pro
   }
   async function exportHtml() { await saveFile(createPresentationHtml(asPresentation(currentTheme)), `${w.data.title || '발표자료'}.html`, 'text/html;charset=utf-8'); }
   async function exportPdf() {
-    const html = createPresentationHtml(asPresentation(currentTheme));
+    const presentation = asPresentation(currentTheme);
+    const html = createPresentationHtml(presentation, { printOnly: Platform.OS !== 'web' });
     if (Platform.OS === 'web') {
       const popup = window.open('', '_blank');
       if (!popup) throw new Error('PDF 출력 창이 차단되었습니다.');
@@ -93,11 +94,9 @@ export function WorkspacePresentation({ workspace: w, assistant: ai, report, pro
       popup.addEventListener('load', () => popup.print(), { once: true });
       return;
     }
-    const result = await Print.printToFileAsync({ html, width: 1280, height: 720 });
-    if (result.numberOfPages !== w.data.slides.length) throw new Error('PDF 페이지 수가 슬라이드 수와 다릅니다.');
-    const file = new File(result.uri);
-    try { await saveFile(await file.bytes(), `${w.data.title || '발표자료'}.pdf`, 'application/pdf'); }
-    finally { if (file.exists) file.delete(); }
+    const result = await Print.printToFileAsync({ html, width: 960, height: 540, base64: true });
+    if (Platform.OS === 'ios' && result.numberOfPages !== presentation.slides.length) throw new Error('PDF 페이지 수가 슬라이드 수와 다릅니다.');
+    await sharePrintedPdf(result.base64, `${w.data.title || '발표자료'}.pdf`);
   }
   async function runExport(action: () => Promise<unknown>) {
     setExportBusy(true); setError('');
