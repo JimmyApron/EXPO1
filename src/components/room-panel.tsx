@@ -325,7 +325,7 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
   return (
     <View style={styles.workspace}>
       <View style={styles.workspaceHeader}>
-        <View>
+        <View style={styles.workspaceHeaderCopy}>
           <ThemedText type="smallBold">방 과제</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             이 방에서 공유할 과제를 만들고, 과제 안에서 아이디어를 작성합니다.
@@ -1135,6 +1135,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: Spacing.two,
+  },
+  workspaceHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   teamWattCard: { minHeight: 60, borderWidth: 1, borderRadius: Radius.large, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   projectList: {

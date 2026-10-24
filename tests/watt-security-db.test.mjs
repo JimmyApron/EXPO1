@@ -45,6 +45,8 @@ test('project RLS keeps personal owners and team members while blocking outsider
       .replace(/do \$\$\nbegin\n  if exists\(select 1 from cron\.job where jobname='watt-usage-recovery'\)[\s\S]*?end \$\$;/i, ''));
     await db.exec(await source('20261022110000_watt_api_security_rls.sql'));
     await db.exec(await source('20261022120000_watt_premium_presentations.sql'));
+    await db.exec(await source('20261024100000_fix_projects_insert_returning_rls.sql'));
+    await db.exec(await source('20261024110000_remove_watt_per_minute_limit.sql'));
     await db.query('insert into auth.users(id) values($1),($2),($3)', [owner, member, outsider]);
     await db.query('insert into public.rooms(id,ownerid,name) values($1,$2,$3)', [room, owner, '팀']);
     await db.query('insert into public.roommembers(roomid,userid) values($1,$2),($1,$3)', [room, owner, member]);
@@ -56,6 +58,13 @@ test('project RLS keeps personal owners and team members while blocking outsider
     assert.equal(reservation.rows[0].result.units, 0);
     await db.query('select public.watt_settle_usage($1,true,null,200,$2,$3::jsonb)',
       [reservation.rows[0].result.usage_id, '{"ok":true}', '[]']);
+    for (let n = 0; n < 4; n++) {
+      const next = await db.query('select public.watt_reserve_usage($1,$2,$3,$4,null,1,$5,false) as result',
+        [owner, crypto.randomUUID(), 'analyze-idea-draft', personal, 'd'.repeat(64)]);
+      assert.equal(next.rows[0].result.state, 'reserved');
+      await db.query('select public.watt_settle_usage($1,true,null,200,$2,$3::jsonb)',
+        [next.rows[0].result.usage_id, '{"ok":true}', '[]']);
+    }
     await assert.rejects(db.query('select public.watt_reserve_usage($1,$2,$3,$4,null,1,$5,false)',
       [outsider, crypto.randomUUID(), 'analyze-idea-draft', personal, 'b'.repeat(64)]), /project_access_denied/);
     await db.exec(`set request.jwt.claim.sub='${owner}'; set role authenticated;`);
@@ -64,12 +73,21 @@ test('project RLS keeps personal owners and team members while blocking outsider
     assert.equal((await db.query('select count(*)::int as n from public.projects')).rows[0].n, 2);
     await db.query("update public.projects set title='소유자 수정' where id=$1", [personal]);
     assert.equal((await db.query('select title from public.projects where id=$1', [personal])).rows[0].title, '소유자 수정');
+    const newPersonal = crypto.randomUUID();
+    await db.query('insert into public.projects(id,userid,roomid,title) values($1,$2,null,$3) returning id', [newPersonal, owner, '새 개인 과제']);
     await db.exec(`reset role; set request.jwt.claim.sub='${member}'; set role authenticated;`);
     assert.equal((await db.query('select count(*)::int as n from public.projects')).rows[0].n, 1);
+    const newTeam = crypto.randomUUID();
+    await db.query('insert into public.projects(id,userid,roomid,title) values($1,$2,$3,$4) returning id', [newTeam, member, room, '새 팀 과제']);
     await db.query("update public.projectflows set presentationdata='{}'::jsonb where projectid=$1", [team]);
     assert.deepEqual((await db.query('select presentationdata from public.projectflows where projectid=$1', [team])).rows[0].presentationdata, {});
     await db.exec(`reset role; set request.jwt.claim.sub='${outsider}'; set role authenticated;`);
     assert.equal((await db.query('select count(*)::int as n from public.projects')).rows[0].n, 0);
+    await assert.rejects(
+      db.query('insert into public.projects(id,userid,roomid,title) values($1,$2,$3,$4) returning id',
+        [crypto.randomUUID(), outsider, room, '무단 팀 과제']),
+      /row-level security policy/,
+    );
     assert.equal((await db.query("update public.projects set title='침입' where id=$1", [team])).affectedRows, 0);
     assert.equal((await db.query('select count(*)::int as n from public.projectflows')).rows[0].n, 0);
   } finally { await db.close(); }

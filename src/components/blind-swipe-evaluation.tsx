@@ -347,7 +347,7 @@ export function BlindSwipeEvaluation({
           canSelect={canSelectFinalIdea}
           selectionHint={selectionHint}
           isRanking={isAnalyzingRecommendation || (!activeRecommendation && !recommendationError)}
-          rankingError={recommendationError}
+          rankingError={activeRecommendation ? '' : recommendationError}
           onRetryRanking={() => {
             recommendationRequestKey.current = '';
             void requestRecommendation(true);

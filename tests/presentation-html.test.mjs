@@ -10,6 +10,12 @@ test('HTML presentation exports one print page for each saved slide', () => {
   });
   assert.equal((html.match(/<section class="slide">/g) ?? []).length, 3);
   assert.match(html, /@page\{size:13\.333in 7\.5in/);
+  assert.match(html, /<nav class="deck-controls"/);
+  assert.match(html, /id="deck-back" aria-label="발표 화면에서 돌아가기"/);
+  assert.match(html, /class="deck-viewport"/);
+  assert.match(html, /\.presentation-mode \.slide-stage \.slide\.is-active\{display:flex\}/);
+  assert.match(html, /\.presentation-mode \.slide-stage \.slide\{display:flex!important/);
   assert.match(html, /데모 &lt;자료&gt;/);
   assert.match(html, /#111827/);
+  assert.doesNotMatch(html, /max-width:12ch/);
 });
