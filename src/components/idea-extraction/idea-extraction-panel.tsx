@@ -1,5 +1,5 @@
 import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { CandidateIdeaCard } from '@/components/idea-extraction/candidate-idea-card';
@@ -91,6 +91,18 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
   const [isSavingConditions, setIsSavingConditions] = useState(false);
   const [conditionsSaveError, setConditionsSaveError] = useState('');
   const [conditionsSaved, setConditionsSaved] = useState(false);
+  const conditionsDirty = useRef(false);
+  const conditionEditVersion = useRef(0);
+  const lastIncomingConditions = useRef(conditions);
+  useEffect(() => {
+    if (lastIncomingConditions.current === conditions) return;
+    lastIncomingConditions.current = conditions;
+    if (conditionsDirty.current) return;
+    const nextValues = conditionInputValues(conditions);
+    conditionValuesRef.current = nextValues;
+    setConditionValues(nextValues);
+    setSkillLevel(normalizedSkillLevel(conditions.skillLevel));
+  }, [conditions]);
   const {
     images,
     imageSelectionId,
@@ -118,6 +130,8 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
   );
 
   const updateCondition = (key: ConditionFieldKey, value: string) => {
+    conditionsDirty.current = true;
+    conditionEditVersion.current += 1;
     const sanitizedValue = value.replace(/\D/g, '');
     setConditionValues((current) => {
       const next = { ...current, [key]: sanitizedValue };
@@ -156,20 +170,29 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
   });
 
   const selectSkillLevel = (nextSkillLevel: SkillLevel) => {
+    conditionsDirty.current = true;
+    conditionEditVersion.current += 1;
     setSkillLevel(nextSkillLevel);
     setConditionsSaveError('');
     setConditionsSaved(false);
   };
 
-  const saveConditions = async () => {
-    if (isSavingConditions || !validateConditions()) return;
+  const saveConditions = async (): Promise<boolean> => {
+    if (isSavingConditions || !validateConditions()) return false;
     setIsSavingConditions(true);
     setConditionsSaveError('');
     setConditionsSaved(false);
+    const savingVersion = conditionEditVersion.current;
     const result = await onSaveConditions(currentConditions());
     if (result.error) setConditionsSaveError(result.error);
-    else setConditionsSaved(true);
+    else {
+      if (savingVersion === conditionEditVersion.current) {
+        conditionsDirty.current = false;
+        setConditionsSaved(true);
+      }
+    }
     setIsSavingConditions(false);
+    return !result.error && savingVersion === conditionEditVersion.current;
   };
 
   const replaceCandidates = (nextCandidates: CandidateIdea[]) => {
@@ -188,6 +211,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
     setSavedIdeaCount(null);
     clearExtractionError();
     if (!validateConditions()) return;
+    if (conditionsDirty.current && !(await saveConditions())) return;
 
     const response = await extract(
       useEditedOcrText || mode === 'text'
@@ -277,6 +301,11 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
     const validationError = normalized.map(validateCandidateIdea).find(Boolean);
     if (validationError || normalized.length !== unsavedCandidates.length) {
       setSaveError(validationError || '제목이 비어 있는 후보는 저장할 수 없습니다.');
+      return;
+    }
+
+    if (conditionsDirty.current && !(await saveConditions())) {
+      setSaveError('프로젝트 조건을 저장하지 못했습니다. 오류를 확인한 뒤 다시 시도해 주세요.');
       return;
     }
 
@@ -380,7 +409,8 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
           </View>
           <View style={styles.skillLevelField}>
             <ThemedText type="smallBold">팀의 개발 경험</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">선택한 수준에 맞춰 AI가 구현 난이도와 기능 범위를 추천합니다.</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">초급: 기본 구현 경험 · 중급: 기능 연동 경험 · 고급: 설계·배포 경험 · 잘 모르겠어요: 중급 기준으로 추천합니다.</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">저장한 팀 경험은 AI 비교 추천과 새 MVP·발표자료 생성에 전달됩니다. 기능별 난이도 표시는 별개입니다.</ThemedText>
             <View style={styles.skillLevelOptions} accessibilityLabel="프로젝트 팀의 개발 경험">
               {skillLevels.map((level) => {
                 const isSelected = skillLevel === level;

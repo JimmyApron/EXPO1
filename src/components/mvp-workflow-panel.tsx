@@ -65,6 +65,13 @@ export function MvpWorkflowPanel({ projectId, idea, flowController, onGoToPresen
   const hasPreviousPlan = Boolean(flow?.mvpplan && flow.mvpplan.ideaId !== idea.id);
   const teamExperienceLabel = normalizeTeamExperience(conditions.skillLevel);
   const durationLabel = formatMvpDuration(conditions.durationWeeks);
+  const planConditions = plan?.inputConditions;
+  const planConditionsChanged = Boolean(planConditions && (
+    planConditions.skillLevel !== conditions.skillLevel ||
+    planConditions.durationWeeks !== conditions.durationWeeks ||
+    planConditions.teamSize !== conditions.teamSize ||
+    planConditions.budget !== conditions.budget
+  ));
   const [keywordDraft, setKeywordDraft] = useState('');
   const [keywordSaving, setKeywordSaving] = useState(false);
   const [keywordError, setKeywordError] = useState('');
@@ -115,11 +122,21 @@ export function MvpWorkflowPanel({ projectId, idea, flowController, onGoToPresen
       ) : null}
 
       <ThemedView type="backgroundElement" style={[styles.metaCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
-        <ThemedText type="smallBold">현재 추천 기준</ThemedText>
+        <ThemedText type="smallBold">현재 프로젝트 조건</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           팀의 개발 경험: {teamExperienceLabel}{teamExperienceLabel === '잘 모르겠어요' ? ' (중급 기준 추천)' : ''} · 예상 기간: {durationLabel}
         </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">새 AI 계획을 만들 때 이 조건으로 MVP 범위·일정·역할을 추천합니다. 아래 기능 난이도는 팀의 개발 경험과 별개입니다.</ThemedText>
       </ThemedView>
+
+      {plan && (planConditionsChanged || !planConditions) ? (
+        <ThemedView type="backgroundElement" style={[styles.noticeCard, { backgroundColor: theme.warningSoft, borderColor: theme.warning }]}>
+          <ThemedText type="smallBold" style={{ color: theme.warning }}>
+            {planConditionsChanged ? '프로젝트 조건이 이 MVP를 만든 뒤 변경됐어요.' : '이전 MVP의 생성 당시 조건을 확인할 수 없어요.'}
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">현재 팀 경험과 기간을 반영하려면 ‘AI로 MVP 계획 다시 만들기’를 눌러 주세요. 기존 계획은 다시 만들기 전까지 보입니다.</ThemedText>
+        </ThemedView>
+      ) : null}
 
       <WattCostHint projectId={projectId} units={2} />
       <Pressable
@@ -154,7 +171,7 @@ export function MvpWorkflowPanel({ projectId, idea, flowController, onGoToPresen
           <MvpSummaryCard
             featureDetails={(
               <Section title="필수 기능 · 구현 난이도">
-                <ThemedText type="small" themeColor="textSecondary">초급 개발자 1명, 주 10시간 기준 AI 추정입니다. 학습·테스트를 포함하며 기능과 API의 중복 작업량은 단순 합산하지 마세요.</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">기능 난이도와 작업량은 팀 경험 선택값이 아닙니다. 작업량은 비교를 위해 초급 개발자 1명·주 10시간 기준으로 추정하며, 새로 생성하는 팀 일정에는 위 프로젝트 조건을 반영합니다.</ThemedText>
                 {plan.mustHaveFeatures.map((feature, index) => (
                   <View key={`${feature.name}:${index}`} style={styles.list}>
                     <ThemedText type="smallBold">{feature.name}</ThemedText>

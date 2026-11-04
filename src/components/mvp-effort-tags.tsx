@@ -11,13 +11,13 @@ export function MvpEffortTags({ effort }: { effort?: MvpEffort }) {
   return (
     <View style={styles.container}>
       <View style={styles.tags}>
-        {[effort.difficulty, `예상 ${effort.estimatedWeeks}주`, ...effort.requiredSkills].map((label, index) => (
+        {[`기능 난이도: ${effort.difficulty}`, `초급 1명 기준 예상 ${effort.estimatedWeeks}주`, ...effort.requiredSkills].map((label, index) => (
           <View key={`${label}:${index}`} style={[styles.tag, { backgroundColor: theme.primarySoft }]}>
             <ThemedText type="smallBold" style={{ color: theme.primary }}>{label}</ThemedText>
           </View>
         ))}
       </View>
-      <ThemedText type="small" themeColor="textSecondary">초급 팀 참고: {effort.beginnerComment}</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">초급 기준 참고사항: {effort.beginnerComment}</ThemedText>
     </View>
   );
 }

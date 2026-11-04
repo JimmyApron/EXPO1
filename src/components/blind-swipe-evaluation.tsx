@@ -339,6 +339,7 @@ export function BlindSwipeEvaluation({
     return (
       <View style={styles.screen}>
         <ThemedText type="subtitle" style={styles.navyText}>블라인드 스와이프 평가</ThemedText>
+        <ThemedText type="small" style={styles.mutedText}>AI 추천에는 저장된 팀 개발 경험({conditions.skillLevel})과 프로젝트 조건이 반영됩니다. 후보 카드의 구현 난이도와 팀원 투표 결과는 별도 기준입니다.</ThemedText>
         <View style={styles.completeBanner}>
           <ThemedText type="smallBold" style={styles.orangeText}>내 평가는 모두 잠겼습니다</ThemedText>
           <ThemedText type="small" style={styles.mutedText}>확정한 평가는 수정할 수 없어요.</ThemedText>

@@ -9,7 +9,7 @@ import {
   mindMapToMarkdown,
   mindMapToOutline,
   mindMapToScript,
-  mindMapToStructuredText,
+  mindMapToFigmaPrompt,
   saveMindMapMarkdown,
 } from '@/lib/mind-map-export';
 import type { Idea } from '@/types/idea';
@@ -24,7 +24,7 @@ const labels: Record<PreviewKind, string> = {
   script: '발표 대본 뼈대',
   outline: 'PPT 슬라이드 목차',
   markdown: 'Markdown',
-  figma: 'Figma용 구조화 텍스트',
+  figma: 'Figma용 마인드맵 프롬프트',
 };
 
 export function MindMapExport({ title, nodes, ideas, template = 'service_app' }: { title: string; nodes: MindMapNode[]; ideas: Idea[]; template?: ProjectTemplate }) {
@@ -38,7 +38,7 @@ export function MindMapExport({ title, nodes, ideas, template = 'service_app' }:
     script: mindMapToScript(payload),
     outline: mindMapToOutline(payload),
     markdown: mindMapToMarkdown(payload),
-    figma: mindMapToStructuredText(payload),
+    figma: mindMapToFigmaPrompt(payload),
   }), [payload]);
   useEffect(() => {
     if (!toast) return;
@@ -88,12 +88,12 @@ export function MindMapExport({ title, nodes, ideas, template = 'service_app' }:
   return (
     <View style={styles.section}>
       <ThemedText type="smallBold">{topicLabels.map} 내보내기</ThemedText>
-      <ThemedText type="caption" themeColor="textSecondary">{topicLabels.item} 구조와 노드, 상세 정보를 내보냅니다. 접힌 노드도 포함됩니다.</ThemedText>
+      <ThemedText type="caption" themeColor="textSecondary">접힌 노드까지 포함해 원본, 발표 구성안, Figma용 프롬프트로 내보냅니다.</ThemedText>
       <View style={styles.actions}>
-        <ExportAction label="발표 대본 뼈대 복사" onPress={() => open('script')} />
-        <ExportAction label="PPT 슬라이드 목차 복사" onPress={() => open('outline')} />
+        <ExportAction label="발표 대본 뼈대" onPress={() => open('script')} />
+        <ExportAction label="PPT 슬라이드 목차" onPress={() => open('outline')} />
         <ExportAction label="Markdown 내보내기" onPress={() => open('markdown')} />
-        <ExportAction label="Figma로 보내기" onPress={() => open('figma')} />
+        <ExportAction label="Figma용 프롬프트" onPress={() => open('figma')} />
       </View>
       {toast && !preview ? <View style={styles.toast}><ThemedText accessibilityLiveRegion="polite" style={styles.toastText}>{toast}</ThemedText></View> : null}
       <Modal visible={preview !== null} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
@@ -101,7 +101,7 @@ export function MindMapExport({ title, nodes, ideas, template = 'service_app' }:
           <Pressable style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="미리보기 닫기" onPress={() => setPreview(null)} />
           <View style={[styles.modal, Shadows.floating]}>
             <ThemedText type="subtitle">{preview ? `${labels[preview]} 미리보기` : ''}</ThemedText>
-            {preview === 'figma' ? <ThemedText type="small" themeColor="textSecondary">Figma 자동 생성은 연결 후 사용할 수 있습니다. 아래 텍스트나 Markdown을 복사해 Figma에 붙여넣으세요.</ThemedText> : null}
+            {preview === 'figma' ? <ThemedText type="small" themeColor="textSecondary">아래 프롬프트를 복사해 Figma의 AI 입력창에 붙여넣으세요.</ThemedText> : null}
             <ScrollView style={styles.previewScroll} contentContainerStyle={styles.previewContent}>
               <ThemedText selectable style={styles.previewText}>{preview ? texts[preview] : ''}</ThemedText>
             </ScrollView>

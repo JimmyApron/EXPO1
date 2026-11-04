@@ -30,6 +30,7 @@ function hydrateSavedPlan(savedPlan: MvpPlan | null | undefined, idea: MvpIdea):
   const normalized = normalizeMvpPlan(savedPlan, idea);
   return normalized ? {
     ...normalized,
+    inputConditions: savedPlan.inputConditions,
     manualKeywords: savedPlan.manualKeywords ?? [],
     removedKeywords: savedPlan.removedKeywords ?? [],
   } : null;
@@ -93,7 +94,17 @@ export function useMvpPlan(
       if (invokeError) throw invokeError;
       if (!isMvpPlan(data, idea.id)) throw new Error('AI 계획 응답 형식이 올바르지 않습니다.');
       const base = normalizeMvpPlan(data, idea);
-      const normalized = base ? { ...base, manualKeywords: savedPlan?.ideaId === idea.id ? savedPlan.manualKeywords ?? [] : [], removedKeywords: savedPlan?.ideaId === idea.id ? savedPlan.removedKeywords ?? [] : [] } : null;
+      const normalized = base ? {
+        ...base,
+        inputConditions: conditions && conditions.durationWeeks !== undefined && conditions.teamSize !== undefined && conditions.budget !== undefined ? {
+          durationWeeks: conditions.durationWeeks,
+          teamSize: conditions.teamSize,
+          skillLevel: conditions.skillLevel ?? '',
+          budget: conditions.budget,
+        } : undefined,
+        manualKeywords: savedPlan?.ideaId === idea.id ? savedPlan.manualKeywords ?? [] : [],
+        removedKeywords: savedPlan?.ideaId === idea.id ? savedPlan.removedKeywords ?? [] : [],
+      } : null;
       if (!normalized) throw new Error('AI 계획 응답 형식이 올바르지 않습니다.');
       const saveResult = await onSave?.(normalized) as { error?: string } | undefined;
       if (saveResult?.error) throw new Error(saveResult.error);
