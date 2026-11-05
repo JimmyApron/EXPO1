@@ -1,5 +1,6 @@
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
@@ -340,7 +341,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   checkmark: {
-    color: '#FFFFFF',
+    color: PALETTE.text,
     fontSize: 13,
     fontWeight: '800',
     lineHeight: 16,

@@ -1,7 +1,8 @@
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
+import { ExperienceSettings } from '@/components/experience-settings';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { router, type Href } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -11,7 +12,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,15 +20,18 @@ import { AppIcon, type AppIconName } from '@/components/app-icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
-  BottomTabInset,
   ControlHeight,
   MaxContentWidth,
   Radius,
   Shadows,
   Spacing,
 } from '@/constants/theme';
+import { useExperience } from '@/context/ExperienceContext';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
+import { subscribeWattBalance, useWattBalance, wattAction, type WattSnapshot } from '@/hooks/use-watt';
+import { useRooms } from '@/hooks/use-rooms';
+import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 type DialogProps = {
@@ -73,7 +76,7 @@ function ProfileDialog({ visible, title, description, children, onClose }: Dialo
               <AppIcon name="close" color={theme.textSecondary} size={22} />
             </Pressable>
           </View>
-          {children}
+          <ScrollView style={styles.dialogScroll} contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">{children}</ScrollView>
         </ThemedView>
       </KeyboardAvoidingView>
     </Modal>
@@ -115,7 +118,16 @@ function SettingRow({ icon, title, description, onPress, danger = false }: Setti
 
 export default function ProfileScreen() {
   const theme = useTheme();
+  const { openOnboarding } = useExperience();
   const { user, autherror, signout, updateaccount, changepassword, deleteaccount } = useAuth();
+  const { balance: wattBalance, loading: wattLoading, error: wattError } = useWattBalance();
+  const personalWattEntitlement = wattBalance?.entitlements?.find(item => item.room_id === null && item.state !== 'expired');
+  const { rooms } = useRooms();
+  const [teamWattCards,setTeamWattCards] = useState<{id:string;name:string;balance:WattSnapshot|null}[]>([]);
+  const activeTeamWattCards = teamWattCards.flatMap(card => {
+    const entitlement = card.balance?.entitlements?.find(item => item.room_id === card.id && item.state !== 'expired');
+    return entitlement ? [{...card,entitlement}] : [];
+  });
   const email = user?.email ?? '이메일 정보 없음';
   const fallbackName = email.includes('@') ? email.split('@')[0] : email;
   const [nickname, setNickname] = useState(() => String(user?.user_metadata?.nickname ?? fallbackName));
@@ -125,7 +137,7 @@ export default function ProfileScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState('');
-  const [openDialog, setOpenDialog] = useState<'profile' | 'password' | 'delete' | null>(null);
+  const [openDialog, setOpenDialog] = useState<'settings' | 'profile' | 'password' | 'delete' | null>(null);
   const [busyAction, setBusyAction] = useState<'profile' | 'password' | 'avatar' | 'delete' | 'signout' | null>(null);
   const [status, setStatus] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
@@ -148,12 +160,34 @@ export default function ProfileScreen() {
     };
   }, [user]);
 
+  useEffect(() => {
+    let active = true;
+    const load = () => { void Promise.all(rooms.map(async item => {
+      try {
+        const result = await wattAction<{team:WattSnapshot|null}>({action:'state',roomId:item.room.id});
+        return {id:item.room.id,name:item.room.name,balance:result.team};
+      } catch { return {id:item.room.id,name:item.room.name,balance:null}; }
+    })).then(cards => { if(active) setTeamWattCards(cards); }); };
+    load();
+    const unsubscribe = subscribeWattBalance(load);
+    return () => { active = false; unsubscribe(); };
+  }, [rooms]);
+
   const closeDialog = () => {
     if (busyAction) return;
     setOpenDialog(null);
     setDeleteConfirm('');
     setNewPassword('');
     setConfirmPassword('');
+  };
+
+  const returnToSettings = () => {
+    if (busyAction) return;
+    setStatus(null);
+    setDeleteConfirm('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setOpenDialog('settings');
   };
 
   const showError = (error: unknown, fallback: string) => {
@@ -201,7 +235,7 @@ export default function ProfileScreen() {
       if (error) throw error;
 
       setNickname(nextNickname);
-      setOpenDialog(null);
+      setOpenDialog('settings');
       setStatus({
         tone: 'success',
         message:
@@ -272,7 +306,7 @@ export default function ProfileScreen() {
       await changepassword(newPassword);
       setNewPassword('');
       setConfirmPassword('');
-      setOpenDialog(null);
+      setOpenDialog('settings');
       setStatus({ tone: 'success', message: '비밀번호를 변경했어요.' });
     } catch (error) {
       showError(error, '비밀번호를 변경하지 못했습니다.');
@@ -317,7 +351,7 @@ export default function ProfileScreen() {
       style={{ backgroundColor: theme.background }}
       contentContainerStyle={styles.scrollContent}
       keyboardShouldPersistTaps="handled">
-      <SafeAreaView edges={['top']} style={styles.safeArea}>
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <ThemedView style={styles.container}>
           <View style={styles.header}>
             <ThemedText type="screenTitle">내 정보</ThemedText>
@@ -329,40 +363,41 @@ export default function ProfileScreen() {
           <ThemedView
             type="backgroundElement"
             style={[styles.profileCard, { borderColor: theme.border }, Shadows.card]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="프로필 사진 변경"
-              disabled={busyAction === 'avatar'}
-              onPress={pickAvatar}
-              style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}>
-              <View style={[styles.avatar, { backgroundColor: theme.primarySoft }]}>
-                {avatarurl ? (
-                  <Image source={{ uri: avatarurl }} style={styles.avatarImage} contentFit="cover" transition={150} />
-                ) : (
-                  <ThemedText type="sectionTitle" style={{ color: theme.primary }}>
-                    {initial}
-                  </ThemedText>
-                )}
-                {busyAction === 'avatar' ? (
-                  <View style={[styles.avatarLoading, { backgroundColor: theme.overlay }]}>
-                    <ActivityIndicator color="#FFFFFF" />
-                  </View>
-                ) : null}
-              </View>
-              <View style={[styles.cameraBadge, { backgroundColor: theme.primary, borderColor: theme.surface }]}>
-                <AppIcon name="camera" color={theme.primaryText} size={16} />
-              </View>
-            </Pressable>
+            <View style={[styles.avatar, styles.summaryAvatar, { backgroundColor: theme.primarySoft }]}>
+              {avatarurl ? <Image source={{ uri: avatarurl }} style={styles.avatarImage} contentFit="cover" transition={150} /> : <ThemedText type="sectionTitle" style={{ color: theme.primary }}>{initial}</ThemedText>}
+            </View>
 
             <View style={styles.profileCopy}>
-              <ThemedText type="sectionTitle" numberOfLines={1}>
+              <ThemedText type="sectionTitle">
                 {nickname}
               </ThemedText>
-              <ThemedText type="body" themeColor="textSecondary" numberOfLines={1}>
+              <ThemedText type="body" themeColor="textSecondary">
                 {email}
               </ThemedText>
             </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="프로필 수정" disabled={Boolean(busyAction)}
+              onPress={() => { setStatus(null); setOpenDialog('settings'); }}
+              style={({ pressed }) => [styles.profileEditButton, { borderColor: theme.border, backgroundColor: theme.surface }, (pressed || busyAction) && styles.pressed]}>
+              <ThemedText type="smallBold">프로필 수정</ThemedText>
+            </Pressable>
+          </ThemedView>
 
+          <ThemedView type="backgroundElement" style={[styles.settingsCard, { borderColor: theme.border }, Shadows.card]}>
+            <Pressable accessibilityRole="button" onPress={() => router.push('/watt')} style={styles.wattCard}>
+              <View style={styles.wattCardCopy}>
+                <View style={styles.wattCardHeader}><ThemedText type="smallBold">내 이용권</ThemedText><AppIcon name="chevronRight" color={theme.textTertiary} size={20} /></View>
+                <ThemedText type="smallBold">{wattLoading ? '확인 중' : wattError ? '이용 정보 확인 필요' : personalWattEntitlement?.trial ? '무료 체험' : personalWattEntitlement?.product_id === 'personal_30' ? '개인 30일권' : personalWattEntitlement?.product_id === 'personal_120' ? '개인 120일권' : 'FREE'}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">{wattBalance ? `${wattBalance.total}단위 남음${wattBalance.textUsage ? ` · 일반 텍스트 AI 오늘 ${wattBalance.textUsage.todayUsed}/${wattBalance.textUsage.dailyLimit}회` : ''}` : wattLoading ? '잔여량 확인 중' : wattError ? '잔여량을 불러오지 못했어요' : '잔여량 확인 필요'}</ThemedText>
+              </View>
+            </Pressable>
+            {activeTeamWattCards.map(card => (
+              <View key={card.id}>
+                <View style={[styles.rowDivider,{backgroundColor:theme.divider}]} />
+                <Pressable accessibilityRole="button" onPress={() => router.push({pathname:'/watt',params:{roomId:card.id}})} style={styles.teamWattRow}>
+                  <View style={styles.wattCardCopy}><ThemedText type="smallBold">{card.entitlement.trial ? '팀 7일 무료 체험' : card.entitlement.product_id === 'team_30' ? '팀 30일권' : card.entitlement.product_id === 'team_120' ? '팀 120일권' : '팀 이용권'} · {card.name}</ThemedText><ThemedText type="small" themeColor="textSecondary">공동 잔여량 {card.balance?.total ?? 0}단위{card.balance?.textUsage ? ` · 팀 오늘 ${card.balance.textUsage.todayUsed}/${card.balance.textUsage.dailyLimit}회` : ''}</ThemedText></View>
+                </Pressable>
+              </View>
+            ))}
           </ThemedView>
 
           {status || autherror ? (
@@ -383,6 +418,49 @@ export default function ProfileScreen() {
           ) : null}
 
           <View style={styles.section}>
+            <ThemedText type="sectionTitle">앱 설정</ThemedText>
+            <ExperienceSettings />
+            <ThemedView type="backgroundElement" style={[styles.settingsCard, { borderColor: theme.border }]}>
+              <SettingRow
+                icon="guide"
+                title="온보딩 다시 보기"
+                description="앱 사용 방법 다시 확인하기"
+                onPress={openOnboarding}
+              />
+            </ThemedView>
+          </View>
+
+          <ThemedView type="backgroundElement" style={[styles.settingsCard, { borderColor: theme.border }]}>
+            <SettingRow
+              icon="logout"
+              title={busyAction === 'signout' ? '로그아웃 중…' : '로그아웃'}
+              description="이 기기에서 현재 계정의 연결을 해제해요."
+              onPress={busyAction ? undefined : handleSignout}
+            />
+          </ThemedView>
+          <View style={styles.appInfo}>
+            <ThemedText type="caption" themeColor="textTertiary">Watt {appVersion}</ThemedText>
+            <ThemedText type="caption" themeColor="textTertiary">아이디어에서 결과물까지</ThemedText>
+          </View>
+        </ThemedView>
+      </SafeAreaView>
+
+      <ProfileDialog visible={openDialog === 'settings'} title="프로필 수정"
+        description="프로필과 개인 정보, 계정 설정을 관리하세요." onClose={closeDialog}>
+        {status || autherror ? <View style={[styles.statusBanner, { backgroundColor: status?.tone === 'success' ? theme.successSoft : theme.dangerSoft, borderColor: status?.tone === 'success' ? theme.success : theme.danger }]}>
+          <ThemedText accessibilityLiveRegion="polite" type="small" style={{ color: status?.tone === 'success' ? theme.success : theme.danger }}>{status?.message || autherror}</ThemedText>
+        </View> : null}
+        <View style={styles.photoEditRow}>
+          <View style={[styles.avatar, { backgroundColor: theme.primarySoft }]}>
+            {avatarurl ? <Image source={{ uri: avatarurl }} style={styles.avatarImage} contentFit="cover" transition={150} /> : <ThemedText type="sectionTitle" style={{ color: theme.primary }}>{initial}</ThemedText>}
+            {busyAction === 'avatar' ? <View style={[styles.avatarLoading, { backgroundColor: theme.overlay }]}><ActivityIndicator color="#FFFFFF" /></View> : null}
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="프로필 사진 변경" disabled={Boolean(busyAction)} onPress={pickAvatar}
+            style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, (pressed || busyAction) && styles.pressed]}>
+            <ThemedText type="button">{busyAction === 'avatar' ? '사진 저장 중…' : '프로필 사진 변경'}</ThemedText>
+          </Pressable>
+        </View>
+          <View style={styles.section}>
             <ThemedText type="sectionTitle">개인 정보</ThemedText>
             <ThemedView type="backgroundElement" style={[styles.settingsCard, { borderColor: theme.border }]}>
               <SettingRow
@@ -400,18 +478,6 @@ export default function ProfileScreen() {
                   setStatus(null);
                   setOpenDialog('password');
                 }}
-              />
-            </ThemedView>
-          </View>
-
-          <View style={styles.section}>
-            <ThemedText type="sectionTitle">앱 설정</ThemedText>
-            <ThemedView type="backgroundElement" style={[styles.settingsCard, { borderColor: theme.border }]}>
-              <SettingRow
-                icon="notifications"
-                title="알림 설정"
-                description="마감, 피드백 등 받고 싶은 알림을 선택해요."
-                onPress={() => router.push('/notifications' as Href)}
               />
             </ThemedView>
           </View>
@@ -437,13 +503,6 @@ export default function ProfileScreen() {
             <ThemedText type="sectionTitle">계정 관리</ThemedText>
             <ThemedView type="backgroundElement" style={[styles.settingsCard, { borderColor: theme.border }]}>
               <SettingRow
-                icon="logout"
-                title={busyAction === 'signout' ? '로그아웃 중…' : '로그아웃'}
-                description="이 기기에서 현재 계정의 연결을 해제해요."
-                onPress={busyAction ? undefined : handleSignout}
-              />
-              <View style={[styles.rowDivider, { backgroundColor: theme.divider }]} />
-              <SettingRow
                 icon="delete"
                 title="회원 탈퇴"
                 description="계정과 저장된 데이터를 영구적으로 삭제해요."
@@ -456,18 +515,13 @@ export default function ProfileScreen() {
             </ThemedView>
           </View>
 
-          <View style={styles.appInfo}>
-            <ThemedText type="caption" themeColor="textTertiary">Watt {appVersion}</ThemedText>
-            <ThemedText type="caption" themeColor="textTertiary">아이디어에서 결과물까지</ThemedText>
-          </View>
-        </ThemedView>
-      </SafeAreaView>
+      </ProfileDialog>
 
       <ProfileDialog
         visible={openDialog === 'profile'}
         title="이름과 이메일"
         description="팀원에게 보이는 이름과 로그인 이메일을 수정할 수 있어요."
-        onClose={closeDialog}>
+        onClose={returnToSettings}>
         <View style={styles.form}>
           {status?.tone === 'error' ? (
             <View style={[styles.statusBanner, { backgroundColor: theme.dangerSoft, borderColor: theme.danger }]}>
@@ -477,6 +531,7 @@ export default function ProfileScreen() {
           <View style={styles.field}>
             <ThemedText type="smallBold">이름</ThemedText>
             <TextInput
+              accessibilityLabel="이름"
               value={draftNickname}
               onChangeText={setDraftNickname}
               maxLength={20}
@@ -488,6 +543,7 @@ export default function ProfileScreen() {
           <View style={styles.field}>
             <ThemedText type="smallBold">이메일</ThemedText>
             <TextInput
+              accessibilityLabel="이메일"
               value={draftEmail}
               onChangeText={setDraftEmail}
               autoCapitalize="none"
@@ -502,7 +558,7 @@ export default function ProfileScreen() {
             </ThemedText>
           </View>
           <View style={styles.dialogActions}>
-            <Pressable onPress={closeDialog} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, pressed && styles.pressed]}>
+            <Pressable onPress={returnToSettings} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, pressed && styles.pressed]}>
               <ThemedText type="button">취소</ThemedText>
             </Pressable>
             <Pressable disabled={busyAction === 'profile'} onPress={saveProfile} style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
@@ -516,7 +572,7 @@ export default function ProfileScreen() {
         visible={openDialog === 'password'}
         title="비밀번호 변경"
         description="8자 이상의 새로운 비밀번호를 입력해 주세요."
-        onClose={closeDialog}>
+        onClose={returnToSettings}>
         <View style={styles.form}>
           {status?.tone === 'error' ? (
             <View style={[styles.statusBanner, { backgroundColor: theme.dangerSoft, borderColor: theme.danger }]}>
@@ -526,6 +582,7 @@ export default function ProfileScreen() {
           <View style={styles.field}>
             <ThemedText type="smallBold">새 비밀번호</ThemedText>
             <TextInput
+              accessibilityLabel="새 비밀번호"
               value={newPassword}
               onChangeText={setNewPassword}
               secureTextEntry
@@ -538,6 +595,7 @@ export default function ProfileScreen() {
           <View style={styles.field}>
             <ThemedText type="smallBold">비밀번호 확인</ThemedText>
             <TextInput
+              accessibilityLabel="비밀번호 확인"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
@@ -548,7 +606,7 @@ export default function ProfileScreen() {
             />
           </View>
           <View style={styles.dialogActions}>
-            <Pressable onPress={closeDialog} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, pressed && styles.pressed]}>
+            <Pressable onPress={returnToSettings} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, pressed && styles.pressed]}>
               <ThemedText type="button">취소</ThemedText>
             </Pressable>
             <Pressable disabled={busyAction === 'password'} onPress={savePassword} style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
@@ -562,7 +620,7 @@ export default function ProfileScreen() {
         visible={openDialog === 'delete'}
         title="정말 탈퇴할까요?"
         description="참여 중인 프로젝트와 아이디어를 포함한 계정 데이터가 삭제되며 되돌릴 수 없습니다."
-        onClose={closeDialog}>
+        onClose={returnToSettings}>
         <View style={styles.form}>
           {status?.tone === 'error' ? (
             <View style={[styles.statusBanner, { backgroundColor: theme.dangerSoft, borderColor: theme.danger }]}>
@@ -584,7 +642,7 @@ export default function ProfileScreen() {
             style={[styles.input, { color: theme.text, borderColor: theme.danger, backgroundColor: theme.background }]}
           />
           <View style={styles.dialogActions}>
-            <Pressable onPress={closeDialog} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, pressed && styles.pressed]}>
+            <Pressable onPress={returnToSettings} style={({ pressed }) => [styles.secondaryButton, { borderColor: theme.border }, pressed && styles.pressed]}>
               <ThemedText type="button">취소</ThemedText>
             </Pressable>
             <Pressable
@@ -606,30 +664,37 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { alignItems: 'center', paddingBottom: BottomTabInset + Spacing.five },
-  safeArea: { width: '100%', alignItems: 'center' },
-  container: { width: '100%', maxWidth: MaxContentWidth, padding: Spacing.three, gap: Spacing.five },
+  scrollContent: { flexGrow: 1, alignItems: 'center', paddingBottom: Spacing.four },
+  safeArea: { flexGrow: 1, width: '100%', alignItems: 'center' },
+  container: { flexGrow: 1, width: '100%', maxWidth: MaxContentWidth, padding: Spacing.three, gap: Spacing.four },
   header: { gap: Spacing.one, paddingTop: Spacing.two },
-  profileCard: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.three, borderWidth: 1, borderRadius: Radius.xlarge, padding: Spacing.four },
-  avatarButton: { position: 'relative' },
+  profileCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, borderWidth: 1, borderRadius: Radius.xlarge, padding: Spacing.three },
+  wattCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two, padding: Spacing.three },
+  wattCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
+  wattCardCopy: { flex: 1, minWidth: 0, gap: 4 },
+  teamWattRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
+  summaryAvatar: { width: 64, height: 64 },
+  profileEditButton: { minHeight: ControlHeight.touch, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.two, flexShrink: 0 },
+  photoEditRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.three },
   avatar: { width: 84, height: 84, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImage: { width: '100%', height: '100%' },
   avatarLoading: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
-  cameraBadge: { position: 'absolute', right: -2, bottom: -2, width: 30, height: 30, borderRadius: Radius.pill, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
-  profileCopy: { flex: 1, minWidth: 180, gap: Spacing.one },
+  profileCopy: { flex: 1, minWidth: 0, gap: Spacing.one },
   statusBanner: { borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
   section: { gap: Spacing.three },
   settingsCard: { borderWidth: 1, borderRadius: Radius.large, overflow: 'hidden' },
   settingRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: Spacing.three, paddingHorizontal: Spacing.three, paddingVertical: Spacing.three },
   rowPressed: { opacity: 0.72 },
-  rowIcon: { width: 40, height: 40, borderRadius: Radius.medium, alignItems: 'center', justifyContent: 'center' },
-  rowCopy: { flex: 1, gap: 2 },
+  rowIcon: { width: 40, height: 40, flexShrink: 0, borderRadius: Radius.medium, alignItems: 'center', justifyContent: 'center' },
+  rowCopy: { flex: 1, minWidth: 0, gap: 2 },
   rowDivider: { height: 1, marginHorizontal: Spacing.three },
   accountInfoCard: { borderWidth: 1, borderRadius: Radius.large, paddingVertical: Spacing.one },
   accountInfoRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.three, paddingHorizontal: Spacing.three },
-  appInfo: { alignItems: 'center', gap: 2, paddingTop: Spacing.two },
+  appInfo: { marginTop: 'auto', alignItems: 'center', gap: 2, paddingTop: Spacing.three },
   modalOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.three },
   dialog: { width: '100%', maxWidth: 480, maxHeight: '92%', gap: Spacing.four, borderWidth: 1, borderRadius: Radius.xlarge, padding: Spacing.four },
+  dialogScroll: { flexShrink: 1 },
+  dialogContent: { gap: Spacing.four },
   dialogHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.three },
   dialogCopy: { flex: 1, gap: Spacing.one },
   closeButton: { width: ControlHeight.touch, height: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', marginTop: -Spacing.two, marginRight: -Spacing.two },

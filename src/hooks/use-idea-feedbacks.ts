@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
@@ -44,15 +44,23 @@ export function useIdeaFeedbacks(projectId?: string) {
   const [feedbacks, setFeedbacks] = useState<IdeaFeedback[]>([]);
   const [isLoadingFeedbacks, setIsLoadingFeedbacks] = useState(true);
   const [feedbackError, setFeedbackError] = useState('');
+  const loadedProjectKey = useRef('');
+  const requestId = useRef(0);
+  const projectKey = `${user?.id ?? ''}:${projectId ?? ''}`;
 
   const loadFeedbacks = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user || !projectId) {
       setFeedbacks([]);
+      loadedProjectKey.current = '';
       setIsLoadingFeedbacks(false);
       return;
     }
 
-    setIsLoadingFeedbacks(true);
+    if (loadedProjectKey.current !== projectKey) {
+      setIsLoadingFeedbacks(true);
+      setFeedbacks([]);
+    }
     setFeedbackError('');
 
     const { data: ideaRows, error: ideaError } = await supabase
@@ -61,9 +69,11 @@ export function useIdeaFeedbacks(projectId?: string) {
       .eq('legacystructural', false)
       .eq('projectid', projectId);
 
+    if (currentRequestId !== requestId.current) return;
+
     if (ideaError) {
       setFeedbackError(ideaError.message);
-      setFeedbacks([]);
+      loadedProjectKey.current = projectKey;
       setIsLoadingFeedbacks(false);
       return;
     }
@@ -74,6 +84,7 @@ export function useIdeaFeedbacks(projectId?: string) {
 
     if (ideaIds.length === 0) {
       setFeedbacks([]);
+      loadedProjectKey.current = projectKey;
       setIsLoadingFeedbacks(false);
       return;
     }
@@ -84,15 +95,17 @@ export function useIdeaFeedbacks(projectId?: string) {
       .in('ideaid', ideaIds)
       .order('createdat', { ascending: false });
 
+    if (currentRequestId !== requestId.current) return;
+
     if (error) {
       setFeedbackError(error.message);
-      setFeedbacks([]);
     } else {
       setFeedbacks((data ?? []).map((row) => normalizeFeedback(row as FeedbackRow)));
     }
 
+    loadedProjectKey.current = projectKey;
     setIsLoadingFeedbacks(false);
-  }, [projectId, user]);
+  }, [projectId, projectKey, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => {

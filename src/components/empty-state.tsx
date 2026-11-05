@@ -40,6 +40,6 @@ const styles = StyleSheet.create({
   icon: { width: 52, height: 52, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.one },
   centerText: { textAlign: 'center', maxWidth: 420 },
   action: { minHeight: ControlHeight.button, borderRadius: Radius.medium, justifyContent: 'center', paddingHorizontal: Spacing.three, marginTop: Spacing.one },
-  actionText: { color: '#FFFFFF' },
+  actionText: { color: '#1E293B' },
   pressed: { opacity: 0.76, transform: [{ scale: 0.98 }] },
 });

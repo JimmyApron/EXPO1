@@ -1,3 +1,4 @@
+import { withWattUsage } from '../_shared/watt-usage.ts';
 import {
   anthropicApiVersion,
   deepSeekMessagesUrl,
@@ -92,7 +93,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cleanString(value: unknown, maxLength = 4_000) {
-  return typeof value === 'string' ? value.trim().replace(/\r\n/g, '\n').slice(0, maxLength) : '';
+  return typeof value === 'string' ? value.trim().replace(/\n/g, '\n').slice(0, maxLength) : '';
 }
 
 function cleanStringArray(value: unknown, maxItems = 12) {
@@ -324,7 +325,7 @@ function buildMessageContent(source: ExtractSource, projectConditions: ReturnTyp
   return content;
 }
 
-Deno.serve(async (request) => {
+Deno.serve(async (request) => withWattUsage(request, 'extract-candidate-ideas', async (meter) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -441,6 +442,7 @@ Deno.serve(async (request) => {
       }),
     });
   } catch (error) {
+    meter.capture(usesClaudeVision ? 'anthropic' : 'deepseek', aiModel!, 0);
     const timedOut = error instanceof DOMException && error.name === 'AbortError';
     console.error(timedOut ? `${providerName} request timed out.` : `${providerName} request failed before response.`);
     return jsonResponse(
@@ -452,6 +454,7 @@ Deno.serve(async (request) => {
   }
 
   if (!aiResponse.ok) {
+    meter.capture(usesClaudeVision ? 'anthropic' : 'deepseek', aiModel!, aiResponse.status);
     console.error(`${providerName} API returned an error status.`, {
       status: aiResponse.status,
     });
@@ -506,7 +509,9 @@ Deno.serve(async (request) => {
   let aiBody: unknown;
   try {
     aiBody = await aiResponse.json();
+    meter.capture(usesClaudeVision ? 'anthropic' : 'deepseek', aiModel!, aiResponse.status, aiBody);
   } catch {
+    meter.capture(usesClaudeVision ? 'anthropic' : 'deepseek', aiModel!, aiResponse.status);
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답을 해석하지 못했습니다.' }, 502);
   }
 
@@ -519,4 +524,4 @@ Deno.serve(async (request) => {
     extractedText: cleanString(toolInput.extractedText, maxTextLength),
     candidateIdeas: normalizeCandidates(toolInput.candidateIdeas),
   });
-});
+}));

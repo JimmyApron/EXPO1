@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,14 +9,18 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 
+import { TopicFields } from '@/components/topic-fields';
+import { getTopicLabels, normalizeTopicDetails, type TopicDetails } from '@/lib/topic-workspace';
+import type { ProjectTemplate } from '@/types/project';
 import { ThemedText } from '@/components/themed-text';
+import { MindMapExport } from '@/components/mind-map-export';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
+import { getExpandedMindMapNodes } from '@/lib/mind-map-export';
 import {
     applyIdeaFieldDraft,
     getIdeaFieldDraftValue,
@@ -57,6 +62,9 @@ type MutationResult = Promise<{ error?: string }>;
 type ViewMode = 'map' | 'list';
 
 type IdeaMindMapProps = {
+  template?: ProjectTemplate;
+  onPlaceIdea: (idea: Idea, branchId: string) => MutationResult;
+  onAddDefaultBranches?: () => MutationResult;
   mindMap: MindMap | null;
   nodes: MindMapNode[];
   ideas: Idea[];
@@ -72,7 +80,7 @@ type IdeaMindMapProps = {
   onUpdateBranch: (nodeId: string, title: string, summary: string) => MutationResult;
   onDeleteBranch: (nodeId: string) => MutationResult;
   onDeleteIdea: (ideaId: string) => MutationResult;
-  onGoToAnalysis: () => void;
+  onGoToAnalysis?: () => void;
 };
 
 const nodeWidth = 220;
@@ -83,6 +91,8 @@ const maxMapZoom = 1.6;
 const mapZoomStep = 0.1;
 
 type IdeaDetailsDraft = {
+  content: string;
+  details: TopicDetails;
   title: string;
   summary: string;
   problem: string;
@@ -93,7 +103,7 @@ type IdeaDetailsDraft = {
 };
 
 function emptyIdeaDetailsDraft(): IdeaDetailsDraft {
-  return { title: '', summary: '', problem: '', targetusers: '', solution: '', corefeatures: '', keywords: '' };
+  return { content: '', details: normalizeTopicDetails(), title: '', summary: '', problem: '', targetusers: '', solution: '', corefeatures: '', keywords: '' };
 }
 
 function getBounds(nodes: MindMapNode[]) {
@@ -113,6 +123,7 @@ function getBounds(nodes: MindMapNode[]) {
 function ideaDetailsDraftToInput(draft: IdeaDetailsDraft): MindMapIdeaDetailsInput {
   return {
     title: draft.title.trim(),
+    content: draft.content.trim(), details: draft.details,
     summary: draft.summary.trim(),
     problem: draft.problem.trim(),
     targetusers: parseIdeaFieldLines(draft.targetusers),
@@ -216,6 +227,9 @@ function StructuredIdeaFields({
 }
 
 export function IdeaMindMap({
+  template = 'service_app',
+  onPlaceIdea,
+  onAddDefaultBranches,
   mindMap,
   nodes,
   ideas,
@@ -233,6 +247,9 @@ export function IdeaMindMap({
   onDeleteIdea,
   onGoToAnalysis,
 }: IdeaMindMapProps) {
+  const labels = getTopicLabels(template);
+  const isService = template === 'service_app';
+  const [placingIdeaId, setPlacingIdeaId] = useState<string | null>(null);
   const { width } = useWindowDimensions();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [topicDraft, setTopicDraft] = useState('');
@@ -248,7 +265,7 @@ export function IdeaMindMap({
   const [addError, setAddError] = useState('');
   const [isAddingNode, setIsAddingNode] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('map');
-  const [expandedBranchIds, setExpandedBranchIds] = useState<Set<string>>(new Set());
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const [mapStatus, setMapStatus] = useState('');
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -258,10 +275,12 @@ export function IdeaMindMap({
   const selectedIdea = selectedNode?.ideaid ? ideaById.get(selectedNode.ideaid) ?? null : null;
   const addTargetNode = addTargetNodeId ? nodeById.get(addTargetNodeId) ?? null : null;
   const addIdeaField = addTargetNode ? getMindMapNodeIdeaField(addTargetNode, nodes) : null;
-  const selectedIdeaField = selectedNode?.nodetype === 'idea_field' ? selectedNode.ideafield : null;
+  const selectedIdeaField = isService && selectedNode?.nodetype === 'idea_field' ? selectedNode.ideafield : null;
   const branches = useMemo(() => nodes.filter((node) => node.nodetype === 'branch'), [nodes]);
   const rootNode = useMemo(() => nodes.find((node) => node.nodetype === 'root') ?? null, [nodes]);
-  const bounds = useMemo(() => getBounds(nodes), [nodes]);
+  const topLevelBranches = useMemo(() => branches.filter((branch) => !branch.parentnodeid || !nodeById.has(branch.parentnodeid) || branch.parentnodeid === rootNode?.id), [branches, nodeById, rootNode]);
+  const visibleNodes = useMemo(() => getExpandedMindMapNodes(nodes, collapsedNodeIds), [nodes, collapsedNodeIds]);
+  const bounds = useMemo(() => getBounds(visibleNodes), [visibleNodes]);
   const scaledMapWidth = bounds.width * mapZoom;
   const scaledMapHeight = bounds.height * mapZoom;
   const mapZoomPercent = Math.round(mapZoom * 100);
@@ -304,11 +323,11 @@ export function IdeaMindMap({
     setAddError('');
   };
 
-  const toggleBranch = (branchId: string) => {
-    setExpandedBranchIds((current) => {
+  const toggleNode = (nodeId: string) => {
+    setCollapsedNodeIds((current) => {
       const next = new Set(current);
-      if (next.has(branchId)) next.delete(branchId);
-      else next.add(branchId);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
       return next;
     });
   };
@@ -323,6 +342,7 @@ export function IdeaMindMap({
     setBranchSummaryDraft(node.summary);
     if (idea) {
       setForm({
+        content: idea.content, details: normalizeTopicDetails(idea.details),
         title: idea.title,
         summary: idea.summary,
         problem: idea.problem,
@@ -361,6 +381,9 @@ export function IdeaMindMap({
       result = await onUpdateBranch(selectedNode.id, topicDraft, branchSummaryDraft);
     } else if (selectedIdea) {
       const details = ideaDetailsDraftToInput(form);
+      if (!details.title || (!isService && !details.content)) {
+        setIsSaving(false); setLocalError(`${labels.title}과 설명을 입력해 주세요.`); return;
+      }
       if (selectedIdeaField) {
         const validationError = validateMindMapIdeaField(details, selectedIdeaField);
         if (validationError) {
@@ -371,10 +394,11 @@ export function IdeaMindMap({
       }
       result = await onUpdateIdea(selectedIdea.id, {
         title: details.title,
-        content: selectedIdea.content || details.summary || details.problem || details.solution || details.title,
+        content: (!isService ? details.content : selectedIdea.content) || details.summary || details.problem || details.solution || details.title,
         status: normalizeIdeaStatus(selectedIdea.status),
         category: normalizeIdeaCategory(selectedIdea.category),
         sourceid: selectedIdea.sourceid,
+        details: details.details,
         summary: details.summary,
         problem: details.problem,
         targetusers: details.targetusers,
@@ -436,8 +460,8 @@ export function IdeaMindMap({
 
   const submitNewNode = async () => {
     if (!addTargetNode) return;
-    if (!addForm.title.trim()) {
-      setAddError(addTargetNode.nodetype === 'root' ? '분류 이름을 입력해 주세요.' : '아이디어 제목을 입력해 주세요.');
+    if (!addForm.title.trim() || (!isService && addTargetNode.nodetype !== 'root' && !addForm.content.trim())) {
+      setAddError(addTargetNode.nodetype === 'root' ? '분류 이름을 입력해 주세요.' : `${labels.title}과 설명을 입력해 주세요.`);
       return;
     }
     let input = ideaDetailsDraftToInput(addForm);
@@ -524,11 +548,35 @@ export function IdeaMindMap({
     );
   };
 
+  const renderListDescendant = (node: MindMapNode, ancestors: Set<string>): ReactNode => {
+    if (ancestors.has(node.id)) return null;
+    const childNodes = nodes.filter((child) => child.parentnodeid === node.id);
+    const isExpanded = !collapsedNodeIds.has(node.id);
+    const nextAncestors = new Set(ancestors);
+    nextAncestors.add(node.id);
+    return (
+      <View key={node.id} style={styles.listDescendant}>
+        {renderListNode(node, true)}
+        {childNodes.length > 0 ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`${node.title} 하위 노드 ${isExpanded ? '접기' : '펼치기'}`}
+            accessibilityState={{ expanded: isExpanded }} onPress={() => toggleNode(node.id)} style={styles.listCollapseButton}>
+            <ThemedText type="smallBold">하위 노드 {isExpanded ? '접기' : '펼치기'} {isExpanded ? '⌃' : '⌄'}</ThemedText>
+          </Pressable>
+        ) : null}
+        {isExpanded ? childNodes.map((child) => renderListDescendant(child, nextAncestors)) : null}
+      </View>
+    );
+  };
+
   const renderListView = () => (
     <View style={styles.listView}>
       {rootNode ? (
         <View style={styles.listRootSection}>
           {renderListNode(rootNode)}
+          {nodes.some((node) => node.parentnodeid === rootNode.id) ? <Pressable accessibilityRole="button" accessibilityLabel={`전체 가지 ${collapsedNodeIds.has(rootNode.id) ? '펼치기' : '접기'}`}
+            accessibilityState={{ expanded: !collapsedNodeIds.has(rootNode.id) }} onPress={() => toggleNode(rootNode.id)} style={styles.listCollapseButton}>
+            <ThemedText type="smallBold">전체 가지 {collapsedNodeIds.has(rootNode.id) ? '펼치기' : '접기'}</ThemedText>
+          </Pressable> : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="중심 주제에 새 분류 가지 추가"
@@ -539,17 +587,17 @@ export function IdeaMindMap({
           </Pressable>
         </View>
       ) : null}
-      <View style={styles.listBranches}>
-        {branches.map((branch) => {
+      {!rootNode || !collapsedNodeIds.has(rootNode.id) ? <View style={styles.listBranches}>
+        {topLevelBranches.map((branch) => {
           const childNodes = nodes.filter((node) => node.parentnodeid === branch.id);
-          const isExpanded = expandedBranchIds.has(branch.id);
+          const isExpanded = !collapsedNodeIds.has(branch.id);
           return (
             <View key={branch.id} style={styles.branchAccordion}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${branch.title} 분류 ${isExpanded ? '접기' : '펼치기'}`}
                 accessibilityState={{ expanded: isExpanded }}
-                onPress={() => toggleBranch(branch.id)}
+                onPress={() => toggleNode(branch.id)}
                 style={({ pressed }) => [styles.branchAccordionToggle, pressed && styles.pressed]}>
                 <View style={styles.listNodeCopy}>
                   <ThemedText type="captionStrong" themeColor="textSecondary">{branch.branchfield ? '고정 필드' : '사용자 분류'}</ThemedText>
@@ -560,7 +608,7 @@ export function IdeaMindMap({
               </Pressable>
               {isExpanded ? (
                 <View style={styles.branchAccordionBody}>
-                  {childNodes.length > 0 ? childNodes.map((node) => renderListNode(node, true)) : (
+                  {childNodes.length > 0 ? childNodes.map((node) => renderListDescendant(node, new Set([branch.id]))) : (
                     <ThemedText type="small" themeColor="textSecondary">아직 이 분류에 아이디어가 없습니다.</ThemedText>
                   )}
                   <Pressable
@@ -576,7 +624,8 @@ export function IdeaMindMap({
             </View>
           );
         })}
-      </View>
+        {rootNode ? nodes.filter((node) => node.parentnodeid === rootNode.id && node.nodetype !== 'branch').map((node) => renderListDescendant(node, new Set([rootNode.id]))) : null}
+      </View> : null}
     </View>
   );
 
@@ -617,7 +666,7 @@ export function IdeaMindMap({
             style={({ pressed }) => [styles.secondaryButton, (pressed || isBusy) && styles.pressed]}>
             <ThemedText style={styles.secondaryButtonText}>재정렬</ThemedText>
           </Pressable>
-          <Pressable
+          {onGoToAnalysis ? <Pressable
             accessibilityRole="button"
             accessibilityLabel="정리한 아이디어 AI 분석으로 넘기기"
             disabled={isBusy || ideas.length === 0}
@@ -627,9 +676,17 @@ export function IdeaMindMap({
               (pressed || isBusy || ideas.length === 0) && styles.pressed,
             ]}>
             <ThemedText style={styles.whiteText}>AI 분석으로 넘기기</ThemedText>
-          </Pressable>
+          </Pressable> : null}
         </View>
       </View>
+
+      {!isService && ideas.length > 0 ? <View style={styles.field}>
+        <ThemedText type="smallBold">목록의 {labels.item} 배치</ThemedText>
+        <View style={styles.branchChoices}>{ideas.map(idea => <Pressable key={idea.id} accessibilityRole="button" accessibilityState={{ selected: placingIdeaId === idea.id }} onPress={() => setPlacingIdeaId(idea.id)} style={styles.branchChoice}><ThemedText>{placingIdeaId === idea.id ? '선택됨 · ' : ''}{idea.title}</ThemedText></Pressable>)}</View>
+        {placingIdeaId ? <View style={styles.branchChoices}>{branches.map(branch => <Pressable key={branch.id} accessibilityRole="button" disabled={isBusy || isSaving} onPress={async () => { const idea = ideaById.get(placingIdeaId); if (!idea) return; setIsSaving(true); const result = await onPlaceIdea(idea, branch.id); setIsSaving(false); setMapStatus(result.error || `${idea.title} → ${branch.title} 배치 완료`); if (!result.error) setPlacingIdeaId(null); }} style={styles.branchChoice}><ThemedText>{branch.title}에 배치</ThemedText></Pressable>)}</View> : null}
+      </View> : null}
+      <MindMapExport title={mindMap.title} nodes={nodes} ideas={ideas} template={template} />
+      {onAddDefaultBranches ? <Pressable accessibilityRole="button" disabled={isBusy || isSaving} onPress={async () => { setIsSaving(true); const result = await onAddDefaultBranches(); setIsSaving(false); setMapStatus(result.error || '현재 과제 종류의 기본 가지를 추가했습니다.'); }} style={styles.secondaryButton}><ThemedText style={styles.secondaryButtonText}>현재 과제 종류의 기본 가지 추가</ThemedText></Pressable> : null}
 
       {/* 맵 프레임 */}
       {viewMode === 'list' ? renderListView() : (
@@ -648,7 +705,7 @@ export function IdeaMindMap({
                   transformOrigin: 'top left',
                 }}>
                 <Svg width={bounds.width} height={bounds.height} style={StyleSheet.absoluteFill}>
-                  {nodes.map((node) => {
+                  {visibleNodes.map((node) => {
                     const parent = node.parentnodeid ? nodeById.get(node.parentnodeid) : null;
                     if (!parent) return null;
                     return (
@@ -664,7 +721,7 @@ export function IdeaMindMap({
                     );
                   })}
                 </Svg>
-                {nodes.map((node) => {
+                {visibleNodes.map((node) => {
                   const idea = node.ideaid ? ideaById.get(node.ideaid) : null;
                   const displayTitle = idea?.title || node.title;
                   const nodeLabel =
@@ -698,6 +755,13 @@ export function IdeaMindMap({
                           zIndex: 20,
                         },
                       ]}>
+                      {nodes.some((child) => child.parentnodeid === node.id) ? (
+                        <Pressable accessibilityRole="button" accessibilityLabel={`${displayTitle} 하위 노드 ${collapsedNodeIds.has(node.id) ? '펼치기' : '접기'}`}
+                          accessibilityState={{ expanded: !collapsedNodeIds.has(node.id) }} onPress={() => toggleNode(node.id)}
+                          style={({ pressed }) => [styles.collapseNodeButton, Shadows.card, pressed && styles.pressed]}>
+                          <ThemedText style={styles.collapseNodeButtonText}>{collapsedNodeIds.has(node.id) ? '＋' : '−'}</ThemedText>
+                        </Pressable>
+                      ) : null}
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={`${displayTitle} 상세 보기`}
@@ -797,7 +861,7 @@ export function IdeaMindMap({
             <ScrollView contentContainerStyle={styles.addNodeContent} keyboardShouldPersistTaps="handled">
               <View style={styles.addNodeCopy}>
                 <ThemedText style={styles.modalHeadingTitle}>
-                  {addTargetNode?.nodetype === 'root' ? '새 분류 가지' : '새 아이디어'}
+                  {addTargetNode?.nodetype === 'root' ? '새 분류 가지' : `새 ${labels.item}`}
                 </ThemedText>
                 <ThemedText style={styles.modalHeadingSub}>
                   {addTargetNode?.nodetype === 'root'
@@ -806,7 +870,7 @@ export function IdeaMindMap({
                 </ThemedText>
               </View>
               <DetailField
-                label={addTargetNode?.nodetype === 'root' ? '분류 이름' : '아이디어 제목'}
+                label={addTargetNode?.nodetype === 'root' ? '분류 이름' : labels.title}
                 value={addForm.title}
                 multiline={false}
                 onChangeText={(value) => {
@@ -820,7 +884,7 @@ export function IdeaMindMap({
                   value={addForm.summary}
                   onChangeText={(value) => setAddForm((current) => ({ ...current, summary: value }))}
                 />
-              ) : addIdeaField ? (
+              ) : !isService ? <><DetailField label={labels.description} value={addForm.content} onChangeText={content => setAddForm(v => ({ ...v, content }))} /><TopicFields template={template} details={addForm.details} keywords={addForm.keywords} onDetails={details => setAddForm(v => ({ ...v, details }))} onKeywords={keywords => setAddForm(v => ({ ...v, keywords }))} /></> : addIdeaField ? (
                 <>
                   <DetailField
                     label={`${getIdeaFieldLabel(addIdeaField)}${isListIdeaField(addIdeaField) ? ' (한 줄에 하나씩)' : ''}`}
@@ -871,7 +935,7 @@ export function IdeaMindMap({
                   onPress={() => void submitNewNode()}
                   style={({ pressed }) => [styles.primaryButton, (pressed || isAddingNode) && styles.pressed]}>
                   {isAddingNode ? (
-                    <ActivityIndicator color="#ffffff" />
+                    <ActivityIndicator color={PALETTE.text} />
                   ) : (
                     <ThemedText style={styles.whiteText}>추가</ThemedText>
                   )}
@@ -945,12 +1009,13 @@ export function IdeaMindMap({
                   {isFullIdeaEditorOpen ? (
                     <>
                       <DetailField label="제목" value={form.title} multiline={false} onChangeText={(value) => setForm((current) => ({ ...current, title: value }))} />
-                      <DetailField label="요약" value={form.summary} onChangeText={(value) => setForm((current) => ({ ...current, summary: value }))} />
-                      <StructuredIdeaFields
-                        draft={form}
-                        excludedField={selectedIdeaField}
-                        onChange={(field, value) => setForm((current) => ({ ...current, [field]: value }))}
-                      />
+                      {isService ? <>
+                        <DetailField label="요약" value={form.summary} onChangeText={(value) => setForm((current) => ({ ...current, summary: value }))} />
+                        <StructuredIdeaFields draft={form} excludedField={selectedIdeaField} onChange={(field, value) => setForm((current) => ({ ...current, [field]: value }))} />
+                      </> : <>
+                        <DetailField label={labels.description} value={form.content} onChangeText={content => setForm(v => ({ ...v, content }))} />
+                        <TopicFields template={template} details={form.details} keywords={form.keywords} onDetails={details => setForm(v => ({ ...v, details }))} onKeywords={keywords => setForm(v => ({ ...v, keywords }))} />
+                      </>}
                       {(selectedNode?.nodetype === 'idea' || selectedNode?.nodetype === 'idea_field') && branches.length > 0 ? (
                         <View style={styles.field}>
                           <ThemedText style={styles.fieldLabel}>다른 가지로 이동</ThemedText>
@@ -1016,7 +1081,7 @@ export function IdeaMindMap({
                     onPress={() => void saveDetails()}
                     style={({ pressed }) => [styles.primaryButton, (pressed || isSaving) && styles.pressed]}>
                     {isSaving ? (
-                      <ActivityIndicator color="#ffffff" />
+                      <ActivityIndicator color={PALETTE.text} />
                     ) : (
                       <ThemedText style={styles.whiteText}>저장</ThemedText>
                     )}
@@ -1060,7 +1125,7 @@ const styles = StyleSheet.create({
   viewModeToggle: { flexDirection: 'row', borderWidth: 1, borderColor: PALETTE.cardBorder, backgroundColor: PALETTE.card, borderRadius: Radius.medium, padding: 2 },
   viewModeButton: { minHeight: 40, justifyContent: 'center', borderRadius: Radius.small, paddingHorizontal: Spacing.two },
   activeViewModeButton: { backgroundColor: PALETTE.primary },
-  activeViewModeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  activeViewModeText: { color: PALETTE.text, fontSize: 13, fontWeight: '700' },
   inactiveViewModeText: { color: PALETTE.textSecondary, fontSize: 13, fontWeight: '700' },
   mapFrame: { position: 'relative' },
   zoomControls: {
@@ -1147,7 +1212,7 @@ const styles = StyleSheet.create({
     color: PALETTE.textSecondary,
   },
   rootBadge: {
-    color: '#FFFBEB',
+    color: PALETTE.text,
   },
   branchBadge: {
     color: PALETTE.primaryDark,
@@ -1159,7 +1224,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   rootTitle: {
-    color: '#FFFFFF',
+    color: PALETTE.text,
     fontSize: 15,
   },
   branchTitle: {
@@ -1171,7 +1236,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   rootSummary: {
-    color: '#FEF3C7',
+    color: PALETTE.text,
   },
   addNodeButton: {
     position: 'absolute',
@@ -1193,6 +1258,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginTop: -2,
   },
+  collapseNodeButton: {
+    position: 'absolute',
+    right: -10,
+    bottom: -10,
+    zIndex: 3,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: PALETTE.primaryDark,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  collapseNodeButtonText: { color: PALETTE.primaryDark, fontSize: 20, fontWeight: '800' },
   highlightedNode: {
     borderColor: PALETTE.success,
     borderWidth: 2.5,
@@ -1238,7 +1318,7 @@ const styles = StyleSheet.create({
     color: PALETTE.text,
   },
   whiteText: {
-    color: '#FFFFFF',
+    color: PALETTE.text,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -1393,6 +1473,8 @@ const styles = StyleSheet.create({
   listView: { gap: Spacing.three },
   listRootSection: { gap: Spacing.two },
   listBranches: { gap: Spacing.two },
+  listDescendant: { gap: Spacing.one, marginLeft: Spacing.two },
+  listCollapseButton: { minHeight: 36, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: Spacing.two },
   listNodeCard: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
   listChildCard: { minHeight: 76 },
   listNodeCopy: { flex: 1, gap: Spacing.half },

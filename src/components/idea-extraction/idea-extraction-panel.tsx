@@ -1,7 +1,9 @@
-import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { CandidateIdeaCard } from '@/components/idea-extraction/candidate-idea-card';
+import { WattCostHint } from '@/components/watt-cost-hint';
 import {
     ExtractionSourceInput,
     type ExtractionSourceMode,
@@ -89,6 +91,18 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
   const [isSavingConditions, setIsSavingConditions] = useState(false);
   const [conditionsSaveError, setConditionsSaveError] = useState('');
   const [conditionsSaved, setConditionsSaved] = useState(false);
+  const conditionsDirty = useRef(false);
+  const conditionEditVersion = useRef(0);
+  const lastIncomingConditions = useRef(conditions);
+  useEffect(() => {
+    if (lastIncomingConditions.current === conditions) return;
+    lastIncomingConditions.current = conditions;
+    if (conditionsDirty.current) return;
+    const nextValues = conditionInputValues(conditions);
+    conditionValuesRef.current = nextValues;
+    setConditionValues(nextValues);
+    setSkillLevel(normalizedSkillLevel(conditions.skillLevel));
+  }, [conditions]);
   const {
     images,
     imageSelectionId,
@@ -116,6 +130,8 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
   );
 
   const updateCondition = (key: ConditionFieldKey, value: string) => {
+    conditionsDirty.current = true;
+    conditionEditVersion.current += 1;
     const sanitizedValue = value.replace(/\D/g, '');
     setConditionValues((current) => {
       const next = { ...current, [key]: sanitizedValue };
@@ -154,20 +170,29 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
   });
 
   const selectSkillLevel = (nextSkillLevel: SkillLevel) => {
+    conditionsDirty.current = true;
+    conditionEditVersion.current += 1;
     setSkillLevel(nextSkillLevel);
     setConditionsSaveError('');
     setConditionsSaved(false);
   };
 
-  const saveConditions = async () => {
-    if (isSavingConditions || !validateConditions()) return;
+  const saveConditions = async (): Promise<boolean> => {
+    if (isSavingConditions || !validateConditions()) return false;
     setIsSavingConditions(true);
     setConditionsSaveError('');
     setConditionsSaved(false);
+    const savingVersion = conditionEditVersion.current;
     const result = await onSaveConditions(currentConditions());
     if (result.error) setConditionsSaveError(result.error);
-    else setConditionsSaved(true);
+    else {
+      if (savingVersion === conditionEditVersion.current) {
+        conditionsDirty.current = false;
+        setConditionsSaved(true);
+      }
+    }
     setIsSavingConditions(false);
+    return !result.error && savingVersion === conditionEditVersion.current;
   };
 
   const replaceCandidates = (nextCandidates: CandidateIdea[]) => {
@@ -186,6 +211,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
     setSavedIdeaCount(null);
     clearExtractionError();
     if (!validateConditions()) return;
+    if (conditionsDirty.current && !(await saveConditions())) return;
 
     const response = await extract(
       useEditedOcrText || mode === 'text'
@@ -278,6 +304,11 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
       return;
     }
 
+    if (conditionsDirty.current && !(await saveConditions())) {
+      setSaveError('프로젝트 조건을 저장하지 못했습니다. 오류를 확인한 뒤 다시 시도해 주세요.');
+      return;
+    }
+
     setIsSaving(true);
     setSaveError('');
     setSavedIdeaCount(null);
@@ -335,7 +366,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
                 { backgroundColor: theme.primary },
                 (pressed || isSavingConditions) && styles.pressed,
               ]}>
-              {isSavingConditions ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>조건 저장</ThemedText>}
+              {isSavingConditions ? <ActivityIndicator color={theme.primaryText} /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>조건 저장</ThemedText>}
             </Pressable>
           </View>
           <View style={styles.conditionsFields}>
@@ -378,7 +409,8 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
           </View>
           <View style={styles.skillLevelField}>
             <ThemedText type="smallBold">팀의 개발 경험</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">선택한 수준에 맞춰 AI가 구현 난이도와 기능 범위를 추천합니다.</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">초급: 기본 구현 경험 · 중급: 기능 연동 경험 · 고급: 설계·배포 경험 · 잘 모르겠어요: 중급 기준으로 추천합니다.</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">저장한 팀 경험은 AI 비교 추천과 새 MVP·발표자료 생성에 전달됩니다. 기능별 난이도 표시는 별개입니다.</ThemedText>
             <View style={styles.skillLevelOptions} accessibilityLabel="프로젝트 팀의 개발 경험">
               {skillLevels.map((level) => {
                 const isSelected = skillLevel === level;
@@ -439,6 +471,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
           onClearImages={clearImages}
         />
 
+        <WattCostHint projectId={projectId} units={mode === 'image' ? 5 : 1} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="아이디어 추출하기"
@@ -451,7 +484,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
           ]}>
           {isPickingImages || isExtracting ? (
             <View style={styles.loadingRow}>
-              <ActivityIndicator color="#ffffff" />
+              <ActivityIndicator color={theme.primaryText} />
               <ThemedText type="smallBold" style={styles.primaryButtonText}>
                 {isPickingImages ? '이미지 처리 중…' : mode === 'image' ? 'OCR 및 아이디어 추출 중…' : '아이디어 추출 중…'}
               </ThemedText>
@@ -569,7 +602,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
                 { backgroundColor: theme.success },
                 (pressed || isBusy || unsavedCandidates.length === 0) && styles.pressed,
               ]}>
-              {isSaving ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>선택한 {unsavedCandidates.length}개로 마인드맵 구성</ThemedText>}
+              {isSaving ? <ActivityIndicator color={theme.text} /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>선택한 {unsavedCandidates.length}개로 마인드맵 구성</ThemedText>}
             </Pressable>
           </View>
         ) : hasExtractionResult && !isExtracting && !extractionError ? (
@@ -639,7 +672,7 @@ export function IdeaExtractionPanel({ projectId, defaultTopic, hasMindMap, onSav
             {saveError ? <ThemedText accessibilityRole="alert" type="small" style={styles.errorText}>{saveError}</ThemedText> : null}
             <View style={styles.saveCompleteActions}>
               <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 구성 취소" disabled={isSaving} onPress={() => setIsConfigOpen(false)} style={({ pressed }) => [styles.laterButton, { borderColor: theme.border }, (pressed || isSaving) && styles.pressed]}><ThemedText type="smallBold">취소</ThemedText></Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 생성" disabled={isSaving || !topic.trim()} onPress={() => void handleSave()} style={({ pressed }) => [styles.goToMindMapButton, { backgroundColor: theme.primary }, (pressed || isSaving || !topic.trim()) && styles.pressed]}>{isSaving ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>마인드맵 생성</ThemedText>}</Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="마인드맵 생성" disabled={isSaving || !topic.trim()} onPress={() => void handleSave()} style={({ pressed }) => [styles.goToMindMapButton, { backgroundColor: theme.primary }, (pressed || isSaving || !topic.trim()) && styles.pressed]}>{isSaving ? <ActivityIndicator color={theme.primaryText} /> : <ThemedText type="smallBold" style={styles.primaryButtonText}>마인드맵 생성</ThemedText>}</Pressable>
             </View>
           </ThemedView>
         </View>
@@ -714,7 +747,7 @@ const styles = StyleSheet.create({
   extractButton: { minHeight: ControlHeight.input, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   saveButton: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
   goToSelectionButton: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
-  primaryButtonText: { color: '#ffffff', textAlign: 'center' },
+  primaryButtonText: { color: '#1E293B', textAlign: 'center' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   section: { gap: Spacing.three },
   ocrInput: { minHeight: 150, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three, fontSize: 16, lineHeight: 23, textAlignVertical: 'top' },

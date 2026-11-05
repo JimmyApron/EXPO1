@@ -1,17 +1,23 @@
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import * as Clipboard from 'expo-clipboard';
 import { router, type Href } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { EmptyState } from '@/components/empty-state';
+import { AppIcon } from '@/components/app-icon';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
 import { ProjectForm } from '@/components/project-form';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useProjects } from '@/hooks/use-projects';
+import { useProjectFavorites } from '@/hooks/use-project-favorites';
+import { sortProjectsWithFavorites } from '@/lib/project-favorites';
 import { useRooms } from '@/hooks/use-rooms';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { useTheme } from '@/hooks/use-theme';
+import { wattAction, type WattSnapshot } from '@/hooks/use-watt';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
 import type { Project, ProjectInput } from '@/types/project';
 import {
@@ -106,9 +112,9 @@ function ConfirmationModal({
                 (pressed || isbusy) && styles.disabledButton,
               ]}>
               {isbusy ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={isDanger ? '#ffffff' : '#1E293B'} />
               ) : (
-                <ThemedText type="smallBold" style={styles.primaryButtonText}>{confirmLabel}</ThemedText>
+                <ThemedText type="smallBold" style={isDanger ? styles.dangerButtonText : styles.primaryButtonText}>{confirmLabel}</ThemedText>
               )}
             </Pressable>
           </View>
@@ -203,7 +209,7 @@ function RoomForm({ room, submitLabel, isbusy = false, error, onSubmit, onCancel
         ) : null}
         <Pressable disabled={isbusy} onPress={handleSubmit} style={({ pressed }) => [styles.primaryButton, (pressed || isbusy) && styles.pressed]}>
           {isbusy ? (
-            <ActivityIndicator color="#ffffff" />
+            <ActivityIndicator color="#1E293B" />
           ) : (
             <ThemedText type="smallBold" style={styles.primaryButtonText}>
               {submitLabel}
@@ -215,19 +221,18 @@ function RoomForm({ room, submitLabel, isbusy = false, error, onSubmit, onCancel
   );
 }
 
-function RoomProjectCard({ project }: { project: Project }) {
+function RoomProjectCard({ project, favorite, favoriteBusy, onToggleFavorite }: { project: Project; favorite: boolean; favoriteBusy: boolean; onToggleFavorite?: () => void }) {
   const theme = useTheme();
 
   return (
-    <Pressable
-      onPress={() => router.push(`/projects/${project.id}` as Href)}
-      style={({ pressed }) => [
-        styles.projectButton,
-        { backgroundColor: theme.surface, borderColor: theme.border },
-        pressed && styles.pressed,
-      ]}>
+    <View style={[styles.projectButton, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <Pressable
+        onPress={() => router.push(`/projects/${project.id}` as Href)}
+        accessibilityRole="button"
+        accessibilityLabel={`${project.title} 과제 열기`}
+        style={({ pressed }) => [styles.projectOpenButton, onToggleFavorite && styles.projectOpenWithFavorite, pressed && styles.pressed]}>
       <View style={styles.projectTitleBlock}>
-        <ThemedText type="smallBold" style={styles.projectTitle}>
+        <ThemedText type="smallBold" style={styles.projectTitle} numberOfLines={2}>
           {project.title}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
@@ -242,7 +247,9 @@ function RoomProjectCard({ project }: { project: Project }) {
       <ThemedText type="small" themeColor="textSecondary">
         {formatDeadlineLabel(project.deadline)}
       </ThemedText>
-    </Pressable>
+      </Pressable>
+      {onToggleFavorite ? <Pressable accessibilityRole="button" accessibilityLabel={favorite ? '과제 즐겨찾기 해제' : '과제 즐겨찾기'} accessibilityState={{ selected: favorite, disabled: favoriteBusy }} disabled={favoriteBusy} onPress={onToggleFavorite} style={styles.projectFavoriteButton}><ThemedText type="sectionTitle" style={{ color: favorite ? theme.primary : theme.textSecondary }}>{favorite ? '★' : '☆'}</ThemedText></Pressable> : null}
+    </View>
   );
 }
 
@@ -272,9 +279,39 @@ function InviteCodeCopyButton({ code }: { code: string }) {
   );
 }
 
+function RoomTeamWattCard({ roomid }: { roomid: string }) {
+  const theme = useTheme();
+  const [teamWatt, setTeamWatt] = useState<WattSnapshot|null>(null);
+
+  const refreshTeamWatt = useCallback(async () => {
+    try { const result=await wattAction<{team:WattSnapshot|null}>({action:'state',roomId:roomid}); setTeamWatt(result.team); }
+    catch { setTeamWatt(null); }
+  }, [roomid]);
+  useEffect(() => { const timeout=globalThis.setTimeout(()=>{void refreshTeamWatt();},0);return()=>globalThis.clearTimeout(timeout); }, [refreshTeamWatt]);
+  useRealtimeRefresh({
+    channelName:`room-watt-${roomid}`,
+    enabled:Boolean(roomid),
+    onRefresh:refreshTeamWatt,
+    tables:[
+      {table:'watt_entitlements',filter:`room_id=eq.${roomid}`},
+      {table:'watt_grants',filter:`owner_id=eq.${roomid}`},
+      {table:'watt_usage',filter:`room_id=eq.${roomid}`},
+    ],
+  });
+
+  return <Pressable accessibilityRole="button" onPress={()=>router.push(`/watt?roomId=${encodeURIComponent(roomid)}` as Href)} style={styles.teamWattCard}>
+    <View style={{flex:1,gap:3}}><ThemedText type="smallBold">팀 AI 이용권</ThemedText><ThemedText type="caption" themeColor="textSecondary">공동 잔여량 {teamWatt?.total ?? 0}단위{teamWatt?.textUsage ? ` · 팀 오늘 ${teamWatt.textUsage.todayUsed}/${teamWatt.textUsage.dailyLimit}회` : ''} · 이용권 관리</ThemedText></View>
+    <AppIcon name="chevronRight" color={theme.textTertiary} size={20}/>
+  </Pressable>;
+}
+
 function RoomWorkspace({ roomid }: { roomid: string }) {
   const theme = useTheme();
   const { projects, isloadingprojects, projecterror, createProject } = useProjects(roomid);
+  const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
+  const { favoriteProjectIds, favoritesStatus, favoritesError, busyProjectId, toggleFavorite } = useProjectFavorites(projectIds);
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
+  const visibleProjects = useMemo(() => sortProjectsWithFavorites(projects, favoriteProjectIds, 'created', favoriteOnly && favoritesStatus !== 'unavailable'), [favoriteOnly, favoriteProjectIds, favoritesStatus, projects]);
   const [iscreateopen, setIscreateopen] = useState(false);
   const [iscreating, setIscreating] = useState(false);
   const [formerror, setFormerror] = useState('');
@@ -291,27 +328,18 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
     }
 
     setIscreating(false);
+    return !result.error;
   };
 
   return (
     <View style={styles.workspace}>
       <View style={styles.workspaceHeader}>
-        <View>
+        <View style={styles.workspaceHeaderCopy}>
           <ThemedText type="smallBold">방 과제</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             이 방에서 공유할 과제를 만들고, 과제 안에서 아이디어를 작성합니다.
           </ThemedText>
         </View>
-        <Pressable
-          onPress={() => {
-            setFormerror('');
-            setIscreateopen(true);
-          }}
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-          <ThemedText type="smallBold" style={styles.primaryButtonText}>
-            + 새 과제
-          </ThemedText>
-        </Pressable>
       </View>
 
       {projecterror ? (
@@ -319,22 +347,37 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
           {projecterror}
         </ThemedText>
       ) : null}
+      {favoritesError ? <ThemedText accessibilityRole="alert" type="small" style={styles.errorText}>{favoritesError}</ThemedText> : null}
+      <View style={styles.projectActions}>
+        {favoritesStatus !== 'unavailable' ? <Pressable accessibilityRole="button" accessibilityLabel="즐겨찾기 과제만 보기" accessibilityState={{ selected: favoriteOnly, disabled: favoritesStatus === 'loading' }} disabled={favoritesStatus === 'loading'} onPress={() => setFavoriteOnly((value) => !value)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderColor: favoriteOnly ? theme.primaryHover : theme.primary, borderRadius: 8 }}><ThemedText type="smallBold">★ 즐겨찾기만 보기</ThemedText></Pressable> : null}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            setFormerror('');
+            setIscreateopen(true);
+          }}
+          style={({ pressed }) => [styles.primaryButton, styles.projectCreateButton, pressed && styles.pressed]}>
+          <ThemedText type="smallBold" style={styles.primaryButtonText}>
+            + 새 과제
+          </ThemedText>
+        </Pressable>
+      </View>
 
       {isloadingprojects ? (
         <ThemedView type="backgroundElement" style={styles.emptyState}>
           <ActivityIndicator />
         </ThemedView>
-      ) : projects.length === 0 ? (
+      ) : visibleProjects.length === 0 ? (
         <ThemedView type="backgroundElement" style={styles.emptyState}>
-          <ThemedText type="smallBold">아직 방 과제가 없습니다.</ThemedText>
+          <ThemedText type="smallBold">{favoriteOnly ? '즐겨찾기한 과제가 없습니다.' : '아직 방 과제가 없습니다.'}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
             과제를 만든 뒤 들어가면 팀원들과 같은 아이디어 보드를 보게 됩니다.
           </ThemedText>
         </ThemedView>
       ) : (
         <View style={styles.projectList}>
-          {projects.map((project) => (
-            <RoomProjectCard key={project.id} project={project} />
+          {visibleProjects.map((project) => (
+            <RoomProjectCard key={project.id} project={project} favorite={favoriteProjectIds.has(project.id)} favoriteBusy={busyProjectId === project.id || favoritesStatus === 'loading'} onToggleFavorite={favoritesStatus === 'unavailable' ? undefined : () => void toggleFavorite(project.id)} />
           ))}
         </View>
       )}
@@ -352,13 +395,13 @@ function RoomWorkspace({ roomid }: { roomid: string }) {
                 <ThemedText type="smallBold">닫기</ThemedText>
               </Pressable>
             </View>
-            <ProjectForm
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1 }}><ProjectForm
               submitLabel="등록"
               isbusy={iscreating}
               error={formerror}
               onSubmit={handleCreateProject}
               onCancel={() => setIscreateopen(false)}
-            />
+            /></ScrollView>
           </ThemedView>
         </View>
       </Modal>
@@ -384,10 +427,11 @@ function RoomCard({
   return (
     <ThemedView
       type="backgroundElement"
-      style={[styles.roomCard, { borderColor: theme.border }, Shadows.card]}>
+      style={[styles.roomCard, { borderColor: theme.primary }, Shadows.card]}>
       <View style={styles.roomCardHeader}>
         <View style={styles.roomTitleBlock}>
-          <ThemedText type="smallBold" style={styles.roomTitle}>
+          <ThemedText type="captionStrong" themeColor="textSecondary">팀 작업 공간 · 방</ThemedText>
+          <ThemedText accessibilityRole="header" numberOfLines={2} type="smallBold" style={styles.roomTitle}>
             {item.room.name}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
@@ -435,9 +479,11 @@ function RoomCard({
 
       {isOpen ? (
         <>
-          <View style={styles.roomActions}>
-            <Pressable onPress={onManage} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+          <View style={[styles.roomManageCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            <RoomTeamWattCard roomid={item.room.id} />
+            <Pressable accessibilityRole="button" onPress={onManage} style={({ pressed }) => [styles.roomManageButton, { borderTopColor: theme.border }, pressed && styles.pressed]}>
               <ThemedText type="smallBold">방 설정/멤버</ThemedText>
+              <AppIcon name="chevronRight" color={theme.textTertiary} size={20} />
             </Pressable>
           </View>
 
@@ -617,7 +663,7 @@ function RoomManager({
                     onPress={() => startConfirmation({ kind: 'transfer', member })}
                     style={({ pressed }) => [styles.primaryButton, styles.memberActionButton, (pressed || isactiondisabled) && styles.disabledButton]}>
                     {busykey === `transfer:${member.id}` ? (
-                      <ActivityIndicator color="#ffffff" />
+                      <ActivityIndicator color="#1E293B" />
                     ) : (
                       <ThemedText type="smallBold" style={styles.primaryButtonText}>방장 권한 넘기기</ThemedText>
                     )}
@@ -631,7 +677,7 @@ function RoomManager({
                     {busykey === `kick:${member.id}` ? (
                       <ActivityIndicator color="#ffffff" />
                     ) : (
-                      <ThemedText type="smallBold" style={styles.primaryButtonText}>강퇴</ThemedText>
+                      <ThemedText type="smallBold" style={styles.dangerButtonText}>강퇴</ThemedText>
                     )}
                   </Pressable>
                 </View>
@@ -643,13 +689,13 @@ function RoomManager({
 
       {canOwn ? (
         <Pressable disabled={isactiondisabled} onPress={onDelete} style={({ pressed }) => [styles.fullDangerButton, (pressed || isactiondisabled) && styles.disabledButton]}>
-          <ThemedText type="smallBold" style={styles.primaryButtonText}>
+          <ThemedText type="smallBold" style={styles.dangerButtonText}>
             방 삭제
           </ThemedText>
         </Pressable>
       ) : (
         <Pressable disabled={isactiondisabled} onPress={onLeave} style={({ pressed }) => [styles.fullDangerButton, (pressed || isactiondisabled) && styles.disabledButton]}>
-          <ThemedText type="smallBold" style={styles.primaryButtonText}>
+          <ThemedText type="smallBold" style={styles.dangerButtonText}>
             방 나가기
           </ThemedText>
         </Pressable>
@@ -993,7 +1039,7 @@ const styles = StyleSheet.create({
   },
   sectionCopy: {
     flex: 1,
-    minWidth: 220,
+    minWidth: 0,
     gap: Spacing.one,
   },
   headerActions: {
@@ -1030,7 +1076,7 @@ const styles = StyleSheet.create({
   roomCard: {
     gap: Spacing.four,
     borderRadius: Radius.large,
-    borderWidth: 1,
+    borderWidth: 3,
     padding: Spacing.four,
   },
   roomCardHeader: {
@@ -1041,7 +1087,7 @@ const styles = StyleSheet.create({
   },
   roomTitleBlock: {
     flex: 1,
-    minWidth: 200,
+    minWidth: 0,
     gap: Spacing.one,
   },
   roomTitle: {
@@ -1066,7 +1112,7 @@ const styles = StyleSheet.create({
   },
   roomCodeRow: {
     flexGrow: 1,
-    minWidth: 220,
+    minWidth: 0,
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -1081,24 +1127,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
   },
-  roomActions: {
+  roomManageCard: {
+    borderWidth: 1,
+    borderRadius: Radius.large,
+    overflow: 'hidden',
+  },
+  roomManageButton: {
+    minHeight: ControlHeight.touch,
+    borderTopWidth: 1,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.three,
   },
   workspace: {
+    width: '100%',
+    minWidth: 0,
     gap: Spacing.three,
     borderTopWidth: 1,
     borderTopColor: '#e2e8f0',
     paddingTop: Spacing.three,
   },
   workspaceHeader: {
+    width: '100%',
+    minWidth: 0,
+  },
+  workspaceHeaderCopy: {
+    width: '100%',
+    minWidth: 0,
+  },
+  projectActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     gap: Spacing.two,
   },
+  projectCreateButton: {
+    marginLeft: 'auto',
+  },
+  teamWattCard: { minHeight: 60, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   projectList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1107,18 +1175,36 @@ const styles = StyleSheet.create({
   projectButton: {
     flexGrow: 1,
     flexBasis: 300,
+    flexShrink: 1,
+    maxWidth: '100%',
+    minWidth: 0,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+  },
+  projectOpenButton: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
     borderRadius: Radius.medium,
-    borderWidth: 1,
     padding: Spacing.three,
+  },
+  projectOpenWithFavorite: {
+    paddingRight: Spacing.three + 44 + Spacing.two,
+  },
+  projectFavoriteButton: {
+    position: 'absolute',
+    top: Spacing.three,
+    right: Spacing.three,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   projectTitleBlock: {
     flex: 1,
-    minWidth: 180,
+    minWidth: 0,
     gap: Spacing.one,
   },
   projectTitle: {
@@ -1194,7 +1280,7 @@ const styles = StyleSheet.create({
   },
   listItemCopy: {
     flex: 1,
-    minWidth: 180,
+    minWidth: 0,
     gap: Spacing.one,
   },
   memberSectionHeader: {
@@ -1256,8 +1342,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: '#1E293B',
   },
+  dangerButtonText: { color: '#ffffff' },
   secondaryButton: {
     minHeight: ControlHeight.touch,
     borderRadius: Radius.medium,
@@ -1314,6 +1401,7 @@ const styles = StyleSheet.create({
   modalPanel: {
     width: '100%',
     maxWidth: 560,
+    maxHeight: '92%',
     gap: Spacing.three,
     borderWidth: 1,
     borderRadius: Radius.large,

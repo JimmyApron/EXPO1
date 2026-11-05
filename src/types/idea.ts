@@ -73,6 +73,7 @@ export type Idea = {
   solution: string;
   keywords: string[];
   corefeatures: string[];
+  details?: import('../lib/topic-workspace').TopicDetails;
   createdat: string;
   updatedat: string;
 };
@@ -89,6 +90,7 @@ export type IdeaInput = {
   solution?: string;
   keywords?: string[];
   corefeatures?: string[];
+  details?: import('../lib/topic-workspace').TopicDetails;
 };
 
 export type IdeaMindMapInput = {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
@@ -146,17 +146,26 @@ export function useRooms() {
   const [rooms, setRooms] = useState<RoomWithDetails[]>([]);
   const [isloadingrooms, setIsloadingrooms] = useState(true);
   const [roomerror, setRoomerror] = useState('');
+  const [loadedUserId, setLoadedUserId] = useState('');
+  const loadedUserIdRef = useRef('');
+  const requestId = useRef(0);
 
   const roomById = useMemo(() => new Map(rooms.map((item) => [item.room.id, item])), [rooms]);
 
   const loadRooms = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user) {
       setRooms([]);
+      loadedUserIdRef.current = '';
+      setLoadedUserId('');
       setIsloadingrooms(false);
       return [];
     }
 
-    setIsloadingrooms(true);
+    if (loadedUserIdRef.current !== user.id) {
+      setIsloadingrooms(true);
+      setRooms([]);
+    }
     setRoomerror('');
 
     const { data: myMembershipRows, error: membershipError } = await supabase
@@ -164,9 +173,12 @@ export function useRooms() {
       .select(memberSelect)
       .eq('userid', user.id);
 
+    if (currentRequestId !== requestId.current) return null;
+
     if (membershipError) {
       setRoomerror(getRoomErrorMessage(membershipError));
-      setRooms([]);
+      loadedUserIdRef.current = user.id;
+      setLoadedUserId(user.id);
       setIsloadingrooms(false);
       return null;
     }
@@ -177,6 +189,8 @@ export function useRooms() {
 
     if (roomIds.length === 0) {
       setRooms([]);
+      loadedUserIdRef.current = user.id;
+      setLoadedUserId(user.id);
       setIsloadingrooms(false);
       return [];
     }
@@ -187,10 +201,13 @@ export function useRooms() {
         supabase.from('roommembers').select(memberSelect).in('roomid', roomIds).order('createdat', { ascending: true }),
       ]);
 
+    if (currentRequestId !== requestId.current) return null;
+
     const firstError = roomsError || membersError;
     if (firstError) {
       setRoomerror(getRoomErrorMessage(firstError));
-      setRooms([]);
+      loadedUserIdRef.current = user.id;
+      setLoadedUserId(user.id);
       setIsloadingrooms(false);
       return null;
     }
@@ -206,6 +223,8 @@ export function useRooms() {
         .select('id, email, nickname')
         .in('id', memberUserIds);
 
+      if (currentRequestId !== requestId.current) return null;
+
       (profileRows ?? []).forEach((profile) => {
         profiles.set(String(profile.id), profile as ProfileRow);
       });
@@ -218,6 +237,8 @@ export function useRooms() {
 
     const nextRooms = buildRoomDetails(user.id, normalizedRooms, normalizedMembers);
     setRooms(nextRooms);
+    loadedUserIdRef.current = user.id;
+    setLoadedUserId(user.id);
     setIsloadingrooms(false);
     return nextRooms;
   }, [user]);
@@ -432,7 +453,7 @@ export function useRooms() {
 
   return {
     rooms,
-    isloadingrooms,
+    isloadingrooms: isloadingrooms || loadedUserId !== (user?.id ?? ''),
     roomerror,
     loadRooms,
     createRoom,

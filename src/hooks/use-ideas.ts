@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { normalizeTopicDetails } from '@/lib/topic-workspace';
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
@@ -20,7 +21,8 @@ type IdeaMutationResult = {
 };
 
 const ideaSelect =
-  'id, projectid, userid, title, content, status, category, isfavorite, legacystructural, parentnodeid, x, y, side, sourceid, summary, problem, targetusers, solution, keywords, corefeatures, createdat, updatedat';
+  'id, projectid, userid, title, content, status, category, isfavorite, legacystructural, parentnodeid, x, y, side, sourceid, summary, problem, targetusers, solution, keywords, corefeatures, details, createdat, updatedat';
+const legacyIdeaSelect = 'id, projectid, userid, title, content, status, category, isfavorite, legacystructural, parentnodeid, x, y, side, sourceid, summary, problem, targetusers, solution, keywords, corefeatures, createdat, updatedat';
 
 function normalizeStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
@@ -48,6 +50,7 @@ function normalizeIdea(row: Partial<Idea>): Idea {
     solution: typeof row.solution === 'string' ? row.solution : '',
     keywords: normalizeStringArray(row.keywords),
     corefeatures: normalizeStringArray(row.corefeatures),
+    details: normalizeTopicDetails(row.details),
     createdat: row.createdat ?? '',
     updatedat: row.updatedat ?? '',
   };
@@ -55,6 +58,7 @@ function normalizeIdea(row: Partial<Idea>): Idea {
 
 function cleanIdeaInput(input: IdeaInput) {
   const structured = {
+    ...(input.details !== undefined ? { details: normalizeTopicDetails(input.details) } : {}),
     ...(input.sourceid !== undefined ? { sourceid: input.sourceid } : {}),
     ...(input.summary !== undefined ? { summary: input.summary.trim() } : {}),
     ...(input.problem !== undefined ? { problem: input.problem.trim() } : {}),
@@ -110,34 +114,54 @@ export function useIdeas(projectId?: string) {
   const { user } = useAuth();
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [isLoadingIdeas, setIsLoadingIdeas] = useState(true);
+  const [loadedProjectKey, setLoadedProjectKey] = useState('');
   const [ideaError, setIdeaError] = useState('');
+  const requestId = useRef(0);
+  const loadedProjectKeyRef = useRef('');
+  const projectKey = `${user?.id ?? ''}:${projectId ?? ''}`;
 
   const loadIdeas = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user || !projectId) {
       setIdeas([]);
+      loadedProjectKeyRef.current = '';
+      setLoadedProjectKey('');
       setIsLoadingIdeas(false);
       return;
     }
 
-    setIsLoadingIdeas(true);
+    // A background refresh must not replace the live board with a skeleton.
+    if (loadedProjectKeyRef.current !== projectKey) {
+      setIsLoadingIdeas(true);
+      setIdeas([]);
+    }
     setIdeaError('');
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('ideas')
       .select(ideaSelect)
       .eq('projectid', projectId)
       .eq('legacystructural', false)
       .order('createdat', { ascending: false });
 
+    if (error && (error.code === '42703' || error.code === 'PGRST204') && /\bdetails\b/.test(error.message)) {
+      const legacy = await supabase.from('ideas').select(legacyIdeaSelect).eq('projectid', projectId).eq('legacystructural', false).order('createdat', { ascending: false });
+      data = legacy.data?.map(row => ({ ...row, details: {} })) ?? null;
+      error = legacy.error;
+    }
+
+    if (currentRequestId !== requestId.current) return;
+
     if (error) {
       setIdeaError(error.message);
-      setIdeas([]);
     } else {
       setIdeas((data ?? []).map((row) => normalizeIdea(row as Partial<Idea>)));
     }
 
+    loadedProjectKeyRef.current = projectKey;
+    setLoadedProjectKey(projectKey);
     setIsLoadingIdeas(false);
-  }, [projectId, user]);
+  }, [projectId, projectKey, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => {
@@ -314,7 +338,7 @@ export function useIdeas(projectId?: string) {
   );
 
   return {
-    ideas,
+    ideas: loadedProjectKey === projectKey ? ideas : [],
     isLoadingIdeas,
     ideaError,
     loadIdeas,

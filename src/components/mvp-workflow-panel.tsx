@@ -1,22 +1,26 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { MvpEffortTags } from '@/components/mvp-effort-tags';
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { MvpSummaryCard } from '@/components/result/mvp-summary-card';
+import { WattCostHint } from '@/components/watt-cost-hint';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useMvpPlan } from '@/hooks/use-mvp-plan';
 import type { useProjectFlow } from '@/hooks/use-project-flow';
 import { useTheme } from '@/hooks/use-theme';
-import { formatMvpDuration, normalizeTeamExperience } from '@/lib/mvp';
+import { extractKeywordsFromText, formatMvpDuration, mergeKeywordLists, normalizeTeamExperience } from '@/lib/mvp';
 import type { Idea } from '@/types/idea';
 import type { MvpIdea } from '@/types/mvp-plan';
 
 type MvpWorkflowPanelProps = {
+  projectId: string;
   idea: Idea;
   flowController: ReturnType<typeof useProjectFlow>;
   onGoToPresentation: () => void;
+  hasPresentation?: boolean;
 };
 
 function BulletList({ items }: { items: string[] }) {
@@ -39,7 +43,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: MvpWorkflowPanelProps) {
+export function MvpWorkflowPanel({ projectId, idea, flowController, onGoToPresentation, hasPresentation = true }: MvpWorkflowPanelProps) {
   const theme = useTheme();
   const { flow, conditions, saveMvpPlan } = flowController;
   const mvpIdea: MvpIdea = useMemo(() => ({
@@ -52,6 +56,7 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
     coreFeatures: idea.corefeatures,
   }), [idea]);
   const { plan, isGenerating, error, generatePlan } = useMvpPlan(
+    projectId,
     mvpIdea,
     conditions,
     flow?.mvpplan,
@@ -60,6 +65,45 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
   const hasPreviousPlan = Boolean(flow?.mvpplan && flow.mvpplan.ideaId !== idea.id);
   const teamExperienceLabel = normalizeTeamExperience(conditions.skillLevel);
   const durationLabel = formatMvpDuration(conditions.durationWeeks);
+  const planConditions = plan?.inputConditions;
+  const planConditionsChanged = Boolean(planConditions && (
+    planConditions.skillLevel !== conditions.skillLevel ||
+    planConditions.durationWeeks !== conditions.durationWeeks ||
+    planConditions.teamSize !== conditions.teamSize ||
+    planConditions.budget !== conditions.budget
+  ));
+  const [keywordDraft, setKeywordDraft] = useState('');
+  const [keywordSaving, setKeywordSaving] = useState(false);
+  const [keywordError, setKeywordError] = useState('');
+  const autoKeywords = plan ? extractKeywordsFromText([
+    plan.summary,
+    ...plan.mustHaveFeatures.flatMap((feature) => [feature.name, feature.description]),
+    ...plan.schedule.flatMap((step) => [step.goal, ...step.tasks]),
+  ].join(' ')) : [];
+  const keywords = plan ? mergeKeywordLists(
+    autoKeywords.filter((keyword) => !(plan.removedKeywords ?? []).includes(keyword)),
+    plan.manualKeywords ?? [],
+  ) : [];
+  const saveKeywords = async (manualKeywords: string[], removedKeywords: string[]) => {
+    if (!plan || keywordSaving) return;
+    setKeywordSaving(true); setKeywordError('');
+    try {
+      const result = await saveMvpPlan({ ...plan, manualKeywords, removedKeywords });
+      if (result.error) throw new Error(result.error);
+      return true;
+    } catch (cause) { setKeywordError(cause instanceof Error ? cause.message : '키워드를 저장하지 못했습니다.'); }
+    finally { setKeywordSaving(false); }
+    return false;
+  };
+  const addKeyword = async () => {
+    const next = keywordDraft.trim();
+    if (!next || !plan || keywords.some((keyword) => keyword.toLowerCase() === next.toLowerCase())) return;
+    if (await saveKeywords([...(plan.manualKeywords ?? []), next], (plan.removedKeywords ?? []).filter((item) => item.toLowerCase() !== next.toLowerCase()))) setKeywordDraft('');
+  };
+  const removeKeyword = async (keyword: string) => {
+    if (!plan) return;
+    await saveKeywords((plan.manualKeywords ?? []).filter((item) => item !== keyword), [...(plan.removedKeywords ?? []), keyword]);
+  };
 
   return (
     <View style={styles.container}>
@@ -78,12 +122,23 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
       ) : null}
 
       <ThemedView type="backgroundElement" style={[styles.metaCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
-        <ThemedText type="smallBold">현재 추천 기준</ThemedText>
+        <ThemedText type="smallBold">현재 프로젝트 조건</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          팀의 개발 경험: {teamExperienceLabel} · 예상 기간: {durationLabel}
+          팀의 개발 경험: {teamExperienceLabel}{teamExperienceLabel === '잘 모르겠어요' ? ' (중급 기준 추천)' : ''} · 예상 기간: {durationLabel}
         </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">새 AI 계획을 만들 때 이 조건으로 MVP 범위·일정·역할을 추천합니다. 아래 기능 난이도는 팀의 개발 경험과 별개입니다.</ThemedText>
       </ThemedView>
 
+      {plan && (planConditionsChanged || !planConditions) ? (
+        <ThemedView type="backgroundElement" style={[styles.noticeCard, { backgroundColor: theme.warningSoft, borderColor: theme.warning }]}>
+          <ThemedText type="smallBold" style={{ color: theme.warning }}>
+            {planConditionsChanged ? '프로젝트 조건이 이 MVP를 만든 뒤 변경됐어요.' : '이전 MVP의 생성 당시 조건을 확인할 수 없어요.'}
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">현재 팀 경험과 기간을 반영하려면 ‘AI로 MVP 계획 다시 만들기’를 눌러 주세요. 기존 계획은 다시 만들기 전까지 보입니다.</ThemedText>
+        </ThemedView>
+      ) : null}
+
+      <WattCostHint projectId={projectId} units={2} />
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled: isGenerating }}
@@ -107,10 +162,16 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
       {plan ? (
         <>
           <ThemedText type="smallBold" style={{ color: theme.primary }}>{plan.ideaTitle}</ThemedText>
+          <Section title="프로젝트 핵심 키워드">
+            <ThemedText type="small" themeColor="textSecondary">MVP 계획에서 추출했습니다. 직접 추가하거나 제거한 내용은 계획을 다시 만들어도 유지됩니다.</ThemedText>
+            <View style={styles.grid}>{keywords.length ? keywords.map((keyword) => <Pressable key={keyword} accessibilityRole="button" accessibilityLabel={`${keyword} 키워드 삭제`} disabled={keywordSaving} onPress={() => void removeKeyword(keyword)} style={[styles.keywordChip, { borderColor: theme.border }]}><ThemedText type="smallBold">{keyword} ×</ThemedText></Pressable>) : <ThemedText type="small">키워드가 없습니다. 직접 추가해 주세요.</ThemedText>}</View>
+            <View style={styles.grid}><TextInput accessibilityLabel="핵심 키워드 입력" value={keywordDraft} onChangeText={setKeywordDraft} editable={!keywordSaving} placeholder="키워드 추가" placeholderTextColor={theme.textSecondary} style={[styles.keywordInput, { color: theme.text, borderColor: theme.border }]} /><Pressable accessibilityRole="button" accessibilityLabel="핵심 키워드 추가" accessibilityState={{ disabled: !keywordDraft.trim() || keywordSaving }} disabled={!keywordDraft.trim() || keywordSaving} onPress={() => void addKeyword()} style={[styles.primaryButton, { backgroundColor: theme.primary }]}><ThemedText type="smallBold" style={styles.whiteText}>{keywordSaving ? '저장 중' : '추가'}</ThemedText></Pressable></View>
+            {keywordError ? <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>{keywordError}</ThemedText> : null}
+          </Section>
           <MvpSummaryCard
             featureDetails={(
               <Section title="필수 기능 · 구현 난이도">
-                <ThemedText type="small" themeColor="textSecondary">초급 개발자 1명, 주 10시간 기준 AI 추정입니다. 학습·테스트를 포함하며 기능과 API의 중복 작업량은 단순 합산하지 마세요.</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">기능 난이도와 작업량은 팀 경험 선택값이 아닙니다. 작업량은 비교를 위해 초급 개발자 1명·주 10시간 기준으로 추정하며, 새로 생성하는 팀 일정에는 위 프로젝트 조건을 반영합니다.</ThemedText>
                 {plan.mustHaveFeatures.map((feature, index) => (
                   <View key={`${feature.name}:${index}`} style={styles.list}>
                     <ThemedText type="smallBold">{feature.name}</ThemedText>
@@ -165,13 +226,13 @@ export function MvpWorkflowPanel({ idea, flowController, onGoToPresentation }: M
               </View>
             </Section>
           </MvpSummaryCard>
-          <Pressable
+          {hasPresentation ? <Pressable
             accessibilityRole="button"
             accessibilityLabel="발표자료 단계로 이동"
             onPress={onGoToPresentation}
             style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, pressed && styles.pressed]}>
             <ThemedText type="smallBold" style={styles.whiteText}>발표자료로 이동</ThemedText>
-          </Pressable>
+          </Pressable> : null}
         </>
       ) : null}
     </View>
@@ -182,7 +243,7 @@ const styles = StyleSheet.create({
   container: { gap: Spacing.four, paddingTop: Spacing.two },
   heading: { gap: Spacing.one },
   primaryButton: { minHeight: ControlHeight.button, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: Spacing.four, borderRadius: Radius.medium },
-  whiteText: { color: '#fff' },
+  whiteText: { color: '#1E293B' },
   pressed: { opacity: 0.7 },
   noticeCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
   metaCard: { gap: Spacing.one, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
@@ -193,5 +254,7 @@ const styles = StyleSheet.create({
   wireframeBox: { gap: Spacing.two, borderWidth: 1, borderStyle: 'dashed', borderRadius: Radius.medium, padding: Spacing.two },
   wireframeBlock: { padding: Spacing.two, borderRadius: Radius.small },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  innerCard: { minWidth: 220, flex: 1, gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  innerCard: { minWidth: 0, flex: 1, flexBasis: 220, gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three },
+  keywordChip: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
+  keywordInput: { minWidth: 160, flex: 1, minHeight: ControlHeight.input, borderWidth: 1, borderRadius: Radius.medium, paddingHorizontal: Spacing.three },
 });

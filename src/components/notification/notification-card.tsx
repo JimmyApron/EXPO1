@@ -14,6 +14,11 @@ const kindColors: Record<NotificationKind, { background: string; text: string }>
   feedback: { background: '#E7F8EF', text: '#168B51' },
   likesurge: { background: '#fce7f3', text: '#be185d' },
   evaluation: { background: '#e0f2fe', text: '#0369a1' },
+  team_evaluation: { background: '#e0f2fe', text: '#0369a1' },
+  team_reminder: { background: '#FEF3C7', text: '#92400e' },
+  team_feedback: { background: '#E7F8EF', text: '#168B51' },
+  team_changes: { background: '#FEF3C7', text: '#92400e' },
+  team_room: { background: '#f1f5f9', text: '#475569' },
 };
 
 function formatRelativeTime(value: string) {

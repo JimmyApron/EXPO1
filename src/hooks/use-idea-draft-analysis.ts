@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
-import { supabase } from '@/lib/supabase';
+import { invokeWattAi } from '@/lib/invoke-watt-ai';
+import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import type {
   IdeaDraftAnalysisInput,
   IdeaDraftAnalysisLevel,
@@ -113,7 +114,7 @@ export function useIdeaDraftAnalysis(projectId?: string) {
       setAnalysisError('');
 
       try {
-        const { data, error } = await supabase.functions.invoke('analyze-idea-draft', {
+        const { data, error } = await invokeWattAi('analyze-idea-draft', {
           body: {
             projectId,
             idea: toAnalysisInput(input),
@@ -136,6 +137,7 @@ export function useIdeaDraftAnalysis(projectId?: string) {
         }
 
         setAnalysis(data);
+        notifyWattBalanceChanged();
       } catch {
         setAnalysis(null);
         setAnalysisError(analysisLoadError);

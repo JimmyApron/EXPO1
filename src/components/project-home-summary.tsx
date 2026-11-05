@@ -1,5 +1,9 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
+import type { DocumentWorkspace } from '@/types/document-workspace';
+import type { ProjectTemplate } from '@/types/project';
+import type { ProjectSettings } from '@/lib/topic-workspace';
+import { manuscriptCount } from '@/lib/document-workspace';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
@@ -20,19 +24,39 @@ const PALETTE = {
 };
 
 type ProjectHomeSummaryProps = {
+  template?: ProjectTemplate;
+  workspace?: DocumentWorkspace;
+  settings?: ProjectSettings;
   deadline?: string | null;
   ideaCount: number;
   selectedIdeaTitle?: string;
   workflowState: ProjectWorkflowState;
+  stageLabel?: string;
+  completedStageCount?: number;
+  totalStageCount?: number;
 };
 
 export function ProjectHomeSummary({
+  template = 'service_app', workspace, settings,
   deadline,
   ideaCount,
   selectedIdeaTitle,
   workflowState,
+  stageLabel,
+  completedStageCount,
+  totalStageCount,
 }: ProjectHomeSummaryProps) {
-  const progressLabel = getProjectProgressLabel(workflowState);
+  const { width } = useWindowDimensions();
+  const progressLabel = stageLabel ?? getProjectProgressLabel(workflowState);
+  const metricColumns = width < 600 ? 2 : 3;
+  const documentMetrics: [string, string][] | null = template === 'service_app' || !workspace ? null : template === 'report_research' ? [
+    ['등록한 조사 자료', `${workspace.resources.length}개`], ['핵심 근거', `${workspace.evidence.length}개`],
+    ['목차 구성', `${workspace.outline.length}개 항목`], ['본문 작성', `${manuscriptCount(workspace)}자`],
+  ] : [
+    ['저장한 소재', `${ideaCount}개`], ['개요 구성', `${workspace.outline.length}개 항목`],
+    ['작성 분량', `${manuscriptCount(workspace)}자`], ['목표 분량', settings?.targetLength ? `${settings.targetLength}자` : '미설정'],
+    ['원고 상태', workspace.finalVersionId ? '최종본 보관됨' : '초안'],
+  ];
 
   return (
     <View
@@ -45,6 +69,7 @@ export function ProjectHomeSummary({
         <View style={styles.headingCopy}>
           <ThemedText style={styles.subTitle}>현재 과제 진행 상태</ThemedText>
           <ThemedText style={styles.mainTitle}>{progressLabel}</ThemedText>
+          {totalStageCount ? <ThemedText type="smallBold">{completedStageCount ?? 0}/{totalStageCount} 단계 완료</ThemedText> : null}
         </View>
         <View style={styles.deadlineChip}>
           <ThemedText style={styles.dayText}>
@@ -56,27 +81,22 @@ export function ProjectHomeSummary({
         </View>
       </View>
 
-      {/* 통계 / 핵심 요약 지표 영역 */}
-      <View style={styles.metricGrid}>
-        {/* 등록된 아이디어 개수 카드 */}
-        <View style={[styles.metric, styles.countMetric]}>
-          <ThemedText style={styles.metricLabel}>등록된 아이디어</ThemedText>
-          <ThemedText style={styles.metricCountValue}>{ideaCount}개</ThemedText>
-        </View>
+      {documentMetrics ? <View style={styles.documentMetricGrid}>
+        {Array.from({ length: Math.ceil(documentMetrics.length / metricColumns) }, (_, rowIndex) => (
+          <View key={rowIndex} style={styles.documentMetricRow}>
+            {documentMetrics.slice(rowIndex * metricColumns, (rowIndex + 1) * metricColumns).map(([label, value]) => (
+              <View key={label} style={[styles.metric, styles.documentMetric]}>
+                <ThemedText style={styles.metricLabel}>{label}</ThemedText>
+                <ThemedText style={styles.metricCountValue}>{value}</ThemedText>
+              </View>
+            ))}
+          </View>
+        ))}
+      </View> : <View style={styles.metricGrid}>
+        <View style={[styles.metric, styles.countMetric]}><ThemedText style={styles.metricLabel}>등록된 아이디어</ThemedText><ThemedText style={styles.metricCountValue}>{ideaCount}개</ThemedText></View>
+        <View style={[styles.metric, styles.selectedMetric]}><ThemedText style={styles.metricLabel}>현재 최종 선정 아이디어</ThemedText><ThemedText style={[styles.selectedTitleText, !selectedIdeaTitle && styles.emptyTitleText]} numberOfLines={2}>{selectedIdeaTitle || '아직 선정되지 않음'}</ThemedText></View>
+      </View>}
 
-        {/* 현재 최종 선정 아이디어 카드 */}
-        <View style={[styles.metric, styles.selectedMetric]}>
-          <ThemedText style={styles.metricLabel}>현재 최종 선정 아이디어</ThemedText>
-          <ThemedText
-            style={[
-              styles.selectedTitleText,
-              !selectedIdeaTitle && styles.emptyTitleText,
-            ]}
-            numberOfLines={2}>
-            {selectedIdeaTitle || '아직 선정되지 않음'}
-          </ThemedText>
-        </View>
-      </View>
     </View>
   );
 }
@@ -138,6 +158,14 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     marginTop: 2,
   },
+  documentMetricGrid: {
+    gap: Spacing.two,
+    marginTop: 2,
+  },
+  documentMetricRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
   metric: {
     backgroundColor: PALETTE.metricBg,
     borderColor: PALETTE.metricBorder,
@@ -150,6 +178,10 @@ const styles = StyleSheet.create({
   countMetric: {
     minWidth: 120,
     flex: 1,
+  },
+  documentMetric: {
+    flex: 1,
+    minWidth: 0,
   },
   selectedMetric: {
     flex: 2,

@@ -3,7 +3,8 @@ import { normalizeMvpPlan } from '../../supabase/functions/_shared/mvp-plan';
 
 import { MVP_EDGE_FUNCTION_NAME } from '@/constants/mvp';
 import { useAuth } from '@/hooks/use-auth';
-import { supabase } from '@/lib/supabase';
+import { invokeWattAi } from '@/lib/invoke-watt-ai';
+import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import type { ProjectConditions } from '@/types/candidate-idea';
 import type { MvpIdea, MvpPlan } from '@/types/mvp-plan';
 
@@ -22,6 +23,17 @@ function isMvpPlan(value: unknown, ideaId: string): value is MvpPlan {
     Array.isArray(plan.apis) &&
     Array.isArray(plan.presentationOrder)
   );
+}
+
+function hydrateSavedPlan(savedPlan: MvpPlan | null | undefined, idea: MvpIdea): MvpPlan | null {
+  if (!isMvpPlan(savedPlan, idea.id)) return null;
+  const normalized = normalizeMvpPlan(savedPlan, idea);
+  return normalized ? {
+    ...normalized,
+    inputConditions: savedPlan.inputConditions,
+    manualKeywords: savedPlan.manualKeywords ?? [],
+    removedKeywords: savedPlan.removedKeywords ?? [],
+  } : null;
 }
 
 async function getMvpErrorMessage(error: unknown) {
@@ -43,6 +55,7 @@ async function getMvpErrorMessage(error: unknown) {
 }
 
 export function useMvpPlan(
+  projectId: string,
   idea: MvpIdea,
   conditions?: ProjectConditions,
   savedPlan?: MvpPlan | null,
@@ -50,7 +63,7 @@ export function useMvpPlan(
 ) {
   const { session } = useAuth();
   const [plan, setPlan] = useState<MvpPlan | null>(
-    isMvpPlan(savedPlan, idea.id) ? normalizeMvpPlan(savedPlan, idea) : null,
+    hydrateSavedPlan(savedPlan, idea),
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
@@ -58,7 +71,7 @@ export function useMvpPlan(
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(
-      () => setPlan(isMvpPlan(savedPlan, idea.id) ? normalizeMvpPlan(savedPlan, idea) : null),
+      () => setPlan(hydrateSavedPlan(savedPlan, idea)),
       0,
     );
     return () => globalThis.clearTimeout(timeout);
@@ -74,23 +87,35 @@ export function useMvpPlan(
     setError('');
 
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke(MVP_EDGE_FUNCTION_NAME, {
-        body: { selectedIdeaId: idea.id, idea, projectConditions: conditions },
+      const { data, error: invokeError } = await invokeWattAi(MVP_EDGE_FUNCTION_NAME, {
+        body: { projectId, selectedIdeaId: idea.id, idea, projectConditions: conditions },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (invokeError) throw invokeError;
       if (!isMvpPlan(data, idea.id)) throw new Error('AI 계획 응답 형식이 올바르지 않습니다.');
-      const normalized = normalizeMvpPlan(data, idea);
+      const base = normalizeMvpPlan(data, idea);
+      const normalized = base ? {
+        ...base,
+        inputConditions: conditions && conditions.durationWeeks !== undefined && conditions.teamSize !== undefined && conditions.budget !== undefined ? {
+          durationWeeks: conditions.durationWeeks,
+          teamSize: conditions.teamSize,
+          skillLevel: conditions.skillLevel ?? '',
+          budget: conditions.budget,
+        } : undefined,
+        manualKeywords: savedPlan?.ideaId === idea.id ? savedPlan.manualKeywords ?? [] : [],
+        removedKeywords: savedPlan?.ideaId === idea.id ? savedPlan.removedKeywords ?? [] : [],
+      } : null;
       if (!normalized) throw new Error('AI 계획 응답 형식이 올바르지 않습니다.');
       const saveResult = await onSave?.(normalized) as { error?: string } | undefined;
       if (saveResult?.error) throw new Error(saveResult.error);
       setPlan(normalized);
+      notifyWattBalanceChanged();
     } catch (caughtError) {
       setError(await getMvpErrorMessage(caughtError));
     } finally {
       setIsGenerating(false);
     }
-  }, [accessToken, conditions, idea, isGenerating, onSave]);
+  }, [accessToken, conditions, idea, isGenerating, onSave, projectId, savedPlan]);
 
   return { plan, isGenerating, error, generatePlan };
 }

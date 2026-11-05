@@ -19,6 +19,8 @@ type ResultSummaryScreenProps = {
   onRetryRanking: () => void;
   onSelectIdea: (ideaId: string) => Promise<void>;
   onGoToMvp: () => void;
+  onEditIdea: (ideaId: string) => void;
+  onAddFeedback: (ideaId: string, content: string) => Promise<{ error?: string }>;
 };
 
 export function ResultSummaryScreen({
@@ -31,6 +33,8 @@ export function ResultSummaryScreen({
   onRetryRanking,
   onSelectIdea,
   onGoToMvp,
+  onEditIdea,
+  onAddFeedback,
 }: ResultSummaryScreenProps) {
   const [selectingId, setSelectingId] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<IdeaResultSortMode>('ai');
@@ -128,6 +132,8 @@ export function ResultSummaryScreen({
             selectionHint={selectionHint}
             onSelect={() => void select(idea.id)}
             onGoToMvp={onGoToMvp}
+            onEdit={() => onEditIdea(idea.id)}
+            onAddFeedback={(content) => onAddFeedback(idea.id, content)}
           />
         ))}
       </View>
@@ -144,7 +150,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.three,
   },
-  headingCopy: { flex: 1, minWidth: 220, gap: Spacing.one },
+  headingCopy: { flex: 1, minWidth: 0, flexBasis: 220, gap: Spacing.one },
   participants: {
     minWidth: 140,
     alignItems: 'center',
@@ -180,7 +186,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     paddingHorizontal: Spacing.two,
   },
-  selectedSortText: { color: '#FFFFFF' },
+  selectedSortText: { color: '#1E293B' },
   recommendationReason: {
     gap: Spacing.one,
     borderWidth: 1,

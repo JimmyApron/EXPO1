@@ -1,5 +1,5 @@
-import { type ReactNode, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { type ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -12,18 +12,25 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
 }
 
 export function MvpSummaryCard({ summary, children, featureDetails, apiDetails }: { summary: MvpSummary; children?: ReactNode; featureDetails?: ReactNode; apiDetails?: ReactNode }) {
-  const [expanded, setExpanded] = useState(false);
   const theme = useTheme();
   return (
-    <ThemedView type="background" style={[styles.card, { borderColor: theme.border }]}>
-      <ThemedText type="cardTitle">MVP 요약</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary"><ThemedText type="smallBold">핵심: </ThemedText>{summary.core}</ThemedText>
-      <Pressable accessibilityRole="button" accessibilityLabel={`MVP 상세 ${expanded ? '접기' : '보기'}`} accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)} style={styles.toggle}>
-        <ThemedText type="button" style={{ color: theme.primary }}>{expanded ? 'MVP 상세 접기 ▲' : 'MVP 상세 보기 ▼'}</ThemedText>
-      </Pressable>
-      {expanded ? <View style={styles.details}>{featureDetails ?? <DetailList title="필수 기능" items={summary.essentialFeatures} />}<DetailList title="추후 기능" items={summary.laterFeatures} /><DetailList title="개발 일정" items={summary.schedule} />{apiDetails ?? <DetailList title="필요 API" items={summary.requiredApis} />}{children}</View> : null}
-    </ThemedView>
+    <>
+      <ThemedView type="background" style={[styles.card, { borderColor: theme.border }]}>
+        <ThemedText type="cardTitle">MVP 요약</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary"><ThemedText type="smallBold">핵심: </ThemedText>{summary.core}</ThemedText>
+      </ThemedView>
+      <ThemedView type="background" style={[styles.card, { borderColor: theme.border }]}>
+        <ThemedText type="cardTitle">MVP 상세</ThemedText>
+        <View style={styles.details}>
+          {featureDetails ?? <DetailList title="필수 기능" items={summary.essentialFeatures} />}
+          <DetailList title="추후 기능" items={summary.laterFeatures} />
+          <DetailList title="개발 일정" items={summary.schedule} />
+          {apiDetails ?? <DetailList title="필요 API" items={summary.requiredApis} />}
+          {children}
+        </View>
+      </ThemedView>
+    </>
   );
 }
 
-const styles = StyleSheet.create({ card: { gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three }, toggle: { minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center' }, details: { gap: Spacing.three }, list: { gap: Spacing.one } });
+const styles = StyleSheet.create({ card: { gap: Spacing.two, borderWidth: 1, borderRadius: Radius.medium, padding: Spacing.three }, details: { gap: Spacing.three }, list: { gap: Spacing.one } });

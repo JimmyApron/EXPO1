@@ -1,3 +1,4 @@
+import { withWattUsage } from '../_shared/watt-usage.ts';
 import {
   anthropicApiVersion,
   deepSeekMessagesUrl,
@@ -25,6 +26,7 @@ const systemInstruction = `당신은 대학생 팀 프로젝트를 위한 AI MVP
 다음 원칙을 반드시 지키세요.
 - idea의 problem, solution, targetUsers, coreFeatures를 우선 사용하고 description은 보조 맥락으로만 사용하세요.
 - mustHaveFeatures에는 제한된 기간 안에 아이디어의 핵심 가설을 검증하는 데 꼭 필요한 기능만 넣으세요.
+- projectConditions.skillLevel은 팀의 개발 경험입니다. 초급·중급·고급에 따라 필수 기능의 범위, 학습 여유, 일정과 역할 분담을 조정하세요. 기능별 effort.difficulty는 팀 수준이 아닌 그 기능 자체의 구현 난이도입니다.
 - mustHaveFeatures와 apis의 각 항목에는 effort를 반드시 포함하세요. difficulty는 초급/중급/고급 중 하나, requiredSkills는 CRUD·인증·OCR·외부 API·데이터 모델링·배포 등 실제 필요한 역량, estimatedWeeks는 양수인 주 단위 예상 작업량(예: 0.5, 1, 2), beginnerComment는 비전공자/초급 팀의 선행 학습·위험·범위 축소 대안을 구체적으로 적으세요.
 - 예상 작업량은 초급 개발자 1명이 주 10시간 참여하며 학습·구현·연동·테스트하는 기준입니다. 기능과 API의 중복 작업은 합산하지 않도록 설명하고, 입력 팀 규모·기간으로 어렵다면 그 이유와 대안을 코멘트에 명시하세요. 추정치를 보장된 일정처럼 표현하지 마세요.
 - laterFeatures에는 핵심 검증 이후로 미룰 수 있는 고도화 기능만 넣으세요. 적절한 기능이 없으면 빈 배열도 허용됩니다.
@@ -219,7 +221,9 @@ function normalizeConditions(value: unknown) {
   return {
     durationWeeks: Math.max(1, Math.min(52, Math.round(Number(conditions.durationWeeks) || 6))),
     teamSize: Math.max(1, Math.min(20, Math.round(Number(conditions.teamSize) || 4))),
-    skillLevel: cleanString(conditions.skillLevel, 100) || '초급~중급',
+    skillLevel: /모르겠|unknown|not sure/i.test(cleanString(conditions.skillLevel, 100))
+      ? '중급 (사용자가 개발 경험을 잘 모르겠다고 선택함)'
+      : cleanString(conditions.skillLevel, 100) || '중급',
     budget: Math.max(0, Math.min(1_000_000_000, Number(conditions.budget) || 0)),
     evaluationCriteria: cleanStringArray(conditions.evaluationCriteria, 20),
   };
@@ -255,7 +259,7 @@ function getDeepSeekToolInput(responseBody: unknown) {
   return isRecord(toolUse) && isRecord(toolUse.input) ? toolUse.input : null;
 }
 
-Deno.serve(async (request) => {
+Deno.serve(async (request) => withWattUsage(request, 'generate-mvp', async (meter) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -343,6 +347,7 @@ Deno.serve(async (request) => {
       signal: controller.signal,
     });
   } catch (error) {
+    meter.capture('deepseek', deepSeekModel, 0);
     const timedOut = error instanceof Error && error.name === 'AbortError';
     return jsonResponse(
       {
@@ -358,15 +363,9 @@ Deno.serve(async (request) => {
   }
 
   if (!deepSeekResponse.ok) {
-    let errorBody = '';
-    try {
-      errorBody = await deepSeekResponse.text();
-    } catch {
-      // Ignore response parsing failures while logging the status.
-    }
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
     console.error('DeepSeek API returned an error status.', {
       status: deepSeekResponse.status,
-      body: errorBody.slice(0, 500),
     });
 
     if (deepSeekResponse.status === 401) {
@@ -390,7 +389,9 @@ Deno.serve(async (request) => {
   let deepSeekBody: unknown;
   try {
     deepSeekBody = await deepSeekResponse.json();
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status, deepSeekBody);
   } catch {
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답을 해석하지 못했습니다.' }, 502);
   }
 
@@ -401,4 +402,4 @@ Deno.serve(async (request) => {
   }
 
   return jsonResponse(mvpPlan);
-});
+}));

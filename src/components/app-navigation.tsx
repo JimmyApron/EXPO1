@@ -3,11 +3,12 @@ import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon, type AppIconName } from '@/components/app-icon';
+import { useProject } from '@/hooks/use-project';
+import { getTopicLabels } from '@/lib/topic-workspace';
 import { BrandIcon } from '@/components/brand-icon';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
-import { useNotifications } from '@/hooks/use-notifications';
-import { useProjects } from '@/hooks/use-projects';
+import { useAppNotifications } from '@/hooks/use-app-notifications';
 import { resolveProjectWorkspaceLocation, type ProjectSection } from '@/lib/project-workspace';
 
 // 🎨 네비게이션 테마 팔레트
@@ -48,7 +49,7 @@ const items: NavigationItem[] = [
   },
   { label: '방', href: '/rooms' as Href, icon: 'rooms', matches: (path) => path.startsWith('/rooms') },
   { label: '알림', href: '/notifications', icon: 'notifications', matches: (path) => path.startsWith('/notifications') },
-  { label: '내 정보', href: '/profile' as Href, icon: 'profile', matches: (path) => path.startsWith('/profile') },
+  { label: '내 정보', href: '/profile' as Href, icon: 'profile', matches: (path) => path.startsWith('/profile') || path.startsWith('/watt') },
 ];
 
 export function AppNavigation() {
@@ -61,17 +62,18 @@ export function AppNavigation() {
   }>();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
-  const { projects } = useProjects();
-  const { unreadCount } = useNotifications(projects);
+  const { unreadCount } = useAppNotifications();
   const isProjectDetail = /^\/projects\/[^/]+$/.test(pathname);
   const routeProjectId = Array.isArray(params.id) ? params.id[0] : params.id;
   const fallbackProjectId = isProjectDetail ? pathname.slice('/projects/'.length) : '';
   const projectId = routeProjectId || fallbackProjectId;
+  const { project } = useProject(isProjectDetail ? projectId : undefined);
+  const topicLabels = getTopicLabels(project?.template);
   const projectLocation = resolveProjectWorkspaceLocation(params);
 
   const navigationItems: NavigationItem[] = isProjectDetail && projectId
     ? projectSections.map((section) => ({
-        label: section.label,
+        label: section.id === 'ideas' ? topicLabels.list : section.id === 'mindmap' ? topicLabels.map : section.label,
         icon: section.icon,
         href: `/projects/${encodeURIComponent(projectId)}?projectView=${section.id}&flowStep=${projectLocation.step}` as Href,
         matches: () => projectLocation.section === section.id,
@@ -141,11 +143,6 @@ export function AppNavigation() {
         })}
       </View>
 
-      {isWide ? (
-        <ThemedText style={styles.sideFooter}>
-          {isProjectDetail ? '⚡ 과제 작업 공간' : '아이디어에서 결과물까지'}
-        </ThemedText>
-      ) : null}
     </SafeAreaView>
   );
 

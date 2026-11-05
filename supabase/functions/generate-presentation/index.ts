@@ -1,3 +1,4 @@
+import { withWattUsage } from '../_shared/watt-usage.ts';
 import {
   anthropicApiVersion,
   deepSeekMessagesUrl,
@@ -33,12 +34,15 @@ const presentationToolName = 'record_presentation_materials';
 // Keep enough headroom below Supabase's 150-second request idle timeout.
 const deepSeekTimeoutMs = 120_000;
 const presentationMaxTokens = 16_000;
+const presentationThemes = ['minimal-light', 'modern-dark', 'soft-color', 'business'] as const;
 
 const systemInstruction = `당신은 대학생 팀 프로젝트의 최종 발표 자료를 작성하는 AI 코치입니다.
 제공된 아이디어, 프로젝트 조건, MVP 계획만 근거로 사용하세요.
+이전 발표자료와 수정 요청이 제공되면 기존 자료의 유용한 내용을 유지하면서 요청을 반영해 슬라이드, 예상 질문, 사업계획서와 최종 보고서 전체를 새로 작성하세요.
 발표 슬라이드는 논리적인 이야기 흐름을 갖추고, 발표 대본은 실제로 읽기 쉬운 자연스러운 한국어로 작성하세요.
 예상 질문은 평가자가 물을 법한 현실적인 내용으로 구성하고 답변에는 제공된 근거를 반영하세요.
 사업계획서와 최종 결과 보고서는 바로 제출해도 될 만큼 구체적이고 전문적인 마크다운 문서로 작성하세요.
+요청된 페이지 수에 맞춰 표지와 마무리를 포함한 슬라이드를 정확히 생성하세요. 표지는 1번, 마무리는 마지막 번호를 사용하고 중간은 제공된 근거를 기반으로 자연스럽게 구성하세요. 근거 없는 내용이나 반복 슬라이드로 페이지 수를 채우지 마세요.
 각 슬라이드 대본은 2~4문장으로 간결하게 작성하세요.
 두 문서는 각각 2,000~3,000자 분량으로 작성하고, 짧은 개조식 문장만 나열하지 말고 근거와 실행 방법이 드러나는 문단을 포함하세요.
 사업계획서는 반드시 '# [아이디어명] 사업계획서'로 시작하고 다음 순서의 2단계 제목을 사용하세요: 1. Executive Summary, 2. 추진 배경 및 문제 정의, 3. 제안 솔루션과 핵심 가치, 4. 목표 사용자 및 활용 시나리오, 5. MVP 구성과 구현 범위, 6. 실행 일정 및 운영 계획, 7. 기대 효과와 검증 지표, 8. 리스크 및 대응 전략, 9. 향후 확장 계획.
@@ -54,7 +58,7 @@ const responseSchema = {
     presentationTitle: { type: 'string' },
     slides: {
       type: 'array',
-      description: '문제 정의부터 기대 효과까지 자연스럽게 이어지는 슬라이드 5~8장',
+    description: '요청된 페이지 수와 정확히 같은 슬라이드 수. 표지부터 마무리까지 자연스러운 발표 흐름',
       items: {
         type: 'object',
         additionalProperties: false,
@@ -107,15 +111,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function deepSeekErrorMessage(raw: string) {
-  try {
-    const body: unknown = JSON.parse(raw);
-    const error = isRecord(body) && isRecord(body.error) ? body.error : body;
-    return isRecord(error) && typeof error.message === 'string' ? error.message.trim().slice(0, 300) : '';
-  } catch {
-    return '';
-  }
-}
 
 function cleanString(value: unknown, maxLength = 4000) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
@@ -181,18 +176,35 @@ function normalizeMvpPlan(value: unknown) {
   return plan.essentialFeatures.length > 0 ? plan : null;
 }
 
+function normalizeSettings(value: unknown) {
+  if (!isRecord(value)) return null;
+  const pageCount = Number(value.pageCount);
+  const theme = cleanString(value.theme, 40);
+  if (!Number.isInteger(pageCount) || pageCount < 3 || pageCount > 20 || !presentationThemes.includes(theme as typeof presentationThemes[number])) return null;
+  const duration = value.durationMinutes == null ? null : Number(value.durationMinutes);
+  if (duration !== null && (![5, 10, 15].includes(duration))) return null;
+  return {
+    title: cleanString(value.title, 200),
+    pageCount,
+    theme,
+    durationMinutes: duration,
+    purpose: cleanString(value.purpose, 500),
+    additionalRequests: cleanString(value.additionalRequests, 1000),
+  };
+}
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function isPresentationData(value: unknown): value is PresentationData {
+function isPresentationData(value: unknown, expectedSlides?: number): value is PresentationData {
   if (!isRecord(value) || !Array.isArray(value.slides) || !Array.isArray(value.expectedQna)) {
     return false;
   }
 
   return (
     typeof value.presentationTitle === 'string' &&
-    value.slides.length > 0 &&
+    value.slides.length > 0 && (expectedSlides === undefined || value.slides.length === expectedSlides) &&
     value.slides.every(
       (slide) =>
         isRecord(slide) &&
@@ -200,7 +212,7 @@ function isPresentationData(value: unknown): value is PresentationData {
         typeof slide.title === 'string' &&
         isStringArray(slide.bulletPoints) &&
         typeof slide.speakerScript === 'string',
-    ) &&
+    ) && value.slides.every((slide, index) => isRecord(slide) && slide.slideNumber === index + 1) &&
     value.expectedQna.length > 0 &&
     value.expectedQna.every(
       (item) => isRecord(item) && typeof item.question === 'string' && typeof item.answer === 'string',
@@ -268,7 +280,7 @@ function getDeepSeekStopReason(responseBody: unknown) {
     : '';
 }
 
-Deno.serve(async (request) => {
+Deno.serve(async (request) => withWattUsage(request, 'generate-presentation', async (meter) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -298,7 +310,8 @@ Deno.serve(async (request) => {
   const projectConditions = normalizeConditions(requestBody.projectConditions);
   const selectedIdea = normalizeIdea(requestBody.selectedIdea);
   const mvpPlan = normalizeMvpPlan(requestBody.mvpPlan);
-  if (!projectConditions || !selectedIdea || !mvpPlan) {
+  const settings = normalizeSettings(requestBody.settings);
+  if (!projectConditions || !selectedIdea || !mvpPlan || !settings) {
     return jsonResponse(
       { error: 'invalid_input', message: '선정 아이디어와 MVP 계획 정보를 확인해주세요.' },
       400,
@@ -307,12 +320,50 @@ Deno.serve(async (request) => {
   if (!(await canAccessProject(cleanString(requestBody.projectId, 120), userId, authorization))) {
     return jsonResponse({ error: 'forbidden', message: '이 프로젝트에 접근할 권한이 없습니다.' }, 403);
   }
+  {
+    const url = Deno.env.get('SUPABASE_URL') ?? '';
+    const anon = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ?? '';
+    const headers = { Authorization: authorization, apikey: anon };
+    let storedPremium = false;
+    try {
+      const stored = await fetch(`${url}/rest/v1/projectflows?projectid=eq.${encodeURIComponent(cleanString(requestBody.projectId, 120))}&select=selectedideaid,presentationdata&limit=1`, {
+        headers, signal: AbortSignal.timeout(10_000),
+      });
+      if (!stored.ok) return jsonResponse({ error: 'presentation_access_failed', message: '저장된 발표자료를 확인하지 못했습니다.' }, 503);
+      const rows: unknown = await stored.json();
+      const flow = Array.isArray(rows) && isRecord(rows[0]) ? rows[0] : null;
+      if (!flow || flow.selectedideaid !== selectedIdea.id) return jsonResponse({ error: 'selected_idea_mismatch', message: '현재 프로젝트의 선정 아이디어를 확인해 주세요.' }, 403);
+      const presentation = flow.presentationdata;
+      const previousTheme = isRecord(presentation) && isRecord(presentation.settings) ? presentation.settings.theme : null;
+      storedPremium = (previousTheme === 'modern-dark' || previousTheme === 'business')
+        && isRecord(presentation) && (!presentation.ideaId || presentation.ideaId === selectedIdea.id);
+    } catch { return jsonResponse({ error: 'presentation_access_failed', message: '저장된 발표자료를 확인하지 못했습니다.' }, 503); }
+    if (settings.theme === 'modern-dark' || settings.theme === 'business' || storedPremium) {
+    let allowed = false;
+    try {
+      const entitlement = await fetch(`${url}/rest/v1/rpc/watt_can_use_premium_presentation`, {
+        method: 'POST',
+        headers: { Authorization: authorization, apikey: anon, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_project_id: cleanString(requestBody.projectId, 120) }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      allowed = entitlement.ok && (await entitlement.json()) === true;
+    } catch { /* Fail closed when subscription state cannot be checked. */ }
+    if (!allowed) return jsonResponse({ error: 'premium_subscription_required', message: storedPremium && settings.theme !== 'modern-dark' && settings.theme !== 'business'
+      ? '기존 프리미엄 발표자료의 디자인을 기본 테마로 변경한 뒤 AI 생성해 주세요.'
+      : '프리미엄 테마 생성에는 활성 구독 또는 무료체험이 필요합니다.' }, 403);
+    }
+  }
 
   if (requestBody.instruction !== undefined &&
     (typeof requestBody.instruction !== 'string' || requestBody.instruction.length > 1000)) {
     return jsonResponse({ error: 'invalid_instruction', message: '발표자료 재생성 요청은 1,000자 이내로 입력해 주세요.' }, 400);
   }
   const generationInstruction = cleanString(requestBody.instruction, 1000);
+  const previousPresentation = requestBody.previousPresentation;
+  if (previousPresentation !== undefined && !isPresentationData(previousPresentation)) {
+    return jsonResponse({ error: 'invalid_previous', message: '이전 발표자료 형식을 확인해 주세요.' }, 400);
+  }
 
   const deepSeekApiKey = Deno.env.get('DEEPSEEK_API_KEY');
   if (!deepSeekApiKey) {
@@ -334,8 +385,10 @@ Deno.serve(async (request) => {
     projectConditions,
     selectedIdea,
     mvpPlan,
+    presentationSettings: settings,
     outputLanguage: 'Korean',
     ...(generationInstruction ? { generationInstruction } : {}),
+    ...(previousPresentation ? { previousPresentation } : {}),
   });
 
   const controller = new AbortController();
@@ -369,6 +422,7 @@ Deno.serve(async (request) => {
       signal: controller.signal,
     });
   } catch (error) {
+    meter.capture('deepseek', deepSeekModel, 0);
     const timedOut = error instanceof Error && error.name === 'AbortError';
     return jsonResponse(
       {
@@ -384,15 +438,9 @@ Deno.serve(async (request) => {
   }
 
   if (!deepSeekResponse.ok) {
-    let errorBody = '';
-    try {
-      errorBody = await deepSeekResponse.text();
-    } catch {
-      // Ignore response parsing failures while logging the status.
-    }
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
     console.error('DeepSeek API returned an error status.', {
       status: deepSeekResponse.status,
-      body: errorBody.slice(0, 500),
     });
 
     if (deepSeekResponse.status === 401) {
@@ -408,10 +456,9 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: 'deepseek_rate_limited', message: 'AI 사용량이 많습니다. 잠시 후 다시 시도해주세요.' }, 503);
     }
     if (deepSeekResponse.status === 400) {
-      const detail = deepSeekErrorMessage(errorBody);
       return jsonResponse({
         error: 'deepseek_bad_request',
-        message: detail ? `AI 요청 형식을 처리하지 못했습니다: ${detail}` : 'AI 요청 형식을 처리하지 못했습니다.',
+        message: 'AI 요청 형식을 처리하지 못했습니다.',
       }, 502);
     }
     return jsonResponse({ error: 'deepseek_error', message: 'AI 발표 자료 생성에 실패했습니다.' }, 502);
@@ -420,12 +467,14 @@ Deno.serve(async (request) => {
   let deepSeekBody: unknown;
   try {
     deepSeekBody = await deepSeekResponse.json();
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status, deepSeekBody);
   } catch {
+    meter.capture('deepseek', deepSeekModel, deepSeekResponse.status);
     return jsonResponse({ error: 'invalid_ai_response', message: 'AI 응답을 해석하지 못했습니다.' }, 502);
   }
 
   const presentationData = getDeepSeekToolInput(deepSeekBody);
-  if (!isPresentationData(presentationData)) {
+  if (!isPresentationData(presentationData, settings.pageCount)) {
     const stopReason = getDeepSeekStopReason(deepSeekBody);
     if (stopReason === 'max_tokens') {
       return jsonResponse({ error: 'ai_response_too_long', message: '발표자료가 너무 길어 생성이 중단되었습니다. 다시 시도해주세요.' }, 502);
@@ -437,4 +486,4 @@ Deno.serve(async (request) => {
   }
 
   return jsonResponse(presentationData);
-});
+}));

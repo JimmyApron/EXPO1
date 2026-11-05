@@ -118,7 +118,8 @@ export function createIdeaFieldNodes(idea: Idea): IdeaFieldNodeInput[] {
 }
 
 /** Hides legacy derived branches while keeping their source fields on the idea. */
-export function getVisibleMindMapNodes(nodes: MindMapNode[]) {
+export function getVisibleMindMapNodes(nodes: MindMapNode[], template: string = 'service_app') {
+  if (template !== 'service_app') return nodes;
   const visibleFields = new Set(mindMapBranchDefinitions.map((definition) => definition.field));
   const hiddenBranchIds = new Set(
     nodes

@@ -1,10 +1,12 @@
 import { useCallback } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
-import { supabase } from '@/lib/supabase';
+import { invokeWattAi } from '@/lib/invoke-watt-ai';
+import { notifyWattBalanceChanged } from '@/hooks/use-watt';
 import type {
   CandidateIdea,
   PresentationData,
+  PresentationSettings,
   ProjectConditions,
   SampleMvpPlan,
 } from '@/types/presentation';
@@ -14,7 +16,9 @@ type GeneratePresentationInput = {
   projectConditions: ProjectConditions;
   selectedIdea: CandidateIdea;
   mvpPlan: SampleMvpPlan;
+  settings: PresentationSettings;
   instruction?: string;
+  previousPresentation?: Pick<PresentationData, 'presentationTitle' | 'slides' | 'expectedQna' | 'businessPlanDraft' | 'finalReport' | 'settings'>;
 };
 
 const generationErrorMessage = '발표 자료를 생성하지 못했습니다. 다시 시도해주세요.';
@@ -86,7 +90,7 @@ export function usePresentationGeneration() {
         throw new Error('로그인이 필요합니다.');
       }
 
-      const { data, error } = await supabase.functions.invoke('generate-presentation', {
+      const { data, error } = await invokeWattAi('generate-presentation', {
         body: input,
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -96,10 +100,11 @@ export function usePresentationGeneration() {
       if (error) {
         throw new Error(await getInvokeErrorMessage(error));
       }
-      if (!isPresentationData(data)) {
+      if (!isPresentationData(data) || data.slides.length !== input.settings.pageCount || data.slides.some((slide, index) => slide.slideNumber !== index + 1)) {
         throw new Error(generationErrorMessage);
       }
 
+      notifyWattBalanceChanged();
       return data;
     },
     [accessToken],

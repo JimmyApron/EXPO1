@@ -1,18 +1,22 @@
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
 
+import { ProjectSettingsFields } from '@/components/project-settings-fields';
+import { normalizeProjectSettings } from '@/lib/topic-workspace';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ControlHeight, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { Project, ProjectInput } from '@/types/project';
+import type { Project, ProjectInput, ProjectTemplate } from '@/types/project';
+import { getProjectStages, PROJECT_TEMPLATES } from '@/lib/project-stages';
 
 type ProjectFormProps = {
   project?: Project;
   submitLabel: string;
   isbusy?: boolean;
   error?: string;
-  onSubmit: (input: ProjectInput) => void | Promise<void>;
+  onSubmit: (input: ProjectInput) => boolean | Promise<boolean>;
   onCancel?: () => void;
 };
 
@@ -176,6 +180,9 @@ export function ProjectForm({
   const [title, setTitle] = useState(project?.title ?? '');
   const [description, setDescription] = useState(project?.description ?? '');
   const [deadline, setDeadline] = useState(project?.deadline ?? '');
+  const [template, setTemplate] = useState<ProjectTemplate>(project?.template ?? 'service_app');
+  const [settings, setSettings] = useState(() => normalizeProjectSettings(project?.settings));
+  const [hasPresentation, setHasPresentation] = useState(project?.haspresentation ?? true);
   const [isDeadlineCleared, setIsDeadlineCleared] = useState(false);
   const [titleError, setTitleError] = useState('');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -195,15 +202,18 @@ export function ProjectForm({
       return;
     }
 
-    await onSubmit({ title, description, deadline: deadline.trim() });
+    const saved = await onSubmit({ title, description, deadline: deadline.trim(), template, hasPresentation, settings });
 
-    if (!project) {
+    if (saved && !project) {
       setTitle('');
       setDescription('');
       setDeadline('');
+      setTemplate('service_app');
+      setSettings(normalizeProjectSettings());
+      setHasPresentation(true);
       setIsDeadlineCleared(false);
     }
-    setTitleError('');
+    if (saved) setTitleError('');
   };
 
   const deadlineLabel = deadline || (isDeadlineCleared ? '마감일 없음' : '마감일 선택');
@@ -244,6 +254,19 @@ export function ProjectForm({
       </View>
 
       <View style={styles.field}>
+        <ThemedText type="smallBold">과제 유형</ThemedText>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two }} accessibilityRole="radiogroup" accessibilityLabel="과제 생성 템플릿">
+          {PROJECT_TEMPLATES.map((option) => <Pressable key={option.id} accessibilityRole="radio" accessibilityLabel={option.label} accessibilityState={{ checked: template === option.id }} onPress={() => setTemplate(option.id)} style={[styles.dateSelectButton, { borderColor: template === option.id ? theme.primary : theme.border, backgroundColor: template === option.id ? theme.primarySoft : theme.background }]}><ThemedText type="smallBold">{option.label}</ThemedText></Pressable>)}
+        </View>
+        <ThemedText type="small" themeColor="textSecondary">{getProjectStages(template, hasPresentation).map((stage) => stage.label).join(' → ')}</ThemedText>
+      </View>
+      <View style={styles.field}>
+        <ThemedText type="smallBold">발표 유무</ThemedText>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two }} accessibilityRole="radiogroup" accessibilityLabel="발표 유무">
+          {[true, false].map((value) => <Pressable key={String(value)} accessibilityRole="radio" accessibilityLabel={value ? '발표 있음' : '발표 없음'} accessibilityState={{ checked: hasPresentation === value }} onPress={() => setHasPresentation(value)} style={[styles.dateSelectButton, { borderColor: hasPresentation === value ? theme.primary : theme.border, backgroundColor: hasPresentation === value ? theme.primarySoft : theme.background }]}><ThemedText type="smallBold">{value ? '발표 있음' : '발표 없음'}</ThemedText></Pressable>)}
+        </View>
+      </View>
+      <View style={styles.field}>
         <ThemedText type="smallBold">마감일</ThemedText>
         <Pressable
           onPress={() => setIsCalendarOpen(true)}
@@ -279,6 +302,8 @@ export function ProjectForm({
         />
       ) : null}
 
+      <ProjectSettingsFields template={template} value={settings} onChange={setSettings} disabled={isbusy} />
+
       {error ? (
         <ThemedText type="small" style={styles.errorText}>
           {error}
@@ -307,7 +332,7 @@ export function ProjectForm({
             (pressed || isbusy) && styles.pressed,
           ]}>
           {isbusy ? (
-            <ActivityIndicator color="#ffffff" />
+            <ActivityIndicator color={theme.primaryText} />
           ) : (
             <ThemedText type="smallBold" style={styles.primaryButtonText}>
               {submitLabel}
@@ -403,7 +428,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   selectedDayButtonText: {
-    color: '#ffffff',
+    color: '#1E293B',
   },
   calendarActions: {
     flexDirection: 'row',
@@ -426,7 +451,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: '#1E293B',
   },
   secondaryButton: {
     minHeight: ControlHeight.touch,

@@ -2,10 +2,10 @@ import { Platform } from 'react-native';
 
 export const safeFileName = (name: string) => name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/g, '') || 'final_idea';
 
-export async function saveFile(bytes: Uint8Array, name: string, mimeType: string) {
+export async function saveFile(bytes: Uint8Array | string, name: string, mimeType: string) {
   const fileName = safeFileName(name);
   if (Platform.OS === 'web') {
-    const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mimeType }));
+    const url = URL.createObjectURL(new Blob([typeof bytes === 'string' ? bytes : new Uint8Array(bytes)], { type: mimeType }));
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;

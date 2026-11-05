@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
@@ -33,6 +33,8 @@ type BlindSwipeEvaluationProps = {
   onGoToExtraction: () => void;
   onGoToList: () => void;
   onGoToMvp: () => void;
+  onEditIdea: (ideaId: string) => void;
+  onAddFeedback: (ideaId: string, content: string) => Promise<{ error?: string }>;
 };
 
 const orange = '#F59E0B';
@@ -53,7 +55,11 @@ export function BlindSwipeEvaluation({
   onGoToExtraction,
   onGoToList,
   onGoToMvp,
+  onEditIdea,
+  onAddFeedback,
 }: BlindSwipeEvaluationProps) {
+  const { width } = useWindowDimensions();
+  const isCompact = width < 600;
   const {
     flow,
     conditions,
@@ -146,7 +152,7 @@ export function BlindSwipeEvaluation({
     ?? null;
 
   const requestRecommendation = useCallback(async (force = false) => {
-    if (!isComplete || !canAnalyzeRecommendation || activeRecommendation || isAnalyzingRecommendation) return;
+    if (!isComplete || !canAnalyzeRecommendation || (activeRecommendation && !force) || isAnalyzingRecommendation) return;
     if (!force && recommendationRequestKey.current === recommendationFingerprint) return;
     recommendationRequestKey.current = recommendationFingerprint;
     const recommendation = await analyzeIdeas(recommendationFingerprint);
@@ -332,6 +338,8 @@ export function BlindSwipeEvaluation({
   if (isComplete && !isTransitioning) {
     return (
       <View style={styles.screen}>
+        <ThemedText type="subtitle" style={styles.navyText}>블라인드 스와이프 평가</ThemedText>
+        <ThemedText type="small" style={styles.mutedText}>AI 추천에는 저장된 팀 개발 경험({conditions.skillLevel})과 프로젝트 조건이 반영됩니다. 후보 카드의 구현 난이도와 팀원 투표 결과는 별도 기준입니다.</ThemedText>
         <View style={styles.completeBanner}>
           <ThemedText type="smallBold" style={styles.orangeText}>내 평가는 모두 잠겼습니다</ThemedText>
           <ThemedText type="small" style={styles.mutedText}>확정한 평가는 수정할 수 없어요.</ThemedText>
@@ -342,14 +350,16 @@ export function BlindSwipeEvaluation({
           selectedIdeaId={selectedIdeaId}
           canSelect={canSelectFinalIdea}
           selectionHint={selectionHint}
-          isRanking={!activeRecommendation && !recommendationError}
-          rankingError={!activeRecommendation ? recommendationError : ''}
+          isRanking={isAnalyzingRecommendation || (!activeRecommendation && !recommendationError)}
+          rankingError={activeRecommendation ? '' : recommendationError}
           onRetryRanking={() => {
             recommendationRequestKey.current = '';
             void requestRecommendation(true);
           }}
           onSelectIdea={selectForMvp}
           onGoToMvp={onGoToMvp}
+          onEditIdea={onEditIdea}
+          onAddFeedback={onAddFeedback}
         />
         {selectionError ? <ThemedText type="small" style={styles.errorText}>{selectionError}</ThemedText> : null}
         {evaluationError ? <ThemedText type="small" style={styles.mutedText}>{evaluationError}</ThemedText> : null}
@@ -362,8 +372,8 @@ export function BlindSwipeEvaluation({
 
   return (
     <View style={styles.screen}>
-      <View style={styles.headingRow}>
-        <View style={styles.heading}>
+      <View style={[styles.headingRow, isCompact && styles.headingRowCompact]}>
+        <View style={[styles.heading, !isCompact && styles.headingWide]}>
           <ThemedText type="subtitle" style={styles.navyText}>블라인드 스와이프 평가</ThemedText>
           <ThemedText type="small" style={styles.mutedText}>모든 아이디어를 평가하면 현재 결과를 볼 수 있어요.</ThemedText>
         </View>
@@ -398,8 +408,8 @@ export function BlindSwipeEvaluation({
           <View style={styles.cardFooter}>
             <ThemedText type="small" style={styles.mutedText}>구현 난이도 · {current.difficulty}</ThemedText>
             <View style={styles.textActions}>
-              <Pressable disabled={isTransitioning || isSavingEvaluation} onPress={() => void choose('pass')}><ThemedText type="smallBold" style={styles.passText}>PASS</ThemedText></Pressable>
-              <Pressable disabled={isTransitioning || isSavingEvaluation} onPress={() => void choose('pick')}><ThemedText type="smallBold" style={styles.orangeText}>PICK</ThemedText></Pressable>
+              <Pressable disabled={isTransitioning || isSavingEvaluation} onPress={() => void choose('pass')} style={styles.textAction}><ThemedText type="smallBold" style={styles.passText}>PASS</ThemedText></Pressable>
+              <Pressable disabled={isTransitioning || isSavingEvaluation} onPress={() => void choose('pick')} style={styles.textAction}><ThemedText type="smallBold" style={styles.orangeText}>PICK</ThemedText></Pressable>
             </View>
           </View>
         </Animated.View>
@@ -420,8 +430,10 @@ export function BlindSwipeEvaluation({
 
 const styles = StyleSheet.create({
   screen: { width: '100%', maxWidth: 520, alignSelf: 'center', gap: Spacing.three, padding: Spacing.four, borderRadius: Radius.xlarge, backgroundColor: cream },
-  heading: { gap: Spacing.one },
+  heading: { minWidth: 0, gap: Spacing.one },
+  headingWide: { flex: 1 },
   headingRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.two },
+  headingRowCompact: { flexDirection: 'column', alignItems: 'stretch' },
   navyText: { color: navy },
   mutedText: { color: muted },
   orangeText: { color: orange },
@@ -434,8 +446,9 @@ const styles = StyleSheet.create({
   cardSection: { gap: Spacing.one },
   cardFooter: { marginTop: 'auto', gap: Spacing.two },
   textActions: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: Spacing.one },
+  textAction: { minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center' },
   passText: { color: '#8A94A6' },
-  choiceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.five },
+  choiceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.two },
   passCircle: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.pill, borderWidth: 2, borderColor: '#C9CFDA', backgroundColor: '#FFFFFF' },
   pickCircle: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.pill, backgroundColor: orange },
   passSymbol: { color: '#8A94A6', fontSize: 39, fontWeight: '300', lineHeight: 44 },
@@ -445,7 +458,7 @@ const styles = StyleSheet.create({
   emptyCard: { gap: Spacing.three, padding: Spacing.four, borderWidth: 1, borderColor: orange, borderRadius: Radius.xlarge, backgroundColor: cream },
   emptyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   outlineButton: { minHeight: ControlHeight.touch, justifyContent: 'center', borderWidth: 1, borderColor: orange, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, backgroundColor: '#FFFFFF' },
-  restartButton: { minHeight: ControlHeight.touch, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: orange, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, backgroundColor: '#FFFFFF' },
+  restartButton: { minHeight: 48, maxWidth: '100%', alignSelf: 'flex-start', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: orange, borderRadius: Radius.medium, paddingHorizontal: Spacing.three, backgroundColor: '#FFFFFF' },
   completeBanner: { gap: Spacing.one, padding: Spacing.three, borderRadius: Radius.medium, borderWidth: 1, borderColor: '#F5D18D', backgroundColor: '#FFF2CD' },
   errorText: { color: '#C2410C' },
   pressed: { opacity: 0.65 },

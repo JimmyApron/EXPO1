@@ -4,13 +4,18 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { AppIcon } from '@/components/app-icon';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Shadows, Spacing } from '@/constants/theme';
-import type { ProjectIdeaStats } from '@/hooks/use-project-idea-stats';
+import type { ProjectIdeaCounts } from '@/hooks/use-project-idea-counts';
+import type { ProjectFlowSummary } from '@/hooks/use-project-flow-summaries';
+import type { ProjectStageRecord } from '@/hooks/use-project-stage-progress';
 import { formatDeadlineLabel, getDDayLabel } from '@/lib/deadline';
+import { getProjectStageSummary } from '@/lib/project-progress';
+import { PROJECT_TEMPLATES, normalizeProjectTemplate } from '@/lib/project-stages';
 import type { Project } from '@/types/project';
 
 // 🎨 디자인 가이드 컬러
 const PALETTE = {
   primary: '#F59E0B',        // 메인 옐로우/오렌지
+  primaryInk: '#92400E',
   primaryLight: '#FFFBEB',   // 피처드 카드 배경 (연노랑)
   primaryBorder: '#FDE68A',  // 피처드 카드 테두리
   card: '#FFFFFF',           // 기본 카드 흰색
@@ -23,40 +28,42 @@ const PALETTE = {
   success: '#10B981',        // 100% 완료 색상
 };
 
-export function getProjectProgress(stats: ProjectIdeaStats) {
-  if (stats.total === 0) return 0;
-  return Math.round((stats.selected / stats.total) * 100);
-}
-
 type ProjectCardProps = {
   project: Project;
-  stats: ProjectIdeaStats;
+  stats: ProjectIdeaCounts;
+  flow?: ProjectFlowSummary;
+  flowStatus?: 'loading' | 'error' | 'ready';
   featured?: boolean;
+  stageRecords?: ProjectStageRecord[];
+  stageStatus?: 'loading' | 'error' | 'ready' | 'unavailable';
+  ideaCountsStatus?: 'loading' | 'error' | 'ready';
+  favorite?: boolean;
+  favoriteBusy?: boolean;
+  onToggleFavorite?: () => void;
 };
 
-export function ProjectCard({ project, stats, featured = false }: ProjectCardProps) {
-  const progress = getProjectProgress(stats);
+export function ProjectCard({ project, stats, flow, flowStatus = 'ready', featured = false, stageRecords = [], stageStatus = 'ready', ideaCountsStatus = 'ready', favorite = false, favoriteBusy = false, onToggleFavorite }: ProjectCardProps) {
+  const templateLabel = PROJECT_TEMPLATES.find(t => t.id === normalizeProjectTemplate(project.template))!.label;
+  const summary = getProjectStageSummary(project, stats.total, stats.selected, flow, stageRecords);
+  const progress = summary.percent;
   const isCompleted = progress === 100;
-
+  const workflowStep = summary.currentStage.id;
+  const status = normalizeProjectTemplate(project.template) === 'service_app'
+    ? flowStatus === 'error' || ideaCountsStatus === 'error' ? 'error' : flowStatus === 'loading' || ideaCountsStatus === 'loading' ? 'loading' : 'ready'
+    : stageStatus;
+  const stageLabel = status === 'loading' ? '확인 중' : status === 'error' || status === 'unavailable' ? '확인할 수 없음' : isCompleted ? '모든 단계 완료' : `${summary.currentStage.label} 중`;
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${project.title} 과제, ${getDDayLabel(project.deadline)}, 진행률 ${progress}%`}
-      accessibilityHint="과제 상세 화면으로 이동합니다"
-      onPress={() => router.push(`/projects/${project.id}` as Href)}
-      style={({ pressed }) => [
-        styles.card,
-        featured ? styles.featuredCard : styles.standardCard,
-        Shadows.card,
-        pressed && styles.pressed,
-      ]}>
-      <View style={styles.topRow}>
+    <View style={[styles.card, featured ? styles.featuredCard : styles.standardCard, Shadows.card]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${templateLabel} 과제, ${project.title}, ${getDDayLabel(project.deadline)}, ${summary.completedStageCount}/${summary.totalStageCount} 단계 완료, ${stageLabel}`}
+        accessibilityHint="과제 상세 화면으로 이동합니다"
+        onPress={() => router.push(`/projects/${project.id}?projectView=home${status === 'ready' ? `&flowStep=${workflowStep}` : ''}` as Href)}
+        style={({ pressed }) => [styles.cardContent, featured && styles.featuredContent, pressed && styles.pressed]}>
+      {featured ? <View style={[styles.featuredBadge, { minHeight: 30, paddingRight: 44 }]}><ThemedText style={styles.featuredBadgeText}>최근 업데이트한 과제</ThemedText></View> : null}
+      <View style={[styles.topRow, !featured && onToggleFavorite && styles.topRowWithFavorite]}>
         <View style={styles.titleBlock}>
-          {featured ? (
-            <View style={styles.featuredBadge}>
-              <ThemedText style={styles.featuredBadgeText}>⚡ 지금 이어서 할 과제</ThemedText>
-            </View>
-          ) : null}
+          <View style={styles.templateChip}><ThemedText numberOfLines={1} style={styles.templateChipText}>{templateLabel}</ThemedText></View>
           <ThemedText
             type={featured ? 'sectionTitle' : 'cardTitle'}
             style={[styles.titleText, featured && styles.featuredTitleText]}
@@ -80,6 +87,9 @@ export function ProjectCard({ project, stats, featured = false }: ProjectCardPro
           {project.description}
         </ThemedText>
       ) : null}
+
+      <ThemedText style={styles.stageText}>현재 단계 · {stageLabel}</ThemedText>
+      <ThemedText style={styles.stageText}>{summary.completedStageCount}/{summary.totalStageCount} 단계 완료</ThemedText>
 
       {/* 진행률 바 */}
       <View style={styles.progressSection}>
@@ -105,9 +115,14 @@ export function ProjectCard({ project, stats, featured = false }: ProjectCardPro
       {/* 하단 액션 링크 */}
       <View style={styles.footer}>
         <ThemedText style={styles.footerText}>이어서 하기</ThemedText>
-        <AppIcon name="chevronRight" color={PALETTE.primary} size={18} />
+        <AppIcon name="chevronRight" color={PALETTE.primaryInk} size={18} />
       </View>
-    </Pressable>
+      </Pressable>
+      {onToggleFavorite ? <Pressable accessibilityRole="button" accessibilityLabel={favorite ? '과제 즐겨찾기 해제' : '과제 즐겨찾기'} accessibilityState={{ selected: favorite, disabled: favoriteBusy }} disabled={favoriteBusy}
+        onPress={onToggleFavorite} style={[styles.favoriteButton, featured && styles.featuredFavoriteButton]}>
+        <AppIcon name="favorite" color={favorite ? PALETTE.primary : PALETTE.textSecondary} size={22} />
+      </Pressable> : null}
+    </View>
   );
 }
 
@@ -115,8 +130,14 @@ const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
     borderRadius: Radius.large,
+  },
+  cardContent: {
     gap: 12,
     padding: Spacing.four,
+    borderRadius: Radius.large,
+  },
+  featuredContent: {
+    padding: Spacing.four + 2,
   },
   standardCard: {
     backgroundColor: PALETTE.card,
@@ -125,7 +146,6 @@ const styles = StyleSheet.create({
   featuredCard: {
     backgroundColor: PALETTE.primaryLight,
     borderColor: PALETTE.primaryBorder,
-    padding: Spacing.four + 2,
   },
   topRow: {
     flexDirection: 'row',
@@ -133,6 +153,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
+  topRowWithFavorite: {
+    paddingRight: 44 + Spacing.two,
+  },
+  favoriteButton: {
+    position: 'absolute',
+    top: Spacing.four,
+    right: Spacing.four,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featuredFavoriteButton: {
+    top: Spacing.four + 2,
+    right: Spacing.four + 2,
+  },
+  templateChip: { alignSelf: 'flex-start', borderRadius: 6, backgroundColor: '#F1F0ED', paddingHorizontal: 8, paddingVertical: 3, marginBottom: 2 },
+  templateChipText: { fontSize: 11, lineHeight: 16, fontWeight: '600', color: '#475569' },
   titleBlock: {
     flex: 1,
     gap: 4,
@@ -144,7 +182,7 @@ const styles = StyleSheet.create({
   featuredBadgeText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#D97706',
+    color: PALETTE.primaryInk,
   },
   titleText: {
     color: PALETTE.text,
@@ -177,6 +215,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: PALETTE.textSecondary,
+  },
+  stageText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    color: PALETTE.text,
   },
   progressSection: {
     gap: 6,
@@ -217,7 +261,7 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 13,
     fontWeight: '700',
-    color: PALETTE.primary,
+    color: PALETTE.primaryInk,
   },
   pressed: {
     opacity: 0.85,

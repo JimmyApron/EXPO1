@@ -56,6 +56,12 @@ export function PresentationWorkflowPanel({
   const plan = isMvpPlanCurrent(flow?.mvpplan, idea?.id) ? flow?.mvpplan ?? null : null;
   const hasCurrentPresentation = isPresentationCurrent(flow?.presentationdata, idea?.id, plan);
   const hasPreviousPresentation = Boolean(flow?.presentationdata && !hasCurrentPresentation);
+  const mvpConditionsChanged = Boolean(plan?.inputConditions && (
+    plan.inputConditions.skillLevel !== conditions.skillLevel ||
+    plan.inputConditions.durationWeeks !== conditions.durationWeeks ||
+    plan.inputConditions.teamSize !== conditions.teamSize ||
+    plan.inputConditions.budget !== conditions.budget
+  ));
 
   const candidate: CandidateIdea | null = useMemo(() => idea ? ({
     id: idea.id,
@@ -111,7 +117,12 @@ export function PresentationWorkflowPanel({
   }
 
   return (
-    <PresentationView
+    <View style={styles.container}>
+      <ThemedText type="small" themeColor="textSecondary">발표자료를 새로 생성하면 현재 팀 개발 경험({conditions.skillLevel})과 프로젝트 조건이 AI에 전달됩니다. 저장된 발표자료는 조건을 바꿔도 자동으로 다시 작성되지 않습니다.</ThemedText>
+      {mvpConditionsChanged ? (
+        <ThemedText type="small" themeColor="textSecondary">현재 MVP는 이전 프로젝트 조건으로 만들었습니다. 발표자료에 최신 조건과 맞는 계획을 쓰려면 MVP 기획에서 먼저 다시 만들어 주세요.</ThemedText>
+      ) : null}
+      <PresentationView
       key={`${idea.id}:${plan.ideaId}`}
       projectId={projectId}
       projectConditions={conditions}
@@ -128,7 +139,8 @@ export function PresentationWorkflowPanel({
       initialData={hasCurrentPresentation ? flow?.presentationdata : null}
       hasPreviousPresentation={hasPreviousPresentation}
       onSave={savePresentationData}
-    />
+      />
+    </View>
   );
 }
 

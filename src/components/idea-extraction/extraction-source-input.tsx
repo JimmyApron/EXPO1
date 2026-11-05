@@ -1,5 +1,6 @@
+import { ScaledTextInput as TextInput } from '@/components/scaled-text-input';
 import { useState } from 'react';
-import { Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ExtractionPrivacyNotice } from './extraction-privacy-notice';
@@ -197,7 +198,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     paddingHorizontal: Spacing.three,
   },
-  primaryButtonText: { color: '#ffffff' },
+  primaryButtonText: { color: '#1E293B' },
   secondaryButton: {
     minHeight: ControlHeight.touch,
     alignItems: 'center',

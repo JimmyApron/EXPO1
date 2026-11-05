@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 import { supabase } from '@/lib/supabase';
 import type { Project, ProjectInput } from '@/types/project';
+import { normalizeProjectSettings } from '@/lib/topic-workspace';
+import { normalizeProjectTemplate } from '@/lib/project-stages';
+import { isMissingProjectSettings, isMissingProjectTemplateColumn, LEGACY_PROJECT_SELECT, TEMPLATE_PROJECT_SELECT, normalizeProjectRow, PROJECT_SELECT } from '@/lib/project-schema';
 
 type ProjectMutationResult = {
   project?: Project;
   error?: string;
 };
-
-const projectSelect = 'id, userid, roomid, title, description, deadline, createdat, updatedat';
 
 function cleanProjectInput(input: ProjectInput) {
   const deadline = input.deadline.trim();
@@ -19,6 +20,9 @@ function cleanProjectInput(input: ProjectInput) {
     title: input.title.trim(),
     description: input.description.trim(),
     deadline: deadline || null,
+    template: normalizeProjectTemplate(input.template),
+    haspresentation: input.hasPresentation,
+    settings: normalizeProjectSettings(input.settings),
   };
 }
 
@@ -34,11 +38,16 @@ export function useProject(projectid?: string) {
   const { user } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [isloadingproject, setIsloadingproject] = useState(true);
+  const [loadedProjectKey, setLoadedProjectKey] = useState('');
   const [projecterror, setProjecterror] = useState('');
+  const requestId = useRef(0);
+  const projectKey = `${user?.id ?? ''}:${projectid ?? ''}`;
 
   const loadProject = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user || !projectid) {
       setProject(null);
+      setLoadedProjectKey('');
       setIsloadingproject(false);
       return;
     }
@@ -46,21 +55,30 @@ export function useProject(projectid?: string) {
     setIsloadingproject(true);
     setProjecterror('');
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('projects')
-      .select(projectSelect)
+      .select(PROJECT_SELECT)
       .eq('id', projectid)
       .maybeSingle();
+    if (isMissingProjectSettings(error)) {
+      ({ data, error } = await supabase.from('projects').select(TEMPLATE_PROJECT_SELECT).eq('id', projectid).maybeSingle());
+    }
+    if (isMissingProjectTemplateColumn(error)) {
+      ({ data, error } = await supabase.from('projects')
+        .select(LEGACY_PROJECT_SELECT).eq('id', projectid).maybeSingle());
+    }
+
+    if (currentRequestId !== requestId.current) return;
 
     if (error) {
       setProjecterror(error.message);
-      setProject(null);
     } else {
-      setProject((data as Project | null) ?? null);
+      setProject(data ? normalizeProjectRow(data as Record<string, unknown>) : null);
+      setLoadedProjectKey(projectKey);
     }
 
     setIsloadingproject(false);
-  }, [projectid, user]);
+  }, [projectid, projectKey, user]);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => {
@@ -97,15 +115,18 @@ export function useProject(projectid?: string) {
           updatedat: new Date().toISOString(),
         })
         .eq('id', projectid)
-        .select(projectSelect)
+        .select(PROJECT_SELECT)
         .single();
 
       if (error) {
-        setProjecterror(error.message);
-        return { error: error.message };
+        const message = isMissingProjectTemplateColumn(error)
+          ? '과제 템플릿 기능을 사용하려면 프로젝트 DB 마이그레이션을 적용해야 합니다.'
+          : error.message;
+        setProjecterror(message);
+        return { error: message };
       }
 
-      const nextProject = data as Project;
+      const nextProject = normalizeProjectRow(data as Record<string, unknown>);
       setProject(nextProject);
       return { project: nextProject };
     },
@@ -129,8 +150,9 @@ export function useProject(projectid?: string) {
   }, [projectid, user]);
 
   return {
-    project,
+    project: loadedProjectKey === projectKey ? project : null,
     isloadingproject,
+    isInitialProjectLoad: isloadingproject && loadedProjectKey !== projectKey,
     projecterror,
     loadProject,
     updateProject,

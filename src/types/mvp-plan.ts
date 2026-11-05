@@ -49,6 +49,13 @@ export type MvpApi = {
 export type MvpPlan = {
   ideaId: string;
   ideaTitle: string;
+  /** Conditions used when this plan was generated. Older saved plans omit this. */
+  inputConditions?: {
+    durationWeeks: number;
+    teamSize: number;
+    skillLevel: string;
+    budget: number;
+  };
   summary: string;
   mustHaveFeatures: MvpFeature[];
   laterFeatures: MvpFeature[];
@@ -57,4 +64,6 @@ export type MvpPlan = {
   teamRoles: MvpRole[];
   apis: MvpApi[];
   presentationOrder: string[];
+  manualKeywords?: string[];
+  removedKeywords?: string[];
 };

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
@@ -34,15 +34,22 @@ export function useProjectIdeaStats() {
   const [statsByProjectId, setStatsByProjectId] = useState<Map<string, ProjectIdeaStats>>(new Map());
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [statsError, setStatsError] = useState('');
+  const loadedUserId = useRef('');
+  const requestId = useRef(0);
 
   const loadStats = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     if (!user) {
       setStatsByProjectId(new Map());
+      loadedUserId.current = '';
       setIsLoadingStats(false);
       return;
     }
 
-    setIsLoadingStats(true);
+    if (loadedUserId.current !== user.id) {
+      setIsLoadingStats(true);
+      setStatsByProjectId(new Map());
+    }
     setStatsError('');
 
     const { data, error } = await supabase
@@ -51,9 +58,11 @@ export function useProjectIdeaStats() {
       .eq('legacystructural', false)
       .eq('userid', user.id);
 
+    if (currentRequestId !== requestId.current) return;
+
     if (error) {
       setStatsError(error.message);
-      setStatsByProjectId(new Map());
+      loadedUserId.current = user.id;
       setIsLoadingStats(false);
       return;
     }
@@ -85,6 +94,7 @@ export function useProjectIdeaStats() {
     });
 
     setStatsByProjectId(nextStats);
+    loadedUserId.current = user.id;
     setIsLoadingStats(false);
   }, [user]);
 

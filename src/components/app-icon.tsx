@@ -21,9 +21,12 @@ export type AppIconName =
   | 'lock'
   | 'delete'
   | 'info'
+  | 'guide'
   | 'feedback'
   | 'schedule'
   | 'idea'
+  | 'eye'
+  | 'eyeOff'
   | 'close';
 
 const names: Record<AppIconName, SymbolViewProps['name']> = {
@@ -46,9 +49,12 @@ const names: Record<AppIconName, SymbolViewProps['name']> = {
   lock: { ios: 'lock.fill', android: 'lock', web: 'lock' },
   delete: { ios: 'trash.fill', android: 'delete', web: 'delete' },
   info: { ios: 'info.circle.fill', android: 'info', web: 'info' },
+  guide: { ios: 'book.fill', android: 'menu_book', web: 'menu_book' },
   feedback: { ios: 'bubble.left.and.bubble.right.fill', android: 'chat', web: 'chat' },
   schedule: { ios: 'clock.fill', android: 'schedule', web: 'schedule' },
   idea: { ios: 'lightbulb.fill', android: 'lightbulb', web: 'lightbulb' },
+  eye: { ios: 'eye', android: 'visibility', web: 'visibility' },
+  eyeOff: { ios: 'eye.slash', android: 'visibility_off', web: 'visibility_off' },
   close: { ios: 'xmark', android: 'close', web: 'close' },
 };
 
@@ -72,9 +78,12 @@ const fallbacks: Record<AppIconName, string> = {
   lock: '●',
   delete: '×',
   info: 'i',
+  guide: '▤',
   feedback: '●',
   schedule: '◷',
   idea: '●',
+  eye: '◉',
+  eyeOff: '⊙',
   close: '×',
 };
 

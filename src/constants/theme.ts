@@ -19,7 +19,7 @@ export const Colors = {
     primary: '#F59E0B',                  // 메인 옐로우/오렌지
     primaryHover: '#D97706',             // 버튼 호버 딥 오렌지
     primarySoft: '#FEF3C7',              // 연노랑 하이라이트
-    primaryText: '#FFFFFF',              // 버튼 위 흰색 텍스트
+    primaryText: '#1E293B',              // 노란 버튼 위 진한 텍스트
     border: '#F3E8D6',                   // 부드러운 크림 테두리
     divider: '#EFE6D8',                  // 얇은 구분선
     success: '#10B981',                  // 완료/성공 에메랄드
@@ -43,7 +43,7 @@ export const Colors = {
     primary: '#F59E0B',
     primaryHover: '#D97706',
     primarySoft: '#FEF3C7',
-    primaryText: '#FFFFFF',
+    primaryText: '#1E293B',
     border: '#F3E8D6',
     divider: '#EFE6D8',
     success: '#10B981',
